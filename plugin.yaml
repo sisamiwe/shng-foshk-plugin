@@ -22,65 +22,68 @@ plugin:
     classname: Foshk                # class containing the plugin
 
 parameters:
-    # Definition of parameters to be configured in etc/plugin.yaml (enter 'parameters: NONE', if section should be empty)
-            # Server_IP:
-                # type: ipv4
-                # default: '192.168.2.12'
-                # description:
-                    # de: 'IP-Adresse des TCP-Servers, auf den das Gateway die Daten sendet'
-                    # en: 'IP-Adress of the TCP-Server, where the gateway will send the data to'
 
-            # Server_Port:
-                # type: int
-                # default: 8070
-                # description:
-                    # de: 'Port des TCP-Servers, auf den das Gateway die Daten sendet'
-                    # en: 'Port of the TCP-Server, where the gateway will send the data to'
-                    
-            # Cycle:
-                # type: int
-                # default: 30
-                # valid_min: 10
-                # valid_max: 600
-                # description:
-                    # de: 'Zyklus, in dem die Daten vom Server abgeholt werden; (sollte größer sein, als Intervall)'
-                    # en: 'Cycle in which the data will put pulled from server'
-                    
-            # Interval:
-                # type: int
-                # mandatory: False
-                # default: 20
-                # valid_min: 16
-                # valid_max: 600
-                # description:
-                    # de: 'Intervall, in dem das Gateway die Daten bereitstellt, bzw. hochläd'
-                    # en: 'Interval the gateway provides the data'
-            
     Gateway_IP:
         type: ipv4
-        mandatory: False
-        default: '255.255.255.255'
+        mandatory: false
+        default: '0.0.0.0'
         description:
             de: 'IP-Adresse des Gateways'
             en: 'IP-Adress of the gateway'
-            
+
     Gateway_Port:
         type: int
-        mandatory: False
+        mandatory: false
         default: 45000
         description:
             de: 'UDP Port des Gateways'
             en: 'UDP Port of the Gateway'
-            
-    Gateway_Poll_Interval:
+
+    Gateway_Poll_Cycle:
         type: int
-        mandatory: False
+        mandatory: false
         default: 20
-        valid_min: 10
+        valid_min: 16
         valid_max: 600
         description:
             de: 'Zyklus, in dem die Daten via API abgerufen werden'
             en: 'Cycle in which the data will be pulled via API'
+
+    FW_Update_Check_Cycle:
+        type: int
+        mandatory: false
+        default: 0
+        valid_min: 0
+        valid_max: 90
+        description:
+            de: 'Interval in Tagen, in dem nach neuer Firmware gesucht wird. 0 bedeuted aus.'
+            en: 'Cycle in days in which a check for newer firmware will be performed. 0 means no periodical check'
+
+    Battery_Warning:
+        type: bool
+        mandatory: false
+        default: true
+        description:
+            de: 'Erzeugt ein separates Datenfeld für eine Batteriewarnung.'
+            en: 'Creates a separate Datafield für battery warning'
+
+    Sensor_Warning:
+        type: bool
+        mandatory: false
+        default: true
+        description:
+            de: 'Erzeugt ein separates Datenfeld für eine Sensorwarnung.'
+            en: 'Creates a separate Datafield für sensor warning'
+            
+    Ecowitt_Data_Cycle:
+        type: int
+        mandatory: False
+        default: 20
+        valid_min: 0
+        valid_max: 600
+        description:
+            de: 'Intervall, in dem das Gateway die Daten bereitstellt, bzw. hochläd; (Wert 0: Aus, ECOWITT Daten werden nicht geladen; Wert 1-16: Datenzyklus 16s;  Wert >16 :  Datenzyklus s)'
+            en: 'Interval the gateway provides the data'
 
 item_attributes:
     foshk_attibute:
@@ -192,19 +195,19 @@ item_attributes:
             - lightning_strike_count
             # rain
             - rain
-            - rainevent
-            - rainrate
-            - rainhour
-            - rainday
-            - rainweek
-            - rainmonth
-            - rainyear
-            - raintotals
+            - rainevent                     # kummulierte Regenmenge in mm des aktuellen Regenevents
+            - rainrate                      # Regenmenge pro Zeit in mm/h des aktuellen Regenevents
+            - rainhour                      # kummulierte Regenmenge der aktuellen Stunde
+            - rainday                       # kummulierte Regenmenge des aktuellen Tages
+            - rainweek                      # kummulierte Regenmenge der aktuellen Woche
+            - rainmonth                     # kummulierte Regenmenge des aktuellen Monats
+            - rainyear                      # kummulierte Regenmenge des aktuellen Jahres
+            - raintotals                    # kummulierte Regenmenge seit Inbetriebnahme bzw. Reset
             # wind
-            - winddir
-            - windspeed
-            - gustspeed
-            - daymaxwind
+            - winddir                       # Windrichtung in °
+            - windspeed                     # Windgeschwindigkeit in m/s
+            - gustspeed                     # Windböengeschwindigkeit in m/s    
+            - daymaxwind                    # max. Windböengeschwindigkeit des Tages in m/s   
             # battery
             - wh40_batt
             - wh26_batt
@@ -309,6 +312,19 @@ item_attributes:
             - setFirmwareUpgrade
             - setCustomServer
             - setUserPath
+            # self calculated keys
+            - weather_text
+            - feels_like
+            - outdewpt
+            - outfrostpt
+            - cloud_ceiling
+            - winddir_text
+            - windspeed_bft
+            - windspeed_bft_text
+            - weather_text
+            - windspeed_avg10m
+            - winddir_avg10m
+            - gustspeed_avg10m
 
 item_structs: NONE
     # Definition of item-structure templates for this plugin (enter 'item_structs: NONE', if section should be empty)
@@ -317,8 +333,83 @@ item_structs: NONE
     # Definition of item attributes that only have a common prefix (enter 'item_attribute_prefixes: NONE' or ommit this section, if section should be empty)
     # NOTE: This section should only be used, if really nessesary (e.g. for the stateengine plugin)
 
-plugin_functions: NONE
-    # Definition of plugin functions defined by this plugin (enter 'plugin_functions: NONE', if section should be empty)
+plugin_functions:
+    firmware_update:
+        type: foo
+        description:
+            de: ''
+            en: ''
+
+    reboot:
+        type: foo
+        description:
+            de: ''
+            en: ''
+
+    reset:
+        type: foo
+        description:
+            de: ''
+            en: ''
+
+    set_usr_path:
+        type: foo
+        description:
+            de: ''
+            en: ''
+        parameters:
+            custom_ecowitt_pathpath:
+                type: str
+                description:
+                    de: ''
+                    en: ''
+            custom_wu_path:
+                type: str
+                description:
+                    de: ''
+                    en: ''
+
+    set_custom_params:
+        type: foo
+        description:
+            de: ''
+            en: ''
+        parameters:
+            custom_server_id:
+                type: str
+                description:
+                    de: ''
+                    en: ''
+            custom_password:
+                type: str
+                description:
+                    de: ''
+                    en: ''
+            custom_host:
+                type: ipv4
+                description:
+                    de: ''
+                    en: ''
+            custom_port:
+                type: num
+                description:
+                    de: ''
+                    en: ''
+            custom_interval:
+                type: num
+                description:
+                    de: ''
+                    en: ''
+            custom_type:
+                type: bool
+                description:
+                    de: ''
+                    en: ''
+            custom_enabled:
+                type: bool
+                description:
+                    de: ''
+                    en: ''
 
 logic_parameters: NONE
     # Definition of logic parameters defined by this plugin (enter 'logic_parameters: NONE', if section should be empty)

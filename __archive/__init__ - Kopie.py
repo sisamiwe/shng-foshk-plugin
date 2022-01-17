@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # vim: set encoding=utf-8 tabstop=4 softtabstop=4 shiftwidth=4 expandtab
 #########################################################################
-#  Copyright 2020-      <AUTHOR>                                  <EMAIL>
+#  Copyright 2022-      Michael Wenzel              wenzel_michael@web.de
 #########################################################################
 #  This file is part of SmartHomeNG.
 #  https://www.smarthomeNG.de
 #  https://knx-user-forum.de/forum/supportforen/smarthome-py
 #
-#  Sample plugin for new plugins to run with SmartHomeNG version 1.8 and
-#  upwards.
+#  Plugin to connect to Foshk Weather Gateway.
 #
 #  SmartHomeNG is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -25,30 +24,75 @@
 #
 #########################################################################
 
+
+#########################################################################
+#
+# TODO
+#  - tswarning                  is there a thunderstorm coming 
+#
+#  - hourlyrain                 ist eigentlich bereits im Paket
+#  - totalrainmm                ist eigentlich bereits im Paket
+#
+#  - set CMD_WRITE_CALIBRATION
+#  - set CMD_WRITE_RAINDATA
+#  - set CMD_WRITE_GAIN
+#
+#  - sunhours
+#  - ptrend
+#
+#########################################################################
+
 from lib.model.smartplugin import SmartPlugin
 from lib.item import Items
 
 from .webif import WebInterface
 
+import logging
+import re
 import socket
-import sys
-import datetime
-import math
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import struct
 import threading
-from threading import Timer
-import json
+import time
+import queue
+import math
+from collections import deque
+import requests
+import configparser
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler
+import socketserver
+import urllib.parse
+
+
+tcp_server_queue = queue.Queue()
+
+
+# SET GLOBAL DEFAULTS
+# default network broadcast address - the address that network broadcasts are sent to
+default_broadcast_address = '255.255.255.255'
+# default network broadcast port - the port that network broadcasts are sent to
+default_broadcast_port = 46000
+# default socket timeout
+default_socket_timeout = 2
+# default broadcast timeout
+default_broadcast_timeout = 5
+# default retry/wait time
+default_retry_wait = 10
+# default max tries when polling the API
+default_max_tries = 3
+# When run as a service the default age in seconds after which GW1000/GW1100 API data is considered stale and will not be used to augment loop packets
+default_max_age = 60
+# firmware update url
+fw_update_url = 'http://download.ecowitt.net/down/filewave?v=FirwaveReadme.txt'.replace("\"", "")
 
 
 class Foshk(SmartPlugin):
+    """
+    Main class of the Plugin. Does all plugin specific stuff and provides the update functions for the items
 
-    PLUGIN_VERSION = '1.0.0'    # (must match the version specified in plugin.yaml), use '1.0.0' for your initial plugin Release
-    
-    LB_IP = '192.168.2.12'
-    LBH_PORT = '8080'
-    AUTH_PWD = ''
-    LBU_PORT = '12341'
-   
+    """
+
+    PLUGIN_VERSION = '1.0.0'
 
     def __init__(self, sh):
         """
@@ -63,152 +107,203 @@ class Foshk(SmartPlugin):
         returns the value in the datatype that is defined in the metadata.
         """
 
-        self.logger.info(f'Init of Plugin {self.get_shortname()} started')
-
-        # Call init code of parent class (SmartPlugin)
+        # call init code of parent class (SmartPlugin)
         super().__init__()
-
+        
         # get the parameters for the plugin (as defined in metadata plugin.yaml):
-        self._socket_addr = self.get_parameter_value('Server_IP')
-        self._socket_port = self.get_parameter_value('Port')
-        # self._cycle = self.get_parameter_value('cycle')
+        self._broadcast_address = None
+        self._broadcast_port = None
+        self._gateway_address = self.get_parameter_value('Gateway_IP') if self.get_parameter_value('Gateway_IP') != '0.0.0.0' else None
+        self._gateway_port = self.get_parameter_value('Gateway_Port') if self.get_parameter_value('Gateway_Port') != 0 else None
+        self._gateway_poll_interval = self.get_parameter_value('Gateway_Poll_Cycle')
+        self._fw_update_check_cycle = self.get_parameter_value('FW_Update_Check_Cycle') * 24 * 60 * 60                    # convert from days into seconds
+        self._battery_warning = bool(self.get_parameter_value('Battery_Warning'))
+        self._sensor_warning = bool(self.get_parameter_value('Sensor_Warning'))
+        
+        self._use_customer_server = bool(self.get_parameter_value('Use_Customer_Server'))
+        if self._use_customer_server:
+            self._http_server_ip = self.get_parameter_value('Server_IP') if self.get_parameter_value('Server_IP') != '0.0.0.0' else None
+            self._http_server_port = self.get_parameter_value('Server_Port')
+            self._data_cylce = self.get_parameter_value('Data_Cycle')
+        
+        # define properties
+        self.items = {}                                                             # dict to hold Items using Plugin attribute
+        self.data_dict = {}                                                         # dict to hold all live data gotten from weatherstation gateway
+        self.data_dict2 = {}                                                        # dict to hold all data gotten from weatherstation gateway via tcp
+        self.gateway_connected = False                                              # is gateway connected; driver established    
+        self._altitude = self.get_sh()._elev                                        # altitude of installation used from shNG setting
+        self._my_language = self.get_sh().get_defaultlanguage()                     # current shNG language (= 'de')
+        self.thread = None                                                          # thread property for det data
+        self._server_thread = None                                                  # thread property for TCP server
+        self.update_available = False                                               # is a newer firmware available
+        self._server = None
+        self.alive = True
 
-        # Initialization code goes here
-        self.data_dict_im = {}                             # dict to hold all information gotten from weatherstation gateway in imperial units
-        self.data_dict_me = {}                             # dict to hold all information gotten from weatherstation gateway in metric units
+        # get a Gw1000Driver object
+        try:
+            self.driver = Gw1000Driver(self)
+            self.logger.debug(f"Interrogating {self.driver.collector.station.model} at {self.driver.collector.station.ip_address.decode()}:{self.driver.collector.station.port}")
+            self.gateway_connected = True
+        except GW1000IOError as e:
+            self.logger.error(f"Unable to connect to device: {e}")
+            self._init_complete = False
+            return
 
-        self._socket = None
-        self.connection = None
-        self.adress = None
+        # start thread to get data from api driver
+        try:
+            self.get_api_data_thread_startup()  
+        except Exception as e:
+            self.logger.error(f"Unable to start thread: {e}")
+            self._init_complete = False
+            return
+            
+        # initialize tcp server if enabled
+        if self._use_customer_server:
+            self.init_tcp_server()
+            
+        # start thread to get data from tcp server
+        if self._use_customer_server:
+            try:
+                self.get_tcp_data_thread_startup()  
+            except Exception as e:
+                self.logger.error(f"Unable to start thread: {e}")
+                self._init_complete = False
+                return
 
-        self.alive = None
-        self.is_connected = 'False'
-        self.battery_warning = False
-        self._altitude = 435
+        # check webinterfacer
+        if not self.init_webinterface(WebInterface):
+            self.logger.error("Unable to start Webinterface")
+            self._init_complete = False
+        else:
+            self.logger.debug(f"Init of Plugin {self.get_shortname()} complete")
+            
+    def get_api_data_thread_startup(self):
+        """Start a thread that get data from the GW1000/GW1100 driver."""
 
-        # On initialization error use:
-        #   self._init_complete = False
-        #   return
+        try:
+            _name = 'plugins.' + self.get_fullname() + '.get_api_data'
+            self.thread = threading.Thread(target=self.get_api_data, name=_name)
+            self.thread.start()
+            self.logger.debug("FoshkPlugin thread for 'get_api_data' has been started")
+        except threading.ThreadError:
+            self.logger.error("Unable to launch FoshkPlugin threadfor 'get_api_data'.")
+            self.thread = None
 
-        # if plugin should start even without web interface
-        self.init_webinterface(WebInterface)
-        # if plugin should not start without web interface
-        # if not self.init_webinterface():
-        #     self._init_complete = False
+    def get_api_data_thread_shutdown(self):
+        """Shut down the thread that gets data from the GW1000/GW1100 driver."""
 
-        return
+        if self.thread:
+            # terminate the thread
+            self.thread.join(1)
+            # log the outcome
+            if self.thread.is_alive():
+                self.logger.error("Unable to shut down FoshkPlugin thread")
+            else:
+                self.logger.info("FoshkPlugin thread has been terminated")
+                self.thread = None
+
+    def get_tcp_data_thread_startup(self):
+        """Start a thread that get data from the TCP Server."""
+
+        try:
+            _name = 'plugins.' + self.get_fullname() + '.get_tcp_data'
+            self.thread = threading.Thread(target=self.get_tcp_data, name=_name)
+            self.thread.start()
+            self.logger.debug("FoshkPlugin thread for 'get_tcp_data' has been started")
+        except threading.ThreadError:
+            self.logger.error("Unable to launch FoshkPlugin thread for 'get_tcp_data'.")
+            self.thread = None
+
+    def get_tcp_data_thread_shutdown(self):
+        """Shut down the thread that gets data from the TCP Server."""
+
+        if self.thread:
+            # terminate the thread
+            self.thread.join(1)
+            # log the outcome
+            if self.thread.is_alive():
+                self.logger.error("Unable to shut down FoshkPlugin thread")
+            else:
+                self.logger.info("FoshkPlugin thread has been terminated")
+                self.thread = None
+
+    def init_tcp_server(self):
+    
+        try:
+            self._server = TCPServer(self._http_server_ip, self._http_server_port, WebserviceHttpHandler)
+            _name = 'plugins.' + self.get_fullname() + '.Fosh_TCP_Server'
+            self._server_thread = threading.Thread(target=self.run_server, name=_name)
+            self._server_thread.setDaemon(False)
+            self._server_thread.start()
+            self.logger.debug("FoshkPlugin TCP Server has been started")
+        except threading.ThreadError:
+            self.logger.error("Unable to launch FoshkPlugin TCP Server")
+            self._server_thread = None
+            self._init_complete = False
+            
+    def shutdown_tcp_server(self):
+    
+        if self._server_thread:
+            # terminate the thread
+            self._server_thread.join(1)
+            # log the outcome
+            if self._server_thread.is_alive():
+                self.logger.error("Unable to shut down TCP Server thread")
+            else:
+                self.logger.info("TCP Server thread has been terminated")
+                self.thread = None
+
+    def run_server(self):
+        self._server.run()
+
+    def stop_server(self):
+        self._server.stop()
+        self._server = None
 
     def run(self):
         """
         Run method for the plugin
         """
-        self.logger.debug(f"{self.get_shortname()}: Run method called")
-        # setup scheduler for device poll loop   (disable the following line, if you don't need to poll the device. Rember to comment the self_cycle statement in __init__ as well)
-        # self.scheduler_add('poll_device', self.poll_device, cycle=self._cycle)
-
+        self.logger.debug("Run method called")
+        # set plugin state to alive
         self.alive = True
-        # if you need to create child threads, do not make them daemon = True!
-        # They will not shutdown properly. (It's a python bug)
-
-
-        self.start_server()
         
-        # self.connect()
-        # if self.is_connected is True:
-            # self.listing()
+        # add scheduler for update check
+        if self._fw_update_check_cycle > 0:
+            self.scheduler_add('Foshk FW Update Check', self.check_firmware_update, cycle=self._fw_update_check_cycle)
+            
+        # if customer server is used, set parameters accordinglig
+        if self._use_customer_server:
+            self.set_custom_params(custom_server_id='', custom_password='', custom_host=self._http_server_ip, custom_port=self._http_server_port, custom_interval=self._data_cylce, custom_type=False, custom_enabled=True)
+            self.set_usr_path()
+            # self.get_tcp_data()
 
     def stop(self):
         """
         Stop method for the plugin
         """
-        self.logger.debug(f"{self.get_shortname()}: Stop method called")
-        # self.scheduler_remove('poll_device')
+        self.logger.debug("Stop method called")
         self.alive = False
-
-        try:
-            self._sh.scheduler.remove('Foshk')
-        except:
-            self.logger.error(f"{self.get_shortname()}: Removing plugin scheduler failed: {sys.exc_info()}")
-
-        self.disconnect()
         
-    def start_server(self):
-        try:
-            server = HTTPServer((self.LB_IP, int(self.LBH_PORT)), RequestHandler)
-            wst = threading.Thread(target=server.serve_forever)
-            wst.daemon = True
-            wst.start()
-            self.logger.debug("<OK> local http-socket " + self.LB_IP + ":" + self.LBH_PORT + " bound")
-            wsconnected = True
-        except:
-            self.logger.debug("<ERROR> can not open http-socket " + self.LB_IP + ":" + self.LBH_PORT)
-            wsconnected = False
-            pass
-
-        if wsconnected:
-            ssock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # Internet, UDP
-            try:
-                ssock.bind((self.LB_IP, int(self.LBU_PORT)))
-                # sendUDP("SID=" + defSID + " running=1")
-                self.logger.debug("<OK> local UDP-socket "+ self.LB_IP + ":" +self.LBU_PORT + " bound")
-            except:
-                self.logger.debug("<ERROR> can not open UDP-socket " + self.LBU_PORT + " on ip address " + self.LB_IP)
-                pass
-                
-            while wsconnected:
-                try:
-                    sdata, saddr = ssock.recvfrom(2048)                      # buffer size is 2048 bytes (was: 1024)
-                    #r_dgram = str(sdata.decode()).strip()
-                    #r_dgram = str(sdata.decode(encoding='ISO-8859-1',errors='ignore')).strip()
-                    # r_dgram = str(sdata.decode(encoding=OutEncoding,errors='ignore')).strip()
-                    # r_addr = str(saddr[0])
-                    # r_port = str(saddr[1])
-                
-                    self.logger.debug(sdata)
-                
-                except:
-                    break
-                  
-
-    def connect(self):
-        self.logger.debug(f"{self.get_shortname()}: Try to create socket at {self._socket_addr}:{self._socket_port}")
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.logger.debug(f"{self.get_shortname()}: Socket created")
-
-        try:
-            self._socket.bind((self._socket_addr, self._socket_port))
-            self.logger.debug(f"{self.get_shortname()}: Binding to {self._socket_addr}:{self._socket_port} established.")
-            self.is_connected = True
-        except socket.error as message:
-            self.is_connected = False
-            self.logger.debug(f"{self.get_shortname()}: Bind failed; ErrorMessage: {message}")
-            sys.exit()
-        self.logger.debug(f"{self.get_shortname()}: Socket binding operation completed")
-
-    def listing(self):
-        self._socket.listen(9)
-        self.logger.debug(f"{self.get_shortname()}: Listening on socket")
-        while self.is_connected is True:
-            self.connection, self.adress = self._socket.accept()
-            self.logger.debug(f"{self.get_shortname()}: Connected with: {self.adress[0]}:{self.adress[1]}")
-            with self.connection:
-                while True:
-                    data = self.connection.recv(1024)
-                    if not data:
-                        break
-                    # self.logger.debug(f"{self.get_shortname()}: data={data}")
-                    self._parse_ecowitt_data_to_dict(data)
-
-    def disconnect(self):
-        if self.is_connected is True:
-            self.connection.close()
-            self.logger.debug(f"{self.get_shortname()}: Connection closed")
-
-            socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((self._socket_addr, self._socket_port))
-            self._socket.close()
-            self.logger.debug(f"{self.get_shortname()}: Socket closed")
-
-            self.is_connected = False
+        self.logger.debug("Shutdown von GW1000 Collector Thread called")
+        self.driver.collector.shutdown()
+        self.gateway_connected = False
+        
+        self.logger.debug("Shutdown von FoshkPlugin Thread for getting API data called")
+        self.get_api_data_thread_shutdown()
+        
+        if self._fw_update_check_cycle > 0:
+            self.scheduler_remove('Foshk FW Update Check')
+        
+        if self._use_customer_server:
+            self.logger.debug("Shutdown von FoshkPlugin Thread for getting TCP data called")
+            self.get_tcp_data_thread_shutdown()
+        
+            self.logger.debug("Stop von FoshkPlugin TCP Server called")
+            self.stop_server()
+            
+            self.logger.debug("Shutdown von FoshkPlugin TCP Server called")
+            self.shutdown_tcp_server()
 
     def parse_item(self, item):
         """
@@ -223,16 +318,21 @@ class Foshk(SmartPlugin):
                         with the item, caller, source and dest as arguments and in case of the knx plugin the value
                         can be sent to the knx with a knx write function within the knx plugin.
         """
-        if self.has_iattr(item.conf, 'foo_itemtag'):
-            self.logger.debug(f"parse item: {item}")
+        if self.has_iattr(item.conf, 'foshk_attibute'):
+            # self.logger.debug(f"parse item: {item}")
+            foshk_attibute = self.get_iattr_value(item.conf, 'foshk_attibute')
+            self.items[foshk_attibute] = item
+            
+            if foshk_attibute.lower().startswith('set'):
+                return self.update_item
 
-    def parse_logic(self, logic):
-        """
-        Default plugin parse_logic method
-        """
-        if 'xxx' in logic.conf:
-            # self.function(logic['name'])
-            pass
+    # def parse_logic(self, logic):
+        # """
+        # Default plugin parse_logic method
+        # """
+        # if 'xxx' in logic.conf:
+            # # self.function(logic['name'])
+            # pass
 
     def update_item(self, item, caller=None, source=None, dest=None):
         """
@@ -248,40 +348,132 @@ class Foshk(SmartPlugin):
         :param dest: if given it represents the dest
         """
         if self.alive and caller != self.get_shortname():
-            # code to execute if the plugin is not stopped
-            # and only, if the item has not been changed by this this plugin:
             self.logger.info(f"Update item: {item.property.path}, item has been changed outside this plugin")
 
-            if self.has_iattr(item.conf, 'foo_itemtag'):
+            if self.has_iattr(item.conf, 'foshk_attibute'):
                 self.logger.debug(f"update_item was called with item {item.property.path} from caller {caller}, source {source} and dest {dest}")
             pass
 
-    def poll_device(self):
+    def get_api_data(self):
         """
-        Polls for updates of the device
+        Gets data for collector loop
 
-        This method is only needed, if the device (hardware/interface) does not propagate
-        changes on it's own, but has to be polled to get the actual status.
-        It is called by the scheduler which is set within run() method.
+        It is called within run() method.
         """
-        # # get the value from the device
-        # device_value = ...
-        #
-        # # find the item(s) to update:
-        # for item in self.sh.find_items('...'):
-        #
-        #     # update the item by calling item(value, caller, source=None, dest=None)
-        #     # - value and caller must be specified, source and dest are optional
-        #     #
-        #     # The simple case:
-        #     item(device_value, self.get_shortname())
-        #     # if the plugin is a gateway plugin which may receive updates from several external sources,
-        #     # the source should be included when updating the the value:
-        #     item(device_value, self.get_shortname(), source=device_source_id)
-        pass
+        for packet in self.driver.genLoopPackets():
+            # log packet
+            self.logger.debug(f"get_api_data: packet={packet}")
+            # put packet to property
+            self.data_dict = packet
+            # start item update
+            self.update_item_values(packet)
+            
+    def get_tcp_data(self):
+        """Poll the data from queue"""
+        while True:
+            try:
+                data = tcp_server_queue.get(True, 10)
+                self.logger.debug(f"Raw data received is {type(data)}: {data}")
+            except queue.Empty:
+                # there was nothing in the queue so continue
+                pass
+            else:
+                # We received something in the queue
+                parsed_data = self._parse_ecowitt_data_to_dict(data)
+                self.logger.debug(f"get_tcp_data: parsed_data={parsed_data}")
+                converted_data = self._harmonize_field_names(parsed_data)
+                self.data_dict2 = converted_data
+
+    def update_item_values(self, data):
+        """
+        Updates the value of connected items
+        """
+        for foshk_attibute in self.items:
+            item = self.items[foshk_attibute]
+            # self.logger.debug(f"update_item_values: foshk_attibute={foshk_attibute}; item={item.id()}")
+            if foshk_attibute in data:
+                value = data.get(foshk_attibute)
+                # self.logger.debug(f"update_item_values: item={item.id()} with foshk_attibute={foshk_attibute} updated with value={value}")
+                if item is not None:
+                    item(value, self.get_shortname())
+                    
+    def firmware_update(self):
+        result = self.driver.collector.firmware_update()
+        if result == 'SUCCESS':
+            self.logger.debug(f"firmware_update: {result}")
+        else:
+            self.logger.error(f"firmware_update: {result}")
+            
+    def check_firmware_update(self):
+        """Check if firmware update is available"""
+
+        fw_info = requests.get(fw_update_url)
+        self.logger.debug(f"check_firmware_update: getting update info from {fw_update_url} results in {fw_info.status_code}")
+        
+        if fw_info.status_code == 200:
+            # get current firmware version
+            current_firmware = self.driver.firmware_version
+            
+            # get model out of current firmware
+            if "GW1000" in current_firmware: model = "GW1000"
+            elif "EasyWeather" in current_firmware: model = "EasyWeather"
+            elif "AMBWeather" in current_firmware: model = "AMBWeather"
+            elif "WH2650" in current_firmware: model = "WH2650"
+            elif "WS1900" in current_firmware: model = "WS1900"
+            elif "HP10" in current_firmware: model = "HP10"
+            else: model = "unknown"
+            
+            # establish configparster
+            config = configparser.ConfigParser(allow_no_value=True, strict=False)
+            # read response text
+            config.read_string(fw_info.text)
+            
+            # extract information for given model
+            remote_firmware = config.get(model, "VER", fallback="unknown")
+            remote_firmware_notes = config.get(model, "NOTES", fallback="").split(";")
+            use_app = "awnet" if model == "AMBWeather" else "WS View"
+            
+            if ver_str_to_num(remote_firmware) > ver_str_to_num(current_firmware):
+                self.logger.warning(f"Firmware update for {model} available. Installed version is: {current_firmware}, avaiable version is: {remote_firmware}. Use the app {use_app} to update!")
+                for i in range(len(remote_firmware_notes)):
+                    self.logger.warning(remote_firmware_notes[i].strip())
+                self.update_available = True
+            else:
+                self.logger.info(f"No newer firmware found for {model}. Installed version is: {current_firmware}, avaiable version is: {remote_firmware}.")
+                self.update_available = False            
+            
+    def set_usr_path(self, custom_ecowitt_pathpath="/data/report/", custom_wu_path="/weatherstation/updateweatherstation.php?"):
+        result = self.driver.collector.set_usr_path(custom_ecowitt_pathpath, custom_wu_path)
+        if result == 'SUCCESS' or result == 'NO NEED':
+            self.logger.debug(f"set_usr_path: {result}")
+        else:
+            self.logger.error(f"set_usr_path: {result}")
+            
+    def set_custom_params(self, custom_server_id='', custom_password='', custom_host='192.168.2.12', custom_port=8080, custom_interval=30, custom_type=False, custom_enabled=True):
+        result = self.driver.collector.set_custom_params(custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled)
+        if result == 'SUCCESS' or result == 'NO NEED':
+            self.logger.debug(f"set_custom_params: {result}")
+        else:
+            self.logger.error(f"set_custom_params: {result}")
+        
+    def reboot(self):
+        result = self.driver.collector.reboot()
+        if result == 'SUCCESS' or result == 'NO NEED':
+            self.logger.debug(f"reboot: {result}")
+        else:
+            self.logger.error(f"reboot: {result}")
+            
+    def reset(self):
+        result = self.driver.collector.reset()
+        if result == 'SUCCESS' or result == 'NO NEED':
+            self.logger.debug(f"reset: {result}")
+        else:
+            self.logger.error(f"reset: {result}")
 
     def _parse_ecowitt_data_to_dict(self, data):
         """Parse the ecowitt data and add it to a dictionnary."""
+        
+        data_dict = {}
         data = data.decode().splitlines()
         for line in data:
             if ':' in line:
@@ -297,7 +489,7 @@ class Foshk(SmartPlugin):
                             if type(value) is str:
                                 value = value.lstrip()
                             pass
-                        self.data_dict_im[key] = value
+                        data_dict[key] = value
                 else:
                     key, value = line.split(':', 1)
                     try:
@@ -308,306 +500,3732 @@ class Foshk(SmartPlugin):
                         if type(value) is str:
                             value = value.lstrip()
                         pass
-                    self.data_dict_im[key] = value
+                    data_dict[key] = value
 
-        # add additional values
-        if self.data_dict_im.keys() >= {"tempf", "humidity"}:
-            self.data_dict_im['dewptf'] = self._get_dew_point_f(self.data_dict_im["tempf"], self.data_dict_im["humidity"])
-
-        if self.data_dict_im.keys() >= {"tempf", "windspeedmph"}:
-            self.data_dict_im['windchillf'] = round(self._get_wind_chill_f(self.data_dict_im["tempf"], self.data_dict_im["windspeedmph"]), 1)
-
-        if self.data_dict_im.keys() >= {"tempf", "humidity", "windspeedmph"}:
-            self.data_dict_im['feelslikef'] = round(self._get_feels_like_f(self.data_dict_im["tempf"], self.data_dict_im["humidity"], self.data_dict_im["windspeedmph"]), 1)
-            
-        if self.data_dict_im.keys() >= {"tempf", "humidity"}:
-            self.data_dict_im['heatindexf'] = round(self._get_heat_index(self.data_dict_im["tempf"], self.data_dict_im["humidity"]), 1)
-            
-        if self.data_dict_im.keys() >= {"solarradiation"}:
-            self.data_dict_im['brightness'] = round(self.data_dict_im["solarradiation"] * 126.7, 1)
- 
-        if self.data_dict_im.keys() >= {"tempf", "dewptf"}:
-            tempf = self.data_dict_im["tempf"]
-            dewptf = self.data_dict_im["dewptf"]
-            self.data_dict_im['cloudf'] = round(((tempf-dewptf) / 4.4) * 1000 + (float(self._altitude)*3.28084))
-
-        self.logger.debug(f"{self.get_shortname()}: data_dict_im={self.data_dict_im}")
-
-        self.data_dict_me = self._convert_dict_from_imperial_metric(self.data_dict_im)
-        self.logger.debug(f"{self.get_shortname()}: data_dict_me={self.data_dict_me}")
-        return self.data_dict_me
-
-    def _add_status_to_dict(self, d):                        # add Status to dict as 0/1 or True/False (if makeBool
-        # add warnings & states
-
-        # d.update({"running": func(int(wsconnected))})
-        # d.update({"wswarning": func(int(inWStimeoutWarning))})
-        # d.update({"sensorwarning": func(int(inSensorWarning))})
-        # if inSensorWarning and SensorIsMissed != "": d.update({"missed" : SensorIsMissed})
-        d.update({"batterywarning": self.battery_warning})
-        # d.update({"stormwarning": func(int(inStormWarning))})
-        # d.update({"tswarning": func(int(inTSWarning))})
-        # d.update({"updatewarning": func(int(updateWarning))})
-        # d.update({"leakwarning": func(int(inLeakageWarning))})
-        # d.update({"co2warning": func(int(inCO2Warning))})
-        # d.update({"time": strToNum(loxTime(time.time()))})
-        return d
-
-    def _convert_dict_from_imperial_metric(self, data_dict_im, ignore_empty=True):
+        # self.logger.debug(f"{self.get_shortname()}: data_dict={data_dict}")
+        return data_dict
+        
+    def _convert_imperial_ecowitt_data_to_metric(self, data):
         ignorelist = ["-9999", "None", "null"]
         data_dict_metric = {}
-        data_dict_metric.update(data_dict_im)
-        for key, value in data_dict_im.items():
-            if key == "tempf" and not (ignore_empty and value in ignorelist):
-                data_dict_metric["temp_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "temp1f" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["temp1_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "temp2f" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["temp2_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "temp3f" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["temp3_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "temp4f" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["temp4_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "temp5f" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["temp5_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "temp6f" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["temp6_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "temp7f" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["temp7_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "temp8f" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["temp8_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "tf_ch1" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["tf_ch1_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "tf_ch2" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["tf_ch2_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "tf_ch3" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["tf_ch3_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "tf_ch4" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["tf_ch4_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "tf_ch5" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["tf_ch5_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "tf_ch6" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["tf_ch6_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "tf_ch7" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["tf_ch7_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "tf_ch8" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["tf_ch8_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "indoortempf" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["indoortemp_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "tempinf" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["tempin_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "windchillf" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["windchill_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "feelslikef" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["feelslike_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "dewptf" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["dewpt_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "heatindexf" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["heatindex_c"] = self._f_to_c(data_dict_metric.pop(key), 1)
-            elif "baromin" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["barom_hpa"] = self._in_to_hpa(data_dict_metric.pop(key), 2)
-            elif "baromrelin" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["baromrel_hpa"] = self._in_to_hpa(data_dict_metric.pop(key), 2)
-            elif "baromabsin" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric["baromabs_hpa"] = self._in_to_hpa(data_dict_metric.pop(key), 2)
-            elif "mph" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric[key.replace("mph", "_kmh")] = self._mph_to_kmh(data_dict_metric.pop(key), 2)
-            elif "maxdailygust" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric[key.replace("maxdailygust", "maxdailygust_kmh")] = self._mph_to_kmh(data_dict_metric.pop(key), 2)
-            elif "rainin" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric[key.replace("rainin", "rain_mm")] = self._in_to_mm(data_dict_metric.pop(key), 2)
-            elif "rainratein" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric[key.replace("rainratein", "rainrate_mm")] = self._in_to_mm(data_dict_metric.pop(key), 2)
-            elif "totalrain" in key and not (ignore_empty and value in ignorelist):
-                data_dict_metric[key.replace("totalrain", "totalrain_mm")] = self._in_to_mm(data_dict_metric.pop(key), 2)
-            elif "dateutc" in key and not (ignore_empty and value in ignorelist):
-                dt = datetime.datetime.fromisoformat(value)
-                data_dict_metric[key] = dt.replace(tzinfo=datetime.timezone.utc)
-            elif key == "stationtype":
-                firmware = self._version_string_to_num(value)
+        data_dict_metric.update(data)
+        
+        for key, value in data.items():
+            if "temp" in key and key.endswith('f') and value not in ignorelist:
+                data_dict_metric[key[:-1]] = f_to_c(data_dict_metric.pop(key))
+            elif "baro" in key and key.endswith('in') and value not in ignorelist:
+                data_dict_metric[key[:-2]] = in_to_hpa(data_dict_metric.pop(key))
+            elif "wind" in key and key.endswith('mph') and value not in ignorelist:
+                data_dict_metric[key[:-3]] = mph_to_ms(data_dict_metric.pop(key))
+            elif "maxdailygust" in key and value not in ignorelist:
+                data_dict_metric[key] = mph_to_ms(data_dict_metric.pop(key))
+            elif "rain" in key and key.endswith('in') and value not in ignorelist:
+                data_dict_metric[key[:-2]] = in_to_mm(data_dict_metric.pop(key)) 
+            # else:
+                # self.logger.debug(f"_convert_imperial_ecowitt_data_to_metric: no conversion done for key={key} with value={value}")
+        
+        self.logger.debug(f"_convert_imperial_ecowitt_data_to_metric: data_dict_metric={data_dict_metric}")
+        return data_dict_metric
+    
+    def _harmonize_field_names(self, data):
+        response_struct = {
+            # GW1000
+            'PASSKEY':              (None,      'passkey'),
+            'stationtype':          (ver_str_to_num,    'firmware'),
+            'freq':                 (None,      'frequency'),
+            'model':                (None,      'model'),
+            'dateutc':              (None,      'dateutc'),
+            'tempinf':              (f_to_c,    'intemp'),
+            'humidityin':           (None,      'inhumid'),
+            'baromrelin':           (in_to_hpa, 'relbarometer'),
+            'baromabsin':           (in_to_hpa, 'absbarometer'),
+            # WH 65 / WH24
+            'tempf':                (f_to_c,    'outtemp'),
+            'humidity':             (None,      'outhumid'),
+            'winddir':              (None,      'winddir'),
+            'windspeedmph':         (mph_to_ms, 'windspeed'),
+            'windgustmph':          (mph_to_ms, 'gustspeed'),
+            'maxdailygust':         (mph_to_ms, 'daymaxwind'),
+            'solarradiation':       (None,      'solarradiation'),
+            'uv':                   (None,      'uvi'),
+            'rainratein':           (in_to_mm,  'rainrate'),
+            'eventrainin':          (in_to_mm,  'rainevent'),
+            'hourlyrainin':         (in_to_mm,  'rainhour'),
+            'dailyrainin':          (in_to_mm,  'rainday'),
+            'weeklyrainin':         (in_to_mm,  'rainweek'),
+            'monthlyrainin':        (in_to_mm,  'rainmonth'),
+            'yearlyrainin':         (in_to_mm,  'rainyear'),
+            'totalrainin':          (in_to_mm,  'raintotal'),
+            'wh65batt':             (None,      'wh65_batt'),
+            # WH31
+            'temp1f':               (f_to_c,    'temp1'),
+            'humidity1':            (None,      'humid1'),
+            'batt1':                (None,      'wh31_ch1_batt'),
+            'temp2f':               (f_to_c,    'temp2'),
+            'humidity2':            (None,      'humid2'),
+            'batt2':                (None,      'wh31_ch2_batt'),
+            'temp3f':               (f_to_c,    'temp3'),
+            'humidity3':            (None,      'humid3'),
+            'batt3':                (None,      'wh31_ch3_batt'),
+            'temp4f':               (f_to_c,    'temp4'),
+            'humidity4':            (None,      'humid4'),
+            'batt4':                (None,      'wh31_ch4_batt'),
+            'temp5f':               (f_to_c,    'temp5'),
+            'humidity5':            (None,      'humid5'),
+            'batt5':                (None,      'wh31_ch5_batt'),
+            'temp6f':               (f_to_c,    'temp6'),
+            'humidity6':            (None,      'humid6'),
+            'batt6':                (None,      'wh31_ch6_batt'),
+            'temp7f':               (f_to_c,    'temp7'),
+            'humidity7':            (None,      'humid7'),
+            'batt7':                (None,      'wh31_ch7_batt'),
+            'temp8f':               (f_to_c,    'temp8'),
+            'humidity8':            (None,      'humid8'),
+            'batt8':                (None,      'wh31_ch8_batt'),
+            # WH54
+            'soilmoisture1':        (None,      'soilmoist1'),
+            'soilbatt1':            (None,      'wh51_ch1_batt'),
+            'soilmoisture2':        (None,      'soilmoist2'),
+            'soilbatt2':            (None,      'wh51_ch2_batt'),
+            'soilmoisture3':        (None,      'soilmoist3'),
+            'soilbatt3':            (None,      'wh51_ch3_batt'),
+            'soilmoisture4':        (None,      'soilmoist4'),
+            'soilbatt4':            (None,      'wh51_ch4_batt'),
+            'soilmoisture5':        (None,      'soilmoist5'),
+            'soilbatt5':            (None,      'wh51_ch5_batt'),
+            'soilmoisture6':        (None,      'soilmoist6'),
+            'soilbatt6':            (None,      'wh51_ch6_batt'),
+            'soilmoisture7':        (None,      'soilmoist7'),
+            'soilbatt7':            (None,      'wh51_ch7_batt'),
+            'soilmoisture8':        (None,      'soilmoist8'),
+            'soilbatt8':            (None,      'wh51_ch8_batt'),
+            # WH34
+            'tf_ch1':               (f_to_c,    'temp_tf_ch1'),
+            'tf_ch2':               (f_to_c,    'temp_tf_ch2'),
+            'tf_ch3':               (f_to_c,    'temp_tf_ch3'),
+            'tf_ch4':               (f_to_c,    'temp_tf_ch4'),
+            'tf_ch5':               (f_to_c,    'temp_tf_ch5'),
+            'tf_ch6':               (f_to_c,    'temp_tf_ch6'),
+            'tf_ch7':               (f_to_c,    'temp_tf_ch7'),
+            'tf_ch8':               (f_to_c,    'temp_tf_ch8'),
+            # WH45
+            'tf_co2':               (f_to_c,    'tf_co2'),
+            'humi_co2':             (None,      'humi_co2'),
+            'pm10_co2':             (None,      'pm10_co2'),
+            'pm10_24h_co2':         (None,      'pm10_24h_co2'),
+            'pm25_co2':             (None,      'pm25_co2'),
+            'pm25_24h_co2':         (None,      'pm25_24h_co2'),
+            'co2':                  (None,      'co2'),
+            'co2_24h':              (None,      'co2_24h'),
+            'co2_batt':             (None,      'co2_batt'),
+            # WH55
+            'leak1':                (None,       'leak_ch1'),
+            'leak2':                (None,       'leak_ch2'),
+            'leak3':                (None,       'leak_ch3'),
+            'leak4':                (None,       'leak_ch4'),
+            # others
+            'lightning_day':        (None,       'lightning_num'),
+            'lightning_distance':   (None,       'lightning'),
+            'lightning_time':       (None,       'lightning_time'),
+            'cloudf':               (f_to_m,     'cloud_ceiling'),
+            'indoortempf':          (f_to_m,     'indoortemp'),
+            # 'windchillf':           (f_to_m,     'windchill'),
+            # 'feelslikef':           (f_to_m,     'feelslike'),
+            # 'dewptf':               (f_to_m,     'dewpt'),
+            # 'heatindexf':           (f_to_m,     'heatindex'),
+            'baromin':              (in_to_hpa,  'baromin'),
+            'absbaro':              (in_to_hpa,  'baromin'),
+            }
+        
+        result = {}
+        for key in data:
+            try:
+                decoder, field = response_struct[key]
+            except KeyError:
+                self.logger.error(f"Unknown key {key} detected. Try do decode remaining sensor data.")
+                pass
+            else:
+                if decoder:
+                    data_dict[field] = decoder(data[key])
+                else:
+                    data_dict[field] = data[key]
+        return result
 
-        batterycheck = self._check_battery(data_dict_metric)
+# ============================================================================
+#                          GW1000 API error classes
+# ============================================================================
+
+
+class InvalidApiResponse(Exception):
+    """Exception raised when an API call response is invalid."""
+
+
+class InvalidChecksum(Exception):
+    """Exception raised when an API call response contains an invalid
+    checksum."""
+
+
+class GW1000IOError(Exception):
+    """Exception raised when an input/output error with the GW1000/GW1100 is
+    encountered."""
+
+
+class UnknownCommand(Exception):
+    """Exception raised when an unknown API command is used."""
+
+
+# ============================================================================
+#                               class Gw1000
+# ============================================================================
+
+class Gw1000(object):
+    """Base class for interacting with a GW1000/GW1100.
+
+    There are a number of common properties and methods (eg IP address, field map, rain calculation etc) when dealing with a GW1000/GW1100 as a driver. 
+    This class captures those common features.
+    """
+
+    def __init__(self, plugin_instance):
+        """Initialise a GW1000 object."""
+        
+        # init logger
+        self._plugin_instance = plugin_instance
+        self._plugin_instance.logger.debug("Starting Gw1000")
+        
+        # network broadcast address and port
+        self.broadcast_address = self._plugin_instance._broadcast_address if self._plugin_instance._broadcast_address is not None else default_broadcast_address
+        self.broadcast_port = self._plugin_instance._broadcast_port if self._plugin_instance._broadcast_port is not None else default_broadcast_port
+        self.socket_timeout = default_socket_timeout
+        self.broadcast_timeout = default_broadcast_timeout
+        
+        # obtain the GW1000/GW1100 IP address
+        _ip_address = self._plugin_instance._gateway_address  # will be None if it need to be auto detected
+        # set the IP address property
+        self.ip_address = _ip_address
+        
+        # obtain the global language
+        _language = self._plugin_instance._my_language
+        # set the language property
+        self.language = _language
+        
+        # obtain the GW1000/GW1100 port from the config dict for port number we have a default value we can use, so if port is not specified use the default
+        _port = self._plugin_instance._gateway_port  # will be None if it need to be auto detected
+        # set the port property
+        self.port = _port
+        
+        # how many times to poll the API before giving up, default is default_max_tries
+        self.max_tries = default_max_tries
+        
+        # wait time in seconds between retries, default is default_retry_wait seconds
+        self.retry_wait = default_retry_wait
+        
+        # how often (in seconds) we should poll the API, use a default
+        self.poll_interval = self._plugin_instance._gateway_poll_interval
+        
+        # Is a WH32 in use. WH32 TH sensor can override/provide outdoor TH data to the GW1000/GW1100. In terms of TH data the process is transparent
+        # and we do not need to know if a WH32 or other sensor is providing outdoor TH data but in terms of battery state we need to know so the
+        # battery state data can be reported against the correct sensor.
+        use_th32 = False
+        
+        # do we show all battery state data including nonsense data or do we filter those sensors with signal state == 0
+        self.show_battery = False
+        
+        # create deque to hold 10 minutes of wind speed, wind direction and windgust
+        self.wind_avg10m = deque(maxlen=(int(10*60/int(self.poll_interval))))
+        
+        # is there a battery warning (any battery low/critical)
+        self.battery_warning = False
+        
+        # is there a sensor warning (any missed sensor)
+        self.sensor_warning = False
+        
+        # log all found sensors since beginning of plugin as a set
+        self.sensors = set()
+        
+        # SET SPECIFIC LOGGERS
+        # set specific debug settings rain
+        self.debug_rain = False
+        # set specific debug settings wind
+        self.debug_wind = False
+        # set specific debug settings loop data
+        self.debug_loop = False
+        # set specific debug settings sensors
+        self.debug_sensors = False
+        
+        # create an Gw1000Collector object to interact with the GW1000/GW1100 API
+        self.collector = Gw1000Collector(ip_address=self.ip_address,
+                                         port=self.port,
+                                         broadcast_address=self.broadcast_address,
+                                         broadcast_port=self.broadcast_port,
+                                         socket_timeout=self.socket_timeout,
+                                         broadcast_timeout=self.broadcast_timeout,
+                                         poll_interval=self.poll_interval,
+                                         max_tries=self.max_tries,
+                                         retry_wait=self.retry_wait,
+                                         use_th32=use_th32,
+                                         show_battery=self.show_battery,
+                                         debug_rain=self.debug_rain,
+                                         debug_wind=self.debug_wind,
+                                         debug_sensors=self.debug_sensors, 
+                                         plugin_instance=plugin_instance)
+        
+        # initialise last lightning count and last rain properties
+        self.last_lightning = None
+        self.last_rain = None
+        self.rain_mapping_confirmed = False
+        self.rain_total_field = None
+        
+        # Finally, log any config that is not being pushed any further down. Log specific debug but only if set ie. True
+        debug_list = []
+        if self.debug_rain:
+            debug_list.append("debug_rain is %s" % (self.debug_rain,))
+        if self.debug_wind:
+            debug_list.append("debug_wind is %s" % (self.debug_wind,))
+        if self.debug_loop:
+            debug_list.append("debug_loop is %s" % (self.debug_loop,))
+        if len(debug_list) > 0:
+            self._plugin_instance.logger.info(" ".join(debug_list))
+
+    @property
+    def model(self):
+        """What model device am I using"""
+
+        return self.collector.station.model
+        
+    def add_calculated_data(self, data):
+        """Add calculated data to dict
+        
+        data: dict of parsed GW1000/GW1100 API data
+        """
+        
+        if data.keys() >= {"outtemp"}:
+            
+            if data.keys() >= {"windspeed"}:
+                data['weather_text'] = round(self.get_windchill_index_metric(data["outtemp"], data["windspeed"]), 1)
+                if data.keys() >= {"outhumid"}:
+                    data['feels_like'] = round(self.calculate_feels_like(data["outtemp"], data["windspeed"], data["outhumid"]), 1)
+                
+            if data.keys() >= {"outhumid"}:
+                dewpt_c = self.get_dew_point_c(data["outtemp"], data["outhumid"])
+                frostpt_c = self.get_frost_point_c(data["outtemp"], dewpt_c)
+                data['outdewpt'] = round(dewpt_c, 1)
+                data['outfrostpt'] = round(frostpt_c, 1)
+                data['cloud_ceiling'] = int(round(self.cloud_ceiling(data["outtemp"], dewpt_c), 1))
+
+        if data.keys() >= {"winddir"}:
+            data['winddir_text'] = self.get_wind_dir_text(data["winddir"], self.language)
+            
+        if data.keys() >= {"windspeed"}:
+            windspeed_bft = self.get_beaufort_number(data["windspeed"])
+            windspeed_bft_text = self.get_beaufort_description(windspeed_bft, self.language)
+            data['windspeed_bft'] = windspeed_bft
+            data['windspeed_bft_text'] = windspeed_bft_text
+
+        if data.keys() >= {"absbarometer"}:
+            data['weather_text'] = self.get_weather_now(data["absbarometer"], self.language)
+            
+        if data.keys() >= {"winddir", "windspeed", "gustspeed"}:
+            self.wind_avg10m.append([int(time.time()), data["windspeed"], data["winddir"], data["gustspeed"]])
+            
+            if "windspeed_avg10m" not in data.keys():
+                data['windspeed_avg10m'] = self.get_avg_wind(self.wind_avg10m, 1)
+            
+            if "winddir_avg10m" not in data.keys():
+                data['winddir_avg10m'] = self.get_avg_wind(self.wind_avg10m, 2)
+
+            if "gustspeed_avg10m" not in data.keys():
+                data['gustspeed_avg10m'] = self.get_max_wind(self.wind_avg10m, 3)
+           
+        ## TODO
+        # sunhours
+        # ptrend
+        
+    def check_battery(self, data):
+        """Check if batteries states are critical, create log entry and add a separate field for battery warning."""
+        
+        # get battery data
+        raw_data = self.collector.battery_desc
+        # init string to collect message
+        batterycheck = ''
+        # iterate over data to look for critical battery
+        for key in raw_data:
+            if raw_data[key] != 'OK':
+                if batterycheck != '':
+                    batterycheck += ', '
+                batterycheck += key
+        # check result, create log entry data field 
         if batterycheck != "":
             if not self.battery_warning:
-                self.logger.warning(f"<WARNING> battery level for sensor(s) {batterycheck} is critical - please swap battery")
+                self._plugin_instance.logger.warning(f"<WARNING> Battery level for sensor(s) {batterycheck} is critical - please swap battery")
                 self.battery_warning = True
-            elif self.battery_warning:
-                self.logger.info("<OK> battery level for all sensors is ok again")
-                self.battery_warning = False
-        data_dict_metric.update({"batterywarning": self.battery_warning})
-
-        return data_dict_metric
-
-    def _get_dew_point_f(self, temp, hum):        # in/out: °F
-        try:
-            temp = round((float(temp) - 32) * 5 / 9.0, 1)
-            s1 = math.log(float(hum) / 100.0)
-            s2 = (float(temp) * 17.625) / (float(temp) + 243.04)
-            s3 = (17.625 - s1) - s2
-            dp = 243.04 * (s1 + s2) / s3           # in °C
-            dp = round((float(dp) * 9 / 5) + 32, 1)     # in °F
-        except ValueError:
-            dp = -9999
-        return dp
-
-    def _get_wind_chill_f(self, temp, wspeed):
-        return 35.74 + (0.6215*temp) - 35.75*(wspeed**0.16) + ((0.4275*temp)*(wspeed**0.16)) if temp <= 50 and wspeed >= 3 else temp
-
-    def _get_heat_index(self, temp, hum):
-        heat_index = 0.5 * (temp + 61. + (temp - 68.) * 1.2 + hum * 0.094)
-        if heat_index >= 80:
-            heat_index = -42.379 + (2.04901523 * temp) + (10.14333127 * hum) + (-0.22475541 * temp * hum) + (-6.83783e-3*temp**2) + (-5.481717e-2*hum**2) + (1.22874e-3*temp**2 * hum) + (8.5282e-4*temp*hum**2) + (-1.99e-6*temp**2*hum**2)
-        return heat_index
-
-    def _get_feels_like_f(self, temp, hum, wspeed):
-        if temp <= 50 and wspeed > 3:
-            feels_like = self._get_wind_chill_f(temp, wspeed)
-        elif temp >= 80:
-            feels_like = self._get_heat_index(temp, hum)
+                data['battery_warning'] = 1
+        elif self.battery_warning:
+            self._plugin_instance.logger.info("<OK> Battery level for all sensors is ok again")
+            self.battery_warning = False
+            data['battery_warning'] = 0
+        
+    def check_sensors(self, data):
+        """Check if all know sensors are still connected, create log entry and add a separate field for sensor warning."""
+        
+        # get currently connected sensors
+        connected_sensors = self.collector.sensors.connected_sensors
+        # log all found sensors during runtime
+        self.sensors = set.union(self.sensors, set(connected_sensors))
+        # check if all sensors are still connected, create log entry data field 
+        if set(connected_sensors) == self.sensors:
+            self._plugin_instance.logger.debug(f"check_sensors: All sensors are still connected!")
+            self.sensor_warning = False
+            data['sensor_warning'] = 0
         else:
-            feels_like = temp
-        return feels_like
+            missing_sensors = self.sensors.difference(set(connected_sensors))
+            self._plugin_instance.logger.error(f"check_sensors: The following sensors where lost: {missing_sensors}")
+            self.sensor_warning = True
+            data['sensor_warning'] = 1
 
-    def _f_to_c(self, f, n):                                           # convert Fahrenheit to Celsius
-        out = "-9999"
-        try:
-            out = str(round((float(f)-32)*5/9.0, n))
-        except ValueError:
-            pass
-        return out
+    def get_cumulative_rain_field(self, data):
+        """Determine the cumulative rain field used to derive field 'rain'.
 
-    def _c_to_f(self, c, n):                                           # convert Celsius to Fahrenheit
-        out = "-9999"
-        try:
-            out = str(round((float(c)*9/5.0) + 32, n))
-        except ValueError:
-            pass
-        return out
+        Ecowitt rain gauges/GW1000/GW1100 emit various rain totals but WeeWX needs a per period value for field rain. Try the 'big' (4 byte)
+        counters starting at the longest period and working our way down. This should only need be done once.
 
-    def _mph_to_kmh(self, f, n):                                       # convert mph to kmh
-        return str(round(float(f)/0.621371, n))
+        data: dic of parsed GW1000/GW1100 API data
+        """
 
-    def _mph_to_ms(self, f, n):                                        # convert mph to m/s
-        return str(round(float(f)/0.621371*1000/3600, n))
+        # if raintotals is present used that as our first choice
+        if 'raintotals' in data:
+            self.rain_total_field = 'raintotals'
+            self.rain_mapping_confirmed = True
+        # raintotals is not present so now try rainyear
+        elif 'rainyear' in data:
+            self.rain_total_field = 'rainyear'
+            self.rain_mapping_confirmed = True
+        # rainyear is not present so now try rainmonth
+        elif 'rainmonth' in data:
+            self.rain_total_field = 'rainmonth'
+            self.rain_mapping_confirmed = True
+        # otherwise do nothing, we can try again next packet
+        else:
+            self.rain_total_field = None
+        # if we found a field log what we are using
+        if self.rain_mapping_confirmed:
+            self._plugin_instance.logger.info("Using '%s' for rain total" % self.rain_total_field)
+        elif self.debug_rain:
+            # if debug_rain is set log that we had nothing
+            self._plugin_instance.logger.info("No suitable field found for rain total")
 
-    def _in_to_hpa(self, f, n):                                        # convert inHg to HPa
-        return str(round(float(f)/0.02953, n))
+    def calculate_rain(self, data):
+        """Calculate total rainfall for a period.
 
-    def _hpa_to_in(self, f, n):                                        # convert HPa to inHg
-        return str(round(float(f)/33.87, n))
+        'rain' is calculated as the change in a user designated cumulative rain field between successive periods. 'rain' is only calculated if the
+        field to be used has been selected and the designated field exists.
 
-    def _in_to_mm(self, f, n):                                         # convert in to mm
-        return str(round(float(f)/0.0393701, n))
+        data: dict of parsed GW1000/GW1100 API data
+        """
 
-    def _kmh_to_kts(self, f, n):                                       # convert km/h to
-        out = "null"
-        try:
-            out = str(round((float(f))/1.852, n))
-        except ValueError:
-            pass
-        return out
+        # have we decided on a field to use and is the field present
+        if self.rain_mapping_confirmed and self.rain_total_field in data:
+            # yes on both counts, so get the new total
+            new_total = data[self.rain_total_field]
+            # now calculate field rain as the difference between the new and
+            # old totals
+            data['rain'] = self.delta_rain(new_total, self.last_rain)
+            # if debug_rain is set log some pertinent values
+            if self.debug_rain:
+                self._plugin_instance.logger.info("calculate_rain: last_rain=%s new_total=%s calculated rain=%s" % (self.last_rain, new_total, data['rain']))
+            # save the new total as the old total for next time
+            self.last_rain = new_total
 
-    def _kmh_to_mph(self, f, n):                                       # convert kmh to mph
-        return str(round(float(f)/1.609, n))
+    def calculate_lightning_count(self, data):
+        """Calculate total lightning strike count for a period.
 
-    def _mm_to_in(self, f, n):                                         # convert mm to in
-        return str(round(float(f)/25.4, n))
+        'lightning_strike_count' is calculated as the change in field 'lightningcount' between successive periods. 'lightning_strike_count'
+        is only calculated if 'lightningcount' exists.
 
-    def _feet_to_m(self, f, n):                                        # convert feet to m
-        return str(round(float(f)/3.281, n))
+        data: dict of parsed GW1000/GW1100 API data
+        """
 
-    def _m_to_feet(self, f, n):                                        # convert m to feet
-        return str(round(float(f)*3.281, n))
+        # is the lightningcount field present
+        if 'lightningcount' in data:
+            # yes, so get the new total
+            new_total = data['lightningcount']
+            # now calculate field lightning_strike_count as the difference
+            # between the new and old totals
+            data['lightning_strike_count'] = self.delta_lightning(new_total, self.last_lightning)
+            # save the new total as the old total for next time
+            self.last_lightning = new_total
 
-    def _utc_to_local(self, utctime):
-        offset = (-1*time.timezone)                                    # Zeitzone ausgleichen
-        if time.localtime(utctime)[8]:
-            offset = offset + 3600  # Sommerzeit hinzu
-        localtime = utctime + offset
-        return localtime
-
-    def _dec_hour_to_hm_str(self, sh):                                  # convert dec. hour to h:m
-        f_sh = float(sh)
-        sh_std = int(f_sh)
-        sh_min = round((f_sh-int(f_sh))*60)
-        return str(sh_std)+":"+str(sh_min)
-
-    def _version_string_to_num(self, s):
-        try:
-            vpos = s.index("V")+1
-            return int(s[vpos:].replace(".", ""))
-        except ValueError:
-            return
-
-    def _check_battery(self, d):
-        # check known sensors if battery is still ok; if not fill outstring with comma-separated list of sensor names
-        # 2do: tf_batt und leaf_batt noch nicht sicher, wie dargestellt - vermutlich in V
-        # Ambient macht ausschliesslich 0/1 wobei 1 = ok und 0 = low
-        is_ambient_weather = self._check_ambient_weather(d)
-        outstr = ""
-        for key, value in d.items():
-            if is_ambient_weather and ("batt" in key or "batleak" in key) and int(value) == 0:
-                outstr += key + " "
-            # battery-reporting will be same for all weatherstations again after firmware-update of HP2551 v1.6.7
-            # elif "EasyWeather" in FWver and "batt" in key and int(value) == 1 : outstr += key + " "
-            else:
-                if ("wh65batt" in key or "lowbatt" in key or "wh26batt" in key or "wh25batt" in key) and int(value) == 1:
-                    outstr += key + " "
-                elif "batt" in key and len(key) == 5 and int(value) == 1 and not is_ambient_weather:
-                    outstr += key + " "
-                elif ("wh57batt" in key or "pm25batt" in key or "leakbatt" in key or "co2_batt" in key) and int(value) < 2:
-                    outstr += key + " "
-                elif ("soilbatt" in key or "wh40batt" in key or "wh68batt" in key or "tf_batt" in key or "leaf_batt" in key) and float(value) <= 1.2:
-                    outstr += key + " "
-                elif "wh80batt" in key and float(value) < 2.3:
-                    outstr += key + " "
-        return outstr.strip()
-
-    def _check_ambient_weather(self, d):
-        # q&d check if input is coming from Ambient Weather station
-        return True if "AMBWeather" in str(d) else False
-
-class RequestHandler(BaseHTTPRequestHandler):
-    # probably the correct position for timeout
-    timeout = 5
-    close_connection = True
-    prgname = "FOSHKplugin"
-    prgver = "v0.08"
-    server_version = prgname+"/"+prgver+" "+BaseHTTPRequestHandler.server_version
-    protocol_version = 'HTTP/1.1'
+    def calculate_feels_like(self, temperature_c, windspeed_kmh, rel_hum):
+        """ Computes the feels-like temperature
     
+        :param temperature_c: ambient temperature in celsius
+        :type temperature_c: float
+        :param windspeed_kmh: wind speed in km/h
+        :type windspeed_kmh: float
+        :param rel_hum: relative humidity
+        :type rel_hum: float
+        :return: feels like temperaure in celsius
+        :rtype: float
+        """
+        
+        # convert to fahrenheit and mph
+        temperature_f = (temperature_c * 9/5) + 32
+        windspeed_mph = windspeed_kmh * 0.621371192
+ 
+        # Try Wind Chill first
+        feels_like = self.get_windchill_index_imperial(temperature_f, windspeed_mph)
+ 
+        # Replace it with the Heat Index, if necessary
+        if feels_like == temperature_f and temperature_f >= 80:
+            feels_like = self.get_heat_index(temperature_f, windspeed_mph)
+        
+        # convert back to celsius and return
+        return (feels_like - 32) * 5/9
+
+    @staticmethod
+    def delta_rain(rain, last_rain):
+        """Calculate rainfall from successive cumulative values.
+
+        Rainfall is calculated as the difference between two cumulative values.
+        If either value is None the value None is returned. If the previous
+        value is greater than the latest value a counter wrap around is assumed
+        and the latest value is returned.
+
+        rain:      current cumulative rain value
+        last_rain: last cumulative rain value
+        """
+        
+        logger = logging.getLogger(__name__)
+
+        # do we have a last rain value
+        if last_rain is None:
+            # no, log it and return None
+            logger.info("skipping rain measurement of %s: no last rain" % rain)
+            return None
+        # do we have a non-None current rain value
+        if rain is None:
+            # no, log it and return None
+            logger.info("skipping rain measurement: no current rain")
+            return None
+        # is the last rain value greater than the current rain value
+        if rain < last_rain:
+            # it is, assume a counter wrap around/reset, log it and return the
+            # latest rain value
+            logger.info("rain counter wraparound detected: new=%s last=%s" % (rain, last_rain))
+            return rain
+        # otherwise return the difference between the counts
+        return rain - last_rain
+
+    @staticmethod
+    def delta_lightning(count, last_count):
+        """Calculate lightning strike count from successive cumulative values.
+
+        Lightning strike count is calculated as the difference between two
+        cumulative values. If either value is None the value None is returned.
+        If the previous value is greater than the latest value a counter wrap
+        around is assumed and the latest value is returned.
+
+        count:      current cumulative lightning count
+        last_count: last cumulative lightning count
+        """
+        logger = logging.getLogger(__name__)
+
+        # do we have a last count
+        if last_count is None:
+            # no, log it and return None
+            logger.info("Skipping lightning count of %s: no last count" % count)
+            return None
+        # do we have a non-None current count
+        if count is None:
+            # no, log it and return None
+            logger.info("Skipping lightning count: no current count")
+            return None
+        # is the last count greater than the current count
+        if count < last_count:
+            # it is, assume a counter wrap around/reset, log it and return the
+            # latest count
+            logger.info("Lightning counter wraparound detected: new=%s last=%s" % (count, last_count))
+            return count
+        # otherwise return the difference between the counts
+        return count - last_count
+    
+    @staticmethod   
+    def get_dew_point_c(t_air_c, rel_humidity):
+        """Compute the dew point in degrees Celsius
+        
+        :param t_air_c: current ambient temperature in degrees Celsius
+        :type t_air_c: float
+        :param rel_humidity: relative humidity in %
+        :type rel_humidity: float
+        :return: the dew point in degrees Celsius
+        :rtype: float
+        """
+        
+        A = 17.27
+        B = 237.7
+        try:
+            alpha = ((A * t_air_c) / (B + t_air_c)) + math.log(rel_humidity/100.0)
+            dew_point = (B * alpha) / (A - alpha)
+        except ValueError:
+            dew_point = -9999
+        return dew_point
+        
+    @staticmethod  
+    def get_frost_point_c(t_air_c, dew_point_c):
+        """Compute the frost point in degrees Celsius
+        
+        :param t_air_c: current ambient temperature in degrees Celsius
+        :type t_air_c: float
+        :param dew_point_c: current dew point in degrees Celsius
+        :type dew_point_c: float
+        :return: the frost point in degrees Celsius
+        :rtype: float
+        """
+        
+        try:
+            dew_point_k = 273.15 + dew_point_c
+            t_air_k = 273.15 + t_air_c
+            frost_point_k = dew_point_k - t_air_k + 2671.02 / ((2954.61 / t_air_k) + 2.193665 * math.log(t_air_k) - 13.3448)
+            frost_point_c = frost_point_k - 273.15
+        except ValueError:
+            frost_point_c = -9999
+        return frost_point_c
+
+    @staticmethod  
+    def get_windchill_index_metric(t_air_c, wind_speed):
+        """Compute the wind chill index
+        
+        :param t_air_c: current ambient temperature in degrees Celsius
+        :type t_air_c: float
+        :param wind_speed: wind speed in kilometers/hour
+        :type wind_speed: float
+        :return: the wind chill index
+        :rtype: float
+        """
+    
+        return 13.12 + 0.6215*t_air_c - 11.37*math.pow(wind_speed, 0.16) + 0.3965*t_air_c*math.pow(wind_speed, 0.16)
+
+    @staticmethod  
+    def get_windchill_index_imperial(air_temp_f, wind_speed_mph):
+        """Compute the wind chill index
+        
+        :param air_temp_f: current ambient temperature in fahrenheit
+        :type air_temp_f: float
+        :param wind_speed_mph: wind speed in miles/hour
+        :type wind_speed_mph: float
+        :return: the wind chill index
+        :rtype: float
+        """
+        
+        if air_temp_f <= 50 and wind_speed_mph >= 3:
+            windchill = 35.74 + (0.6215*air_temp_f) - 35.75*(wind_speed_mph**0.16) + ((0.4275*air_temp_f)*(wind_speed_mph**0.16))
+        else:
+            windchill = air_temp_f
+    
+        return windchill
+    
+    @staticmethod 
+    def get_heat_index(temperature_f, rel_hum):
+        heat_index = 0.5 * (temperature_f + 61.0 + ((temperature_f-68.0)*1.2) + (rel_hum*0.094))
+        if heat_index >= 80:
+            heat_index = -42.379 + 2.04901523*temperature_f + 10.14333127*rel_hum - .22475541*temperature_f*rel_hum - .00683783*temperature_f*temperature_f - .05481717*rel_hum*rel_hum + .00122874*temperature_f*temperature_f*rel_hum + .00085282*temperature_f*rel_hum*rel_hum - .00000199*temperature_f*temperature_f*rel_hum*rel_hum
+            if rel_hum < 13 and 80 <= temperature_f <= 112:
+                heat_index = heat_index - ((13-rel_hum)/4)*math.sqrt((17-math.fabs(temperature_f-95.))/17)
+                if rel_hum > 85 and 80 <= temperature_f <= 87:
+                    heat_index = heat_index + ((rel_hum-85)/10) * ((87-temperature_f)/5)
+        return heat_index
+        
+    @staticmethod
+    def get_weather_now(hpa, lang='de'):
+        """ Computes text for current weather condition
+    
+        :param hpa: current air pressure in hpa
+        :type hpa: float
+        :param lang: acronym of language
+        :type lang: str
+        :return: wind direction text
+        :rtype: str
+        """
+    
+        arr = [
+                ["stürmisch, Regen", "regnerisch", "wechselhaft", "sonnig", "trocken, Gewitter"],
+                ["stormachtig, regen", "regenachtig", "veranderlijk", "zonnig", "droog, onweer"],
+                ["orageux, pluie", "pluvieux", "changeable", "ensoleillé", "sec, orage"],
+                ["tormentoso, lluvia", "lluvioso", "cambiable", "soleado", "seco, tormenta"],
+                ["búrky, dážď", "daždivý", "premenlivý", "slnečno", "suchá, búrka"],
+                ["stormy, rainy", "rainy", "unstable", "sunny", "dry, thunderstorm"]
+              ]
+          
+        if lang == "de": zeile = 0
+        elif lang == "nl": zeile = 1
+        elif lang == "fr": zeile = 2
+        elif lang == "es": zeile = 3
+        elif lang == "sk": zeile = 4
+        else: zeile = 5                                        # defaults to english
+
+        if hpa <= 980:              wnowlvl = 0                # stürmisch, Regen
+        elif 980 < hpa <= 1000:     wnowlvl = 1                # regnerisch
+        elif 1000 < hpa <= 1020:    wnowlvl = 2                # wechselhaft
+        elif 1020 < hpa <= 1040:    wnowlvl = 3                # sonnig
+        elif 1040 < hpa:            wnowlvl = 4                # trocken, Gewitter
+        else:                       wnowlvl = 0
+
+        wnowtxt = arr[zeile][wnowlvl]
+        return wnowlvl, wnowtxt
+    
+    @staticmethod
+    def get_wind_dir_text(wdir, lang='de'):
+        """ Computes wind direction text on wind direction in degrees
+    
+        :param wdir: wind direction in degrees
+        :type wdir: float
+        :param lang: acronym of language
+        :type lang: str
+        :return: wind direction text
+        :rtype: str
+        """
+    
+        arr = [
+               ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"],
+               ["Nord", "Nordnordost", "Nordost", "Ostnordost", "Ost", "Ostsüdost", "Südost", "Südsüdost", "Süd", "Südsüdwest", "Südwest", "Westsüdwest", "West", "Westnordwest", "Nordwest", "Nordnordwest"],
+               ["noord", "noordnoordoost", "noordoost", "oostnoordoost", "oost", "oostzuidoost", "zuidoost", "zuidzuidoost", "zuid", "zuidzuidwest", "zuidwest", "westzuidwest", "west", "westnoordwest", "noordwest", "noordnoordwest"],
+               ["Nord", "Nord-nord-est", "Nord-est", "Est Nord-Est", "Est", "Est-sud-est", "Sud-est", "Sud-sud-est", "Sud", "Sud-sud-ouest", "sud-ouest", "Ouest sud-ouest", "Ouest", "Ouest nord-ouest", "Nord Ouest", "Nord nord-ouest"],
+               ["norte", "norte-noreste", "noreste", "este-noreste", "este", "este-sureste", "sureste", "sur-sureste", "sur", "sur-suroeste", "suroeste", "oeste-suroeste", "oeste", "oeste-noroeste", "noroeste", "norte-noroeste"],
+               ["sever", "Severo-severovýchod", "severovýchod", "Na východ severovýchod", "východ", "juhovýchodne", "juhovýchodnej", "Juho-juhovýchodne", "juh", "Juho-juhozápadne", "juhozápadnej", "Západne juhozápadne", "západ", "Západne severozápadne", "severozápad", "Severozápadne"],
+               ["north", "north-northeast", "northeast", "east-northeast", "east", "east-southeast", "southeast", "south-southeast", "south", "south-southwest", "southwest", "west-southwest", "west", "west-northwest", "north-west", "north-northwest"],
+               ["N", "N-NO", "NO", "O-NO", "O", "O-SO", "SO", "S-SO", "S", "S-SW", "SW", "W-SW", "W", "W-NW", "NW", "N-NW"]
+              ]
+              
+        if lang == "ZZ": zeile = 0
+        elif lang == "de": zeile = 1
+        elif lang == "nl": zeile = 2
+        elif lang == "fr": zeile = 3
+        elif lang == "es": zeile = 4
+        elif lang == "sk": zeile = 5
+        elif lang == "XX": zeile = 7
+        else: zeile = 6
+        
+        try:
+            val = int((float(wdir)/22.5)+.5)
+            s = arr[zeile][(val % 16)]
+        except ValueError:
+            s = "null"
+        return s
+    
+    @staticmethod
+    def make_weather_forecast(diff, lang='de'):
+        """ Computes weather forecast based on changes for relative air pressure
+    
+        :param diff: pressure difference between now and 3 hours ago
+        :type diff: float
+        :param lang: acronym of language
+        :type lang: str
+        :return: the wind chill index
+        :rtype: float
+        """
+    
+        # diff = CurDiff3h = round(baromrelhpa - ago3h_baromrelhpa,1)
+        # CurDiff1h = round(baromrelhpa - ago1h_baromrelhpa,1)
+        # d_m.update({"pchange3" : str(CurDiff3h)})
+        # d_m.update({"pchange1" : str(CurDiff1h)})
+    
+        arr = [
+               ["Sturm mit Hagel", "Regen/Unwetter", "regnerisch", "baldiger Regen", "gleichbleibend", "lange schön", "schön & labil", "Sturmwarnung"],
+               ["Storm met hagel", "Regen/storm", "regenachtig", "binnenkort regen", "constante", "lang mooi", "mooi en onstabiel", "Storm waarschuwing"],
+               ["Tempête de grêle", "Pluie / tempête", "pluvieux", "bientôt la pluie", "constant", "longtemps belle", "beau et instable", "Avertissement de tempête"],
+               ["Tormenta con granizo", "Tormenta de lluvia", "lluvioso", "pronto lloverá", "constante", "continuo hermosa", "hermosa e inestable", "Aviso de tormenta"],
+               ["Búrka s krupobitím", "Dážď/búrka", "daždivý", "skoro dážď", "konštantný", "dlho krásne", "krásne a nestabilné", "Varovanie pred búrkou"],
+               ["storm with hail", "rain/storm", "rainy", "soon rain", "constant", "nice for a long time", "nice & unstable", "storm warning"]
+              ]
+            
+        if lang == "de": zeile = 0
+        elif lang == "nl": zeile = 1
+        elif lang == "fr": zeile = 2
+        elif lang == "es": zeile = 3
+        elif lang == "sk": zeile = 4
+        else: zeile = 5                                              # defaults to english
+      
+        if diff <= -8:                  wproglvl = 0               # Sturm mit Hagel
+        elif -8 < diff <= -5:           wproglvl = 1               # Regen/Unwetter
+        elif -5 < diff <= -3:           wproglvl = 2               # regnerisch
+        elif -3 < diff <= -0.5:         wproglvl = 3               # baldiger Regen
+        elif -0.5 < diff <= 0.5:        wproglvl = 4               # gleichbleibend
+        elif 0.5 < diff <= 3:           wproglvl = 5               # lange schön
+        elif 3 < diff <= 5:             wproglvl = 6               # schön & labil
+        elif 5 < diff:                  wproglvl = 7               # Sturmwarnung
+        else:                           wproglvl = 0
+        wprogtxt = arr[zeile][wproglvl]
+        return wproglvl, wprogtxt
+
+    @staticmethod
+    def cloud_ceiling(temp, dewpt):
+        """ Computes cloud ceiling (Wolkenuntergrenze)
+    
+        :param temp: outside temperatur in celsius
+        :type temp: float
+        :param dewpt: outside dew point in celsius
+        :type dewpt: float
+        :return: cloud ceiling in meter
+        :rtype: float
+        """
+
+        # Faustformel für die Berechnung der Höhe der Wolkenuntergrenze von Quellwolken: Höhe in Meter = 122 mal Spread (Taupunktdifferenz)
+        return (temp - dewpt) * 122
+    
+    @staticmethod    
+    def get_avg_wind(d, w):
+        """ get avg from deque d , field w """
+        
+        s = 0
+        for i in range(len(d)):
+            s = s + d[i][w]
+        a = round(s/len(d), 1)
+        return a
+    
+    @staticmethod
+    def get_max_wind(d, w):
+        """ get max from deque d, field w """
+        
+        s = 0
+        for i in range(len(d)):
+            if d[i][w] > s:
+                s = d[i][w]
+        a = round(s, 1)
+        return a
+
+    @staticmethod
+    def get_beaufort_number(speed_in_mps):
+        try:
+            # Origin of table: https://www.smarthomeng.de/vom-winde-verweht
+            table = [
+                (0.3, 0),
+                (1.6, 1),
+                (3.4, 2),
+                (5.5, 3),
+                (8.0, 4),
+                (10.8, 5),
+                (13.9, 6),
+                (17.2, 7),
+                (20.8, 8),
+                (24.5, 9),
+                (28.5, 10),
+                (32.7, 11),
+                (999,  12)]
+            return min(filter(lambda x: x[0] >= speed_in_mps, table))[1]
+        except ValueError:
+            return None
+            
+    @staticmethod
+    def get_beaufort_description(speed_in_bft, lang='de'):
+        # source for german descriptions https://www.smarthomeng.de/vom-winde-verweht
+        _beaufort_descriptions_de = ["Windstille",
+                                     "leiser Zug",
+                                     "leichte Brise",
+                                     "schwacher Wind",
+                                     "mäßiger Wind",
+                                     "frischer Wind",
+                                     "starker Wind",
+                                     "steifer Wind",
+                                     "stürmischer Wind",
+                                     "Sturm",
+                                     "schwerer Sturm",
+                                     "orkanartiger Sturm",
+                                     "Orkan"]
+        # source for english descriptions https://simple.wikipedia.org/wiki/Beaufort_scale
+        _beaufort_descriptions_en = ["Calm",
+                                     "Light air",
+                                     "Light breeze",
+                                     "Gentle breeze",
+                                     "Moderate breeze",
+                                     "Fresh breeze",
+                                     "Strong breeze",
+                                     "High wind",
+                                     "Fresh Gale",
+                                     "Strong Gale",
+                                     "Storm",
+                                     "Violent storm",
+                                     "Hurricane-force"]
+
+        logger = logging.getLogger(__name__)
+    
+        if speed_in_bft is None:
+            logger.warning(f"speed_in_bft is given as None")
+            return None
+        if type(speed_in_bft) is not int:
+            logger.error(f"speed_in_bft is not given as int: '{speed_in_bft}'")
+            return None
+        if (speed_in_bft < 0) or (speed_in_bft > 12):
+            logger.error(f"speed_in_bft is out of scale: '{speed_in_bft}'")
+            return None
+        if lang == 'de':
+            return _beaufort_descriptions_de[speed_in_bft]
+        return _beaufort_descriptions_en[speed_in_bft]
+
+# ============================================================================
+#                            GW1000 Driver class
+# ============================================================================
+
+
+class Gw1000Driver(Gw1000):
+    """GW1000/GW1100 driver class.
+
+    A driver to emit loop packets based on observational data obtained from the GW1000/GW1100 API. The Gw1000Driver should be used when there is no other data source.
+
+    Data is obtained from the GW1000/GW1100 API. The data is parsed and mapped to WeeWX fields and emitted as a WeeWX loop packet.
+
+    Class Gw1000Collector collects and parses data from the GW1000/GW1100 API. The Gw1000Collector runs in a separate thread so as to not block the main
+    WeeWX processing loop. The Gw1000Collector is turn uses child classes Station and Parser to interact directly with the GW1000/GW1100 API and
+    parse the API responses respectively."""
+
+    def __init__(self, plugin_instance):
+        """Initialise a GW1000/GW1100 driver object."""
+
+        # now initialize my superclasses
+        super(Gw1000Driver, self).__init__(plugin_instance)
+        
+        # init logger
+        self._plugin_instance = plugin_instance
+        self._plugin_instance.logger.debug("Starting Gw1000Driver")
+
+        # log the relevant settings/parameters we are using
+        if self.ip_address is None and self.port is None:
+            self._plugin_instance.logger.info("%s IP address and port not specified, attempting to discover %s..." % (self.collector.station.model, self.collector.station.model))
+        elif self.ip_address is None:
+            self._plugin_instance.logger.info("%s IP address not specified, attempting to discover %s..." % (self.collector.station.model, self.collector.station.model))
+        elif self.port is None:
+            self._plugin_instance.logger.info("%s port not specified, attempting to discover %s..." % (self.collector.station.model, self.collector.station.model))
+        self._plugin_instance.logger.info("%s address is %s:%d" % (self.collector.station.model, self.collector.station.ip_address.decode(), self.collector.station.port))
+        self._plugin_instance.logger.info("poll interval is %d seconds" % self.poll_interval)
+        self._plugin_instance.logger.debug('max tries is %d, retry wait time is %d seconds' % (self.max_tries, self.retry_wait))
+        self._plugin_instance.logger.debug('broadcast address is %s:%d, broadcast timeout is %d seconds' % (self.broadcast_address, self.broadcast_port, self.broadcast_timeout))
+        self._plugin_instance.logger.debug('socket timeout is %d seconds' % self.socket_timeout)
+        # start the Gw1000Collector in its own thread
+        self.collector.startup()
+
+    def genLoopPackets(self):
+        """Generator function that returns loop packets.
+
+        Run a continuous loop checking the Gw1000Collector queue for data. When data arrives map the raw data to a WeeWX loop packet and yield the packet.
+        """
+
+        # generate loop packets forever
+        while True:
+            # wrap in a try to catch any instances where the queue is empty
+            try:
+                # get any data from the collector queue
+                queue_data = self.collector.my_queue.get(True, 10)
+            except queue.Empty:
+                # self._plugin_instance.logger.debug("genLoopPackets: there was nothing in the queue so continue")
+                # there was nothing in the queue so continue
+                pass
+            else:
+                # We received something in the queue, it will be one of three things:
+                # 1. a dict containing sensor data
+                # 2. an exception
+                # 3. the value None signalling a serious error that means the Collector needs to shut down
+
+                # if the data has a 'keys' attribute it is a dict so must be data
+                if hasattr(queue_data, 'keys'):
+                    # we have a dict so assume it is data log the received data if necessary
+                    if self.debug_loop:
+                        if 'datetime' in queue_data:
+                            self._plugin_instance.logger.info("Received %s data (debug_loop): %s %s" % (self.collector.station.model, timestamp_to_string(queue_data['datetime']), natural_sort_dict(queue_data)))
+                        else:
+                            self._plugin_instance.logger.info("Received %s data: %s" % (self.collector.station.model, natural_sort_dict(queue_data)))
+                    # Now start to create a loop packet. A loop packet must have a timestamp, if we have one (key 'datetime') in the received data use it otherwise allocate one.
+                    if 'datetime' in queue_data:
+                        packet = {'dateTime': queue_data['datetime']}
+                    else:
+                        # we don't have a timestamp so create one
+                        packet = {'dateTime': int(time.time() + 0.5)}
+                    
+                    # if not already determined, determine which cumulative rain field will be used to determine the per period rain field
+                    if not self.rain_mapping_confirmed:
+                        self.get_cumulative_rain_field(queue_data)
+                    
+                    # get the rainfall for this period from total
+                    self.calculate_rain(queue_data)
+                    
+                    # get the lightning strike count for this period from total
+                    self.calculate_lightning_count(queue_data)
+                    
+                    # add calculated data to queue_data
+                    self.add_calculated_data(queue_data)
+                    
+                    # add battery warning data field and log entry if enabled
+                    if self._plugin_instance._battery_warning: self.check_battery(queue_data)
+                    
+                    # add sensor warning data field and log entry if enabled
+                    if self._plugin_instance._sensor_warning: self.check_sensors(queue_data)
+                    
+                    # add the queue_data to the empty packet
+                    packet.update(queue_data)
+                    
+                    # log the packet if necessary, there are several debug settings that may require this, start from the highest (most encompassing) and work to the lowest (least encompassing)
+                    if self.debug_loop:
+                        self._plugin_instance.logger.info('genLoopPackets: Packet %s: %s' % (timestamp_to_string(packet['dateTime']), natural_sort_dict(packet)))
+                    # yield the loop packet
+                    yield packet
+                
+                # if it's a tuple then it's a tuple with an exception and exception text
+                elif isinstance(queue_data, BaseException):
+                    # We have an exception. The collector did not deem it serious enough to want to shutdown or it would have sent None instead. If it is anything else we log it and then raise it.
+                    
+                    # first extract our exception
+                    e = queue_data
+                    # and process it if we have something
+                    if e:
+                        # is it a GW1000Error
+                        self._plugin_instance.logger.error("Caught unexpected exception %s: %s" % (e.__class__.__name__, e))
+                        # then raise it
+                        raise e
+                
+                # if it's None then its a signal the Collector needs to shutdown
+                elif queue_data is None:
+                    # if debug_loop log what we received
+                    if self.debug_loop:
+                        self._plugin_instance.logger.info("Received 'None'")
+                    # we received the signal to shutdown, so call closePort()
+                    self.closePort()
+                    # and raise an exception to cause the engine to shutdown
+                    raise GW1000IOError("Gw1000Collector needs to shutdown")
+                # if it's none of the above (which it should never be) we don't know what to do with it so pass and wait for the next item in the queue
+                else:
+                    pass
+
+    @property
+    def hardware_name(self):
+        """Return the hardware name.
+
+        Use the device model from our Collector's Station object, but if this
+        is None use the driver name.
+        """
+
+        if self.collector.station.model is not None:
+            return self.collector.station.model
+
+    @property
+    def mac_address(self):
+        """Return the GW1000/GW1100 MAC address."""
+
+        return self.collector.mac_address
+
+    @property
+    def firmware_version(self):
+        """Return the GW1000/GW1100 firmware version string."""
+
+        return self.collector.firmware_version
+
+    @property
+    def sensor_id_data(self):
+        """Return the GW1000/GW1100 sensor identification data.
+
+        The sensor ID data is available via the data property of the Collector objects' sensors property.
+        """
+
+        return self.collector.sensors.data
+
+    def closePort(self):
+        """Close down the driver port."""
+
+        # in this case there is no port to close, just shutdown the collector
+        self.collector.shutdown()
+
+# ============================================================================
+#                              class Collector
+# ============================================================================
+
+
+class Collector(object):
+    """Base class for a client that polls an API."""
+
+    # a queue object for passing data back to the driver
+    my_queue = queue.Queue()
+
+    def __init__(self, plugin_instance):
+        # init logger
+        self._plugin_instance = plugin_instance
+        self._plugin_instance.logger.debug("Starting Collector Object")
+        pass
+
+    def startup(self):
+        pass
+
+    def shutdown(self):
+        pass
+
+# ============================================================================
+#                              class Gw1000Collector
+# ============================================================================
+
+
+class Gw1000Collector(Collector):
+    """Class to poll the GW1000/GW1100 API, decode and return data to the driver."""
+
+    # map of sensor ids to short name, long name and battery byte decode function
+    sensor_ids = {
+        b'\x00': {'name': 'wh65', 'long_name': 'WH65', 'batt_fn': 'batt_binary'},
+        b'\x01': {'name': 'wh68', 'long_name': 'WH68', 'batt_fn': 'batt_volt'},
+        b'\x02': {'name': 'ws80', 'long_name': 'WS80', 'batt_fn': 'batt_volt'},
+        b'\x03': {'name': 'wh40', 'long_name': 'WH40', 'batt_fn': 'batt_binary'},
+        b'\x04': {'name': 'wh25', 'long_name': 'WH25', 'batt_fn': 'batt_binary'},
+        b'\x05': {'name': 'wh26', 'long_name': 'WH26', 'batt_fn': 'batt_binary'},
+        b'\x06': {'name': 'wh31_ch1', 'long_name': 'WH31 ch1', 'batt_fn': 'batt_binary'},
+        b'\x07': {'name': 'wh31_ch2', 'long_name': 'WH31 ch2', 'batt_fn': 'batt_binary'},
+        b'\x08': {'name': 'wh31_ch3', 'long_name': 'WH31 ch3', 'batt_fn': 'batt_binary'},
+        b'\x09': {'name': 'wh31_ch4', 'long_name': 'WH31 ch4', 'batt_fn': 'batt_binary'},
+        b'\x0a': {'name': 'wh31_ch5', 'long_name': 'WH31 ch5', 'batt_fn': 'batt_binary'},
+        b'\x0b': {'name': 'wh31_ch6', 'long_name': 'WH31 ch6', 'batt_fn': 'batt_binary'},
+        b'\x0c': {'name': 'wh31_ch7', 'long_name': 'WH31 ch7', 'batt_fn': 'batt_binary'},
+        b'\x0d': {'name': 'wh31_ch8', 'long_name': 'WH31 ch8', 'batt_fn': 'batt_binary'},
+        b'\x0e': {'name': 'wh51_ch1', 'long_name': 'WH51 ch1', 'batt_fn': 'batt_binary'},
+        b'\x0f': {'name': 'wh51_ch2', 'long_name': 'WH51 ch2', 'batt_fn': 'batt_binary'},
+        b'\x10': {'name': 'wh51_ch3', 'long_name': 'WH51 ch3', 'batt_fn': 'batt_binary'},
+        b'\x11': {'name': 'wh51_ch4', 'long_name': 'WH51 ch4', 'batt_fn': 'batt_binary'},
+        b'\x12': {'name': 'wh51_ch5', 'long_name': 'WH51 ch5', 'batt_fn': 'batt_binary'},
+        b'\x13': {'name': 'wh51_ch6', 'long_name': 'WH51 ch6', 'batt_fn': 'batt_binary'},
+        b'\x14': {'name': 'wh51_ch7', 'long_name': 'WH51 ch7', 'batt_fn': 'batt_binary'},
+        b'\x15': {'name': 'wh51_ch8', 'long_name': 'WH51 ch8', 'batt_fn': 'batt_binary'},
+        b'\x16': {'name': 'wh41_ch1', 'long_name': 'WH41 ch1', 'batt_fn': 'batt_int'},
+        b'\x17': {'name': 'wh41_ch2', 'long_name': 'WH41 ch2', 'batt_fn': 'batt_int'},
+        b'\x18': {'name': 'wh41_ch3', 'long_name': 'WH41 ch3', 'batt_fn': 'batt_int'},
+        b'\x19': {'name': 'wh41_ch4', 'long_name': 'WH41 ch4', 'batt_fn': 'batt_int'},
+        b'\x1a': {'name': 'wh57', 'long_name': 'WH57', 'batt_fn': 'batt_int'},
+        b'\x1b': {'name': 'wh55_ch1', 'long_name': 'WH55 ch1', 'batt_fn': 'batt_int'},
+        b'\x1c': {'name': 'wh55_ch2', 'long_name': 'WH55 ch2', 'batt_fn': 'batt_int'},
+        b'\x1d': {'name': 'wh55_ch3', 'long_name': 'WH55 ch3', 'batt_fn': 'batt_int'},
+        b'\x1e': {'name': 'wh55_ch4', 'long_name': 'WH55 ch4', 'batt_fn': 'batt_int'},
+        b'\x1f': {'name': 'wh34_ch1', 'long_name': 'WH34 ch1', 'batt_fn': 'batt_volt'},
+        b'\x20': {'name': 'wh34_ch2', 'long_name': 'WH34 ch2', 'batt_fn': 'batt_volt'},
+        b'\x21': {'name': 'wh34_ch3', 'long_name': 'WH34 ch3', 'batt_fn': 'batt_volt'},
+        b'\x22': {'name': 'wh34_ch4', 'long_name': 'WH34 ch4', 'batt_fn': 'batt_volt'},
+        b'\x23': {'name': 'wh34_ch5', 'long_name': 'WH34 ch5', 'batt_fn': 'batt_volt'},
+        b'\x24': {'name': 'wh34_ch6', 'long_name': 'WH34 ch6', 'batt_fn': 'batt_volt'},
+        b'\x25': {'name': 'wh34_ch7', 'long_name': 'WH34 ch7', 'batt_fn': 'batt_volt'},
+        b'\x26': {'name': 'wh34_ch8', 'long_name': 'WH34 ch8', 'batt_fn': 'batt_volt'},
+        b'\x27': {'name': 'wh45', 'long_name': 'WH45', 'batt_fn': 'batt_int'},
+        b'\x28': {'name': 'wh35_ch1', 'long_name': 'WH35 ch1', 'batt_fn': 'batt_volt'},
+        b'\x29': {'name': 'wh35_ch2', 'long_name': 'WH35 ch2', 'batt_fn': 'batt_volt'},
+        b'\x2a': {'name': 'wh35_ch3', 'long_name': 'WH35 ch3', 'batt_fn': 'batt_volt'},
+        b'\x2b': {'name': 'wh35_ch4', 'long_name': 'WH35 ch4', 'batt_fn': 'batt_volt'},
+        b'\x2c': {'name': 'wh35_ch5', 'long_name': 'WH35 ch5', 'batt_fn': 'batt_volt'},
+        b'\x2d': {'name': 'wh35_ch6', 'long_name': 'WH35 ch6', 'batt_fn': 'batt_volt'},
+        b'\x2e': {'name': 'wh35_ch7', 'long_name': 'WH35 ch7', 'batt_fn': 'batt_volt'},
+        b'\x2f': {'name': 'wh35_ch8', 'long_name': 'WH35 ch8', 'batt_fn': 'batt_volt'}
+    }
+    
+    # list of dicts of weather services that I know about
+    services = [{'name': 'ecowitt_net', 'long_name': 'Ecowitt.net'},
+                {'name': 'wunderground', 'long_name': 'Wunderground'},
+                {'name': 'weathercloud', 'long_name': 'Weathercloud'},
+                {'name': 'wow', 'long_name': 'Weather Observations Website'},
+                {'name': 'custom', 'long_name': 'Customized'}
+                ]
+
+    def __init__(self, ip_address=None, port=None, broadcast_address=None, broadcast_port=None, socket_timeout=None, broadcast_timeout=None,
+                 poll_interval=0, max_tries=default_max_tries, retry_wait=default_retry_wait,
+                 use_th32=False, show_battery=False, debug_rain=False, debug_wind=False, debug_sensors=False, plugin_instance=None):
+        """Initialise our class."""
+
+        # initialize my base class:
+        super(Gw1000Collector, self).__init__(plugin_instance)
+        
+        # handle plugin instance
+        self._plugin_instance = plugin_instance
+        
+        # init logger
+        self.logger = logging.getLogger(__name__)
+        
+        # interval between polls of the API, use a default
+        self.poll_interval = poll_interval
+        
+        # how many times to poll the API before giving up, default is default_max_tries
+        self.max_tries = max_tries
+        
+        # period in seconds to wait before polling again, default is default_retry_wait seconds
+        self.retry_wait = retry_wait
+        
+        # are we using a th32 sensor
+        self.use_th32 = use_th32
+        
+        # get a station object to do the handle the interaction with the GW1000/GW1100 API
+        self.station = Gw1000Collector.Station(ip_address=ip_address,
+                                               port=port,
+                                               broadcast_address=broadcast_address,
+                                               broadcast_port=broadcast_port,
+                                               socket_timeout=socket_timeout,
+                                               broadcast_timeout=broadcast_timeout,
+                                               max_tries=max_tries,
+                                               retry_wait=retry_wait)
+        
+        # Do we have a WH24 attached? First obtain our system parameters.
+        _sys_params = self.station.get_system_params()
+        
+        # WH24 is indicated by the 6th byte being 0
+        is_wh24 = _sys_params[5] == 0
+        
+        # Tell our sensor id decoding whether we have a WH24 or a WH65. By default we are coded to use a WH65. Is there a WH24 connected?
+        if is_wh24:
+            # set the WH24 sensor id decode dict entry
+            self.sensor_ids[b'\x00']['name'] = 'wh24'
+            self.sensor_ids[b'\x00']['long_name'] = 'WH24'
+        
+        # start off logging failures
+        self.log_failures = True
+        
+        # get a parser object to parse any data from the station
+        self.parser = Gw1000Collector.Parser(is_wh24, debug_rain, debug_wind)
+        
+        # get a sensors object to handle sensor ID data
+        self.sensors_obj = Gw1000Collector.Sensors(show_battery=show_battery, debug_sensors=debug_sensors)
+        
+        # create a thread property
+        self.thread = None
+        
+        # we start off not collecting data, it will be turned on later when we are threaded
+        self.collect_data = False
+
+    def collect_sensor_data(self):
+        """Collect sensor data by polling the API.
+
+        Loop forever waking periodically to see if it is time to quit or collect more data.
+        """
+
+        # initialise ts of last time API was polled
+        last_poll = 0
+        # collect data continuously while we are told to collect data
+        while self.collect_data:
+            # store the current time
+            now = time.time()
+            # is it time to poll?
+            if now - last_poll > self.poll_interval:
+                # it is time to poll, wrap in a try..except in case we get a GW1000IOError exception
+                try:
+                    queue_data = self.get_live_sensor_data()
+                except GW1000IOError as e:
+                    # a GW1000IOError occurred, most likely because the Station object could not contact the GW1000/GW1100
+                    # first up log the event, but only if we are logging failures
+                    if self.log_failures:
+                        self.logger.error('Unable to obtain live sensor data')
+                    # assign the GW1000IOError exception so it will be sent in the queue to our controlling object
+                    queue_data = e
+                # put the queue data in the queue
+                self.my_queue.put(queue_data)
+                # debug log when we will next poll the API
+                self.logger.debug('Next update in %d seconds' % self.poll_interval)
+                # reset the last poll ts
+                last_poll = now
+            # sleep for a second and then see if its time to poll again
+            time.sleep(1)
+
+    def get_live_sensor_data(self):
+        """Get all current sensor data.
+
+        Obtain live sensor data from the GW1000/GW1100 API then parse the API response to create a timestamped data dict keyed by internal
+        GW1000/GW1100 field name. Add current sensor battery state and signal level data to the data dict. If no data was obtained from the API the
+        value None is returned.
+        """
+
+        # obtain the raw data via the GW1000/GW1100 API, we may get a GW1000IOError exception, if we do let it bubble up (the raw data is
+        # the data returned from the GW1000/GW1100 inclusive of the fixed header, command, payload length, payload and checksum bytes)
+        raw_data = self.station.get_livedata()
+        # if we made it here our raw data was validated by checksum get a timestamp to use in case our data does not come with one
+        _timestamp = int(time.time())
+        # parse the raw data (the parsed data is a dict keyed by internal GW1000/GW1100 field names and containing the decoded raw sensor data)
+        parsed_data = self.parser.parse(raw_data, _timestamp)
+        # log the parsed data but only if debug>=3
+        self.logger.debug("Parsed data: %s" % parsed_data)
+        # The parsed live data does not contain any sensor battery state or signal level data. The battery state and signal level data for each
+        # sensor can be obtained from the GW1000/GW1100 API via our Sensors object.
+        # first we need to update our Sensors object with current sensor ID data
+        self.update_sensor_id_data()
+        # now add any sensor battery state and signal level data to the parsed data
+        parsed_data.update(self.sensors_obj.battery_and_signal_data)
+        # log the processed parsed data but only if debug>=3
+        self.logger.debug("Processed parsed data: %s" % parsed_data)
+        return parsed_data
+
+    def update_sensor_id_data(self):
+        """Update the Sensors object with current sensor ID data."""
+
+        # get the current sensor ID data
+        sensor_id_data = self.station.get_sensor_id()
+        # now use the sensor ID data to re-initialise our sensors object
+        self.sensors_obj.set_sensor_id_data(sensor_id_data)
+
+    @property
+    def rain_data(self):
+        """Obtain GW1000/GW1100 rain data."""
+
+        # obtain the rain data data via the API
+        response = self.station.get_raindata()
+        # determine the size of the rain data
+        raw_data_size = response[3]
+        # extract the actual data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        data_dict = dict()
+        data_dict['rain_rate'] = self.parser.decode_big_rain(data[0:4])
+        data_dict['rain_day'] = self.parser.decode_big_rain(data[4:8])
+        data_dict['rain_week'] = self.parser.decode_big_rain(data[8:12])
+        data_dict['rain_month'] = self.parser.decode_big_rain(data[12:16])
+        data_dict['rain_year'] = self.parser.decode_big_rain(data[16:20])
+        return data_dict
+
+    @property
+    def mulch_offset(self):
+        """Obtain GW1000/GW1100 multi-channel temperature and humidity offset data."""
+
+        # obtain the mulch offset data via the API
+        response = self.station.get_mulch_offset()
+        # determine the size of the mulch offset data
+        raw_data_size = response[3]
+        # extract the actual data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a counter
+        index = 0
+        # initialise a dict to hold our final data
+        offset_dict = {}
+        # iterate over the data
+        while index < len(data):
+            try:
+                channel = byte_to_int(data[index])
+            except TypeError:
+                channel = data[index]
+            offset_dict[channel] = {}
+            try:
+                offset_dict[channel]['hum'] = struct.unpack("b", data[index + 1])[0]
+            except TypeError:
+                offset_dict[channel]['hum'] = struct.unpack("b", int_to_bytes(data[index + 1]))[0]
+            try:
+                offset_dict[channel]['temp'] = struct.unpack("b", data[index + 2])[0] / 10.0
+            except TypeError:
+                offset_dict[channel]['temp'] = struct.unpack("b", int_to_bytes(data[index + 2]))[0] / 10.0
+            index += 3
+        return offset_dict
+
+    @property
+    def pm25_offset(self):
+        """Obtain GW1000/GW1100 PM2.5 offset data."""
+
+        # obtain the PM2.5 offset data via the API
+        response = self.station.get_pm25_offset()
+        # determine the size of the PM2.5 offset data
+        raw_data_size = response[3]
+        # extract the actual data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a counter
+        index = 0
+        # initialise a dict to hold our final data
+        offset_dict = {}
+        # iterate over the data
+        while index < len(data):
+            try:
+                channel = byte_to_int(data[index])
+            except TypeError:
+                channel = data[index]
+            offset_dict[channel] = struct.unpack(">h", data[index+1:index+3])[0]/10.0
+            index += 3
+        return offset_dict
+
+    @property
+    def co2_offset(self):
+        """Obtain GW1000/GW1100 WH45 CO2, PM10 and PM2.5 offset data."""
+
+        # obtain the WH45 offset data via the API
+        response = self.station.get_co2_offset()
+        # determine the size of the WH45 offset data
+        raw_data_size = response[3]
+        # extract the actual data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        offset_dict = dict()
+        # and decode/store the offset data
+        # bytes 0 and 1 hold the CO2 offset
+        offset_dict['co2'] = struct.unpack(">h", data[0:2])[0]
+        # bytes 2 and 3 hold the PM2.5 offset
+        offset_dict['pm25'] = struct.unpack(">h", data[2:4])[0]/10.0
+        # bytes 4 and 5 hold the PM10 offset
+        offset_dict['pm10'] = struct.unpack(">h", data[4:6])[0]/10.0
+        return offset_dict
+
+    @property
+    def calibration(self):
+        """Obtain GW1000/GW1100 calibration data."""
+
+        # obtain the calibration data via the API
+        response = self.station.get_calibration_coefficient()
+        # determine the size of the calibration data
+        raw_data_size = response[3]
+        # extract the actual data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        calibration_dict = dict()
+        # and decode/store the calibration data  bytes 0 and 1 are reserved (lux to solar radiation conversion gain (126.7))
+        calibration_dict['gain uv'] = struct.unpack(">H", data[2:4])[0]/100.0
+        calibration_dict['gain solar radiation'] = struct.unpack(">H", data[4:6])[0]/100.0
+        calibration_dict['gain wind'] = struct.unpack(">H", data[6:8])[0]/100.0
+        calibration_dict['gain rain'] = struct.unpack(">H", data[8:10])[0]/100.0
+        # obtain the offset calibration data via the API
+        response = self.station.get_offset_calibration()
+        # determine the size of the calibration data
+        raw_data_size = response[3]
+        # extract the actual data
+        data = response[4:4 + raw_data_size - 3]
+        # and decode/store the offset calibration data
+        calibration_dict['offset indoor temp'] = struct.unpack(">h", data[0:2])[0]/10.0
+        try:
+            calibration_dict['offset indoor hum'] = struct.unpack("b", data[2])[0]
+        except TypeError:
+            calibration_dict['offset indoor hum'] = struct.unpack("b", int_to_bytes(data[2]))[0]
+        calibration_dict['offset absolute pressure'] = struct.unpack(">l", data[3:7])[0]/10.0
+        calibration_dict['offset relative pressure'] = struct.unpack(">l", data[7:11])[0]/10.0
+        calibration_dict['offset outdoor temp'] = struct.unpack(">h", data[11:13])[0]/10.0
+        try:
+            calibration_dict['offset outdoor hum'] = struct.unpack("b", data[13])[0]
+        except TypeError:
+            calibration_dict['offset outdoor hum'] = struct.unpack("b", int_to_bytes(data[13]))[0]
+        calibration_dict['offset wind direction'] = struct.unpack(">h", data[14:16])[0]
+        return calibration_dict
+
+    @property
+    def soil_calibration(self):
+        """Obtain GW1000/GW1100 soil moisture sensor calibration data.
+
+        """
+
+        # obtain the soil moisture calibration data via the API
+        response = self.station.get_soil_calibration()
+        # determine the size of the calibration data
+        raw_data_size = response[3]
+        # extract the actual data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        calibration_dict = {}
+        # initialise a counter
+        index = 0
+        # iterate over the data
+        while index < len(data):
+            try:
+                channel = byte_to_int(data[index])
+            except TypeError:
+                channel = data[index]
+            calibration_dict[channel] = {}
+            try:
+                humidity = byte_to_int(data[index + 1])
+            except TypeError:
+                humidity = data[index + 1]
+            calibration_dict[channel]['humidity'] = humidity
+            calibration_dict[channel]['ad'] = struct.unpack(">h", data[index+2:index+4])[0]
+            try:
+                ad_select = byte_to_int(data[index + 4])
+            except TypeError:
+                ad_select = data[index + 4]
+            calibration_dict[channel]['ad_select'] = ad_select != 0
+            try:
+                min_ad = byte_to_int(data[index + 5])
+            except TypeError:
+                min_ad = data[index + 5]
+            calibration_dict[channel]['adj_min'] = min_ad
+            calibration_dict[channel]['adj_max'] = struct.unpack(">h", data[index+6:index+8])[0]
+            index += 8
+        return calibration_dict
+
+    @property
+    def system_parameters(self):
+        """Obtain GW1000/GW1100 system parameters."""
+        
+        frequency = {0: '433 MHz',
+                     1: '866 MHz',
+                     2: '915 MHz',
+                     3: '920 MHz'
+                     }
+        
+        sensor_type = {0: 'WH24',
+                       1: 'WH65'
+                       }
+
+        # obtain the system parameters data via the API
+        response = self.station.get_system_params()
+        # determine the size of the system parameters data
+        raw_data_size = response[3]
+        # extract the actual system parameters data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        data_dict = dict()
+        data_dict['frequency'] = frequency[data[0]]
+        data_dict['sensor type'] = sensor_type[data[1]]
+        data_dict['utc'] = datetime.fromtimestamp(self.parser.decode_utc(data[2:6]))
+        data_dict['timezone index'] = data[6]
+        data_dict['daylight saving time'] = data[7] != 0
+        return data_dict
+
+    @property
+    def ecowitt_net(self):
+        """Obtain GW1000/GW1100 Ecowitt.net service parameters.
+
+        Obtain the GW1000/GW1100 Ecowitt.net service settings.
+
+        Returns a dictionary of settings.
+        """
+
+        # obtain the system parameters data via the API
+        response = self.station.get_ecowitt_net_params()
+        # determine the size of the system parameters data
+        raw_data_size = response[3]
+        # extract the actual system parameters data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        data_dict = dict()
+        data_dict['interval'] = data[0]
+        # obtain the GW1000/GW1100 MAC address
+        data_dict['mac'] = self.mac_address
+        return data_dict
+
+    @property
+    def wunderground(self):
+        """Obtain GW1000/GW1100 Weather Underground service parameters.
+
+        Obtain the GW1000/GW1100 Weather Underground service settings.
+
+        Returns a dictionary of settings with string data in unicode format.
+        """
+
+        # obtain the system parameters data via the API
+        response = self.station.get_wunderground_params()
+        # determine the size of the system parameters data
+        raw_data_size = response[3]
+        # extract the actual system parameters data
+        data = response[4:4 + raw_data_size - 3]
+        # return data
+        # initialise a dict to hold our final data
+        data_dict = dict()
+        # obtain the required data from the response decoding any bytestrings
+        id_size = data[0]
+        data_dict['id'] = data[1:1+id_size].decode()
+        password_size = data[1+id_size]
+        data_dict['password'] = data[2+id_size:2+id_size+password_size].decode()
+        return data_dict
+
+    @property
+    def weathercloud(self):
+        """Obtain GW1000/GW1100 Weathercloud service parameters.
+
+        Obtain the GW1000/GW1100 Weathercloud service settings.
+
+        Returns a dictionary of settings with string data in unicode format.
+        """
+
+        # obtain the system parameters data via the API
+        response = self.station.get_weathercloud_params()
+        # determine the size of the system parameters data
+        raw_data_size = response[3]
+        # extract the actual system parameters data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        data_dict = dict()
+        # obtain the required data from the response decoding any bytestrings
+        id_size = data[0]
+        data_dict['id'] = data[1:1+id_size].decode()
+        key_size = data[1+id_size]
+        data_dict['key'] = data[2+id_size:2+id_size+key_size].decode()
+        return data_dict
+
+    @property
+    def wow(self):
+        """Obtain GW1000/GW1100 Weather Observations Website service parameters.
+
+        Obtain the GW1000/GW1100 Weather Observations Website service settings.
+
+        Returns a dictionary of settings with string data in unicode format.
+        """
+
+        # obtain the system parameters data via the API
+        response = self.station.get_wow_params()
+        # determine the size of the system parameters data
+        raw_data_size = response[3]
+        # extract the actual system parameters data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        data_dict = dict()
+        # obtain the required data from the response decoding any bytestrings
+        id_size = data[0]
+        data_dict['id'] = data[1:1+id_size].decode()
+        password_size = data[1+id_size]
+        data_dict['password'] = data[2+id_size:2+id_size+password_size].decode()
+        station_num_size = data[1+id_size]
+        data_dict['station_num'] = data[3+id_size+password_size:3+id_size+password_size+station_num_size].decode()
+        return data_dict
+
+    @property
+    def custom(self):
+        """Obtain GW1000/GW1100 custom server parameters.
+
+        Obtain the GW1000/GW1100 settings used for uploading data to a remote server.
+
+        Returns a dictionary of settings with string data in unicode format.
+        """
+
+        # obtain the system parameters data via the API
+        response = self.station.get_custom_params()
+        # determine the size of the system parameters data
+        raw_data_size = response[3]
+        # extract the actual system parameters data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        data_dict = dict()
+        # obtain the required data from the response decoding any bytestrings
+        index = 0
+        id_size = data[index]
+        index += 1
+        data_dict['server id'] = data[index:index+id_size].decode()
+        index += id_size
+        password_size = data[index]
+        index += 1
+        data_dict['password'] = data[index:index+password_size].decode()
+        index += password_size
+        server_size = data[index]
+        index += 1
+        data_dict['server'] = data[index:index+server_size].decode()
+        index += server_size
+        data_dict['port'] = struct.unpack(">h", data[index:index + 2])[0]
+        index += 2
+        data_dict['interval'] = struct.unpack(">h", data[index:index + 2])[0]
+        index += 2
+        data_dict['protocol type'] = ['Ecowitt', 'WU'][data[index]]
+        index += 1
+        data_dict['active'] = data[index] != 0
+        # the user path is obtained separately, get the user path and add it to our response
+        data_dict.update(self.usr_path)
+        return data_dict
+
+    @property
+    def usr_path(self):
+        """Obtain the GW1000/GW1100 user defined custom paths.
+
+        The GW1000/GW1100 allows definition of remote server customs paths for  use when uploading to a custom service using Ecowitt or Weather
+        Underground format. Different paths may be specified for each protocol.
+
+        Returns a dictionary with each path as a unicode text string.
+        """
+
+        # return the GW1000/GW1100 user defined custom path
+        response = self.station.get_usr_path()
+        # determine the size of the user path data
+        raw_data_size = response[3]
+        # extract the actual system parameters data
+        data = response[4:4 + raw_data_size - 3]
+        # initialise a dict to hold our final data
+        data_dict = dict()
+        index = 0
+        ecowitt_size = data[index]
+        index += 1
+        data_dict['ecowitt path'] = data[index:index+ecowitt_size].decode()
+        index += ecowitt_size
+        wu_size = data[index]
+        index += 1
+        data_dict['wu path'] = data[index:index+wu_size].decode()
+        return data_dict
+
+    @property
+    def mac_address(self):
+        """Obtain the MAC address of the GW1000/GW1100.
+
+        Returns the GW1000/GW1100 MAC address as a string of colon separated hex bytes.
+        """
+
+        # obtain the GW1000/GW1100 MAC address bytes
+        station_mac_b = self.station.get_mac_address()
+        # return the formatted string
+        return bytes_to_hex(station_mac_b[4:10], separator=":")
+
+    @property
+    def firmware_version(self):
+        """Obtain the GW1000/GW1100 firmware version string.
+
+        The firmware version can be obtained from the GW1000/GW1100 via an API call made by a Station object. The Station object takes care of making
+        the API call and validating the response. What is returned is the raw response as a bytestring. The raw response is unpacked into a sequence
+        of bytes. The length of the firmware string is in byte 4 and the firmware string starts at byte 5. The bytes comprising the firmware are
+        extracted and converted to unicode characters before being reassembled into a string containing the firmware version.
+        """
+
+        # get the firmware bytestring via the API
+        firmware_b = self.station.get_firmware_version()
+        # create a format string so the firmware string can be unpacked into its bytes
+        firmware_format = "B" * len(firmware_b)
+        # unpack the firmware response bytestring, we now have a tuple of integers representing each of the bytes
+        firmware_t = struct.unpack(firmware_format, firmware_b)
+        # get the length of the firmware string, it is in byte 4
+        str_length = firmware_t[4]
+        # the firmware string starts at byte 5 and is str_length bytes long, convert the sequence of bytes to unicode characters and assemble as a
+        # string and return the result
+        return "".join([chr(x) for x in firmware_t[5:5 + str_length]])
+        
+    @property
+    def sensors(self):
+        """Get the current Sensors object.
+
+        A Sensors object holds the address, id, battery state and signal level data sensors known to the GW1000/GW1100. The sensor id value can be
+        used to discriminate between connected sensors, connecting sensors and disabled sensor addresses.
+
+        Before using the Gw1000Collector's Sensors object it should be updated with recent sensor ID data via the GW1000/GW1100 API
+        """
+
+        # obtain current sensor id data via the API, we may get a GW1000IOError exception, if we do let it bubble up
+        response = self.station.get_sensor_id()
+        # if we made it here our response was validated by checksum re-initialise our sensors object with the sensor ID data we just obtained
+        self.sensors_obj.set_sensor_id_data(response)
+        # return our Sensors object
+        return self.sensors_obj
+        
+    @property
+    def battery_desc(self):
+    
+        return self.sensors.battery_description_data
+        
+    def firmware_update(self):
+        """Update the GW1000/GW1100 firmware."""
+
+        response = self.station.set_firmware_upgrade()
+        result = 'SUCCESS' if response[4] == 0 else 'FAIL'
+        return result
+        
+    def set_usr_path(self, custom_ecowitt_pathpath, custom_wu_path):
+        """Set the customized path.
+        
+        current is read to dertermine, wether writing new configuration is needed
+        """
+
+        current_usr_path = self.usr_path
+        _ecowitt_path = current_usr_path['ecowitt path']
+        _wu_path = current_usr_path['wu path']
+        # _wu_path += '?' if _wu_path.endswith('php') else _wu_path
+        
+        self.logger.debug(f"To be set customized path: Ecowitt: current='{_ecowitt_path}' vs. new='{custom_ecowitt_pathpath}' and WU: current='{_wu_path}' vs. new='{custom_wu_path}'")
+
+        if not (_ecowitt_path == custom_ecowitt_pathpath and _wu_path == custom_wu_path):
+            self.logger.debug(f"Need to set customized path: Ecowitt: current='{_ecowitt_path}' vs. new='{custom_ecowitt_pathpath}' and WU: current='{_wu_path}' vs. new='{custom_wu_path}'")
+            response = self.station.set_usr_path(custom_ecowitt_pathpath, custom_wu_path)
+            result = 'SUCCESS' if response[4] == 0 else 'FAIL'
+        else:
+            self.logger.debug(f"Customized Path settings already correct; No need to write it")
+            result = 'NO NEED'
+        return result
+
+    def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled):
+        """Set the customized parameters.
+        
+        current configuration is read to dertermine, wether writing new configuration is needed
+        """
+        
+        current_custom_params = self.custom
+        new_custom_params = {'server id': custom_server_id, 'password': custom_password, 'server': custom_host, 'port': custom_port, 'interval': custom_interval, 'protocol type': ['Ecowitt', 'WU'][int(custom_type)], 'active': bool(int(custom_enabled))}
+        
+        if new_custom_params.items() <= current_custom_params.items():
+            self.logger.debug(f"Customized Server settings already correct; No need to do it again")
+            result = 'NO NEED'
+        else:
+            self.logger.debug(f"Request to set customized server: current setting={current_custom_params}")
+            self.logger.debug(f"Request to set customized server:     new setting={new_custom_params}")
+            response = self.station.set_custom_params(custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled)
+            result = 'SUCCESS' if response[4] == 0 else 'FAIL'
+        return result
+
+    def reboot(self):
+        """Reboot the GW1000/GW1100."""
+
+        response = self.station.set_reboot()
+        result = 'SUCCESS' if response[4] == 0 else 'FAIL'
+        return result
+        
+    def reset(self):
+        """Reset the GW1000/GW1100."""
+
+        response = self.station.set_reset()
+        result = 'SUCCESS' if response[4] == 0 else 'FAIL'
+        return result
+
+    def startup(self):
+        """Start a thread that collects data from the GW1000/GW1100 API."""
+
+        try:
+            self.thread = Gw1000Collector.CollectorThread(self)
+            self.collect_data = True
+            self.thread.daemon = True
+            _name = 'plugins.' + self._plugin_instance.get_fullname() + '.Gw1000CollectorThread'
+            self.thread.setName(_name)
+            self.thread.start()
+        except threading.ThreadError:
+            self.logger.error("Unable to launch Gw1000Collector thread")
+            self.thread = None
+
+    def shutdown(self):
+        """Shut down the thread that collects data from the GW1000/GW1100 API.
+
+        Tell the thread to stop, then wait for it to finish.
+        """
+
+        # we only need do something if a thread exists
+        if self.thread:
+            # tell the thread to stop collecting data
+            self.collect_data = False
+            # terminate the thread
+            self.thread.join(10.0)
+            # log the outcome
+            if self.thread.is_alive():
+                self.logger.error("Unable to shut down Gw1000Collector thread")
+            else:
+                self.logger.info("Gw1000Collector thread has been terminated")
+        self.thread = None
+
+    class CollectorThread(threading.Thread):
+        """Class used to collect data via the GW1000/GW1100 API in a thread."""
+
+        def __init__(self, client):
+            # initialise our parent
+            threading.Thread.__init__(self)
+            # keep reference to the client we are supporting
+            self.client = client
+            self.name = 'gw1000-collector'
+
+        def run(self):
+            # rather than letting the thread silently fail if an exception occurs within the thread, wrap in a try..except so the exception
+            # can be caught and available exception information displayed
+            try:
+                # kick the collection off
+                self.client.collect_sensor_data()
+            except:
+                pass
+
+    class Station(object):
+        """Class to interact directly with the GW1000/GW1100 API.
+
+        A Station object knows how to:
+        1.  discover a GW1000/GW1100 via UDP broadcast
+        2.  send a command to the GW1000/GW1100 API
+        3.  receive a response from the GW1000/GW1100 API
+        4.  verify the response as valid
+
+        A Station object needs an IP address and port as well as a network broadcast address and port.
+        """
+
+        # GW1000/GW1100 API commands
+        commands = {
+            'CMD_WRITE_SSID': b'\x11',
+            'CMD_BROADCAST': b'\x12',
+            'CMD_READ_ECOWITT': b'\x1E',
+            'CMD_WRITE_ECOWITT': b'\x1F',
+            'CMD_READ_WUNDERGROUND': b'\x20',
+            'CMD_WRITE_WUNDERGROUND': b'\x21',
+            'CMD_READ_WOW': b'\x22',
+            'CMD_WRITE_WOW': b'\x23',
+            'CMD_READ_WEATHERCLOUD': b'\x24',
+            'CMD_WRITE_WEATHERCLOUD': b'\x25',
+            'CMD_READ_STATION_MAC': b'\x26',
+            'CMD_GW1000_LIVEDATA': b'\x27',
+            'CMD_GET_SOILHUMIAD': b'\x28',
+            'CMD_SET_SOILHUMIAD': b'\x29',
+            'CMD_READ_CUSTOMIZED': b'\x2A',
+            'CMD_WRITE_CUSTOMIZED': b'\x2B',
+            'CMD_GET_MulCH_OFFSET': b'\x2C',
+            'CMD_SET_MulCH_OFFSET': b'\x2D',
+            'CMD_GET_PM25_OFFSET': b'\x2E',
+            'CMD_SET_PM25_OFFSET': b'\x2F',
+            'CMD_READ_SSSS': b'\x30',
+            'CMD_WRITE_SSSS': b'\x31',
+            'CMD_READ_RAINDATA': b'\x34',
+            'CMD_WRITE_RAINDATA': b'\x35',
+            'CMD_READ_GAIN': b'\x36',
+            'CMD_WRITE_GAIN': b'\x37',
+            'CMD_READ_CALIBRATION': b'\x38',
+            'CMD_WRITE_CALIBRATION': b'\x39',
+            'CMD_READ_SENSOR_ID': b'\x3A',
+            'CMD_WRITE_SENSOR_ID': b'\x3B',
+            'CMD_READ_SENSOR_ID_NEW': b'\x3C',
+            'CMD_WRITE_REBOOT': b'\x40',
+            'CMD_WRITE_RESET': b'\x41',
+            'CMD_WRITE_UPDATE': b'\x43',
+            'CMD_READ_FIRMWARE_VERSION': b'\x50',
+            'CMD_READ_USR_PATH': b'\x51',
+            'CMD_WRITE_USR_PATH': b'\x52',
+            'CMD_GET_CO2_OFFSET': b'\x53',
+            'CMD_SET_CO2_OFFSET': b'\x54'
+        }
+        # header used in each API command and response packet
+        header = b'\xff\xff'
+        # known device models
+        known_models = ('GW1000', 'GW1100')
+
+        def __init__(self, ip_address=None, port=None,
+                     broadcast_address=None, broadcast_port=None,
+                     socket_timeout=None, broadcast_timeout=None,
+                     max_tries=default_max_tries,
+                     retry_wait=default_retry_wait, mac=None):
+
+            # init logger
+            self.logger = logging.getLogger(__name__)
+
+            # network broadcast address
+            self.broadcast_address = broadcast_address if broadcast_address is not None else default_broadcast_address
+            # network broadcast port
+            self.broadcast_port = broadcast_port if broadcast_port is not None else default_broadcast_port
+            self.socket_timeout = socket_timeout if socket_timeout is not None else default_socket_timeout
+            self.broadcast_timeout = broadcast_timeout if broadcast_timeout is not None else default_broadcast_timeout
+
+            # initialise flags to indicate if IP address or port were discovered
+            self.ip_discovered = ip_address is None
+            self.port_discovered = port is None
+            # if IP address or port was not specified (None) then attempt to
+            # discover the GW1000/GW1100 with a UDP broadcast
+            if ip_address is None or port is None:
+                for attempt in range(max_tries):
+                    try:
+                        # discover devices on the local network, the result is a list of dicts in IP address order with each dict
+                        # containing data for a unique discovered device
+                        device_list = self.discover()
+                    except socket.error as e:
+                        _msg = "Unable to detect device IP address and port: %s (%s)" % (e, type(e))
+                        self.logger.error(_msg)
+                        # signal that we have a critical error
+                        raise
+                    else:
+                        # did we find any GW1000/GW1100
+                        if len(device_list) > 0:
+                            # we have at least one, arbitrarily choose the first one
+                            # found as the one to use
+                            disc_ip = device_list[0]['ip_address']
+                            disc_port = device_list[0]['port']
+                            # log the fact as well as what we found
+                            gw1000_str = ', '.join([':'.join(['%s:%d' % (d['ip_address'], d['port'])]) for d in device_list])
+                            if len(device_list) == 1:
+                                stem = "%s was" % device_list[0]['model']
+                            else:
+                                stem = "Multiple devices were"
+                            self.logger.info("%s found at %s" % (stem, gw1000_str))
+                            ip_address = disc_ip if ip_address is None else ip_address
+                            port = disc_port if port is None else port
+                            break
+                        else:
+                            # did not discover any GW1000/GW1100 so log it
+                            self.logger.debug("Failed attempt %d to detect device IP address and/or port" % (attempt + 1,))
+                            # do we try again or raise an exception
+                            if attempt < max_tries - 1:
+                                # we still have at least one more try left so sleep and try again
+                                time.sleep(retry_wait)
+                            else:
+                                # we've used all our tries, log it and raise an exception
+                                _msg = "Failed to detect device IP address and/or port after %d attempts" % (attempt + 1,)
+                                self.logger.error(_msg)
+                                raise GW1000IOError(_msg)
+            # set our ip_address property but encode it first, it saves doing it repeatedly later
+            self.ip_address = ip_address.encode()
+            self.port = port
+            self.max_tries = max_tries
+            self.retry_wait = retry_wait
+            # start off logging failures
+            self.log_failures = True
+            # get my GW1000/GW1100 MAC address to use later if we have to rediscover
+            if mac is None:
+                self.mac = self.get_mac_address()
+            else:
+                self.mac = mac
+            # get my device model
+            try:
+                _firmware_b = self.get_firmware_version()
+            except GW1000IOError:
+                self.model = None
+            else:
+                _firmware_t = struct.unpack("B" * len(_firmware_b), _firmware_b)
+                _firmware_str = "".join([chr(x) for x in _firmware_t[5:5 + _firmware_t[4]]])
+                self.model = self.get_model_from_firmware(_firmware_str)
+
+        def discover(self):
+            """Discover any GW1000/GW1100 devices on the local network.
+
+            Send a UDP broadcast and check for replies. Decode each reply to obtain details of any devices on the local network. Create a dict
+            of details for each device including a derived model name. Construct a list of dicts with details of unique (MAC address)
+            devices that responded. When complete return the list of devices found.
+            """
+
+            # create a socket object so we can broadcast to the network via IPv4 UDP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # set socket datagram to broadcast
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            # set timeout
+            s.settimeout(self.broadcast_timeout)
+            # set TTL to 1 to so messages do not go past the local network segment
+            ttl = struct.pack('b', 1)
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
+            # construct the packet to broadcast
+            packet = self.build_cmd_packet('CMD_BROADCAST')
+            # self.logger.debug(f"Sending broadcast packet <{packet}> in Hex: '{bytes_to_hex(packet)}' to '{self.broadcast_address}:{self.broadcast_port}'")
+            # initialise a list for the results as multiple GW1000/GW1100 may respond
+            result_list = []
+            # send the Broadcast command
+            s.sendto(packet, (self.broadcast_address, self.broadcast_port))
+            # obtain any responses
+            while True:
+                try:
+                    response = s.recv(1024)
+                    # log the response if debug is high enough
+                    # self.logger.debug(f"Received broadcast response in HEX '{bytes_to_hex(response)}' and in Bytes {response}")
+                except socket.timeout:
+                    # if we timeout then we are done
+                    break
+                except socket.error:
+                    # raise any other socket error
+                    raise
+                else:
+                    # check the response is valid
+                    try:
+                        self.check_response(response, self.commands['CMD_BROADCAST'])
+                    except (InvalidChecksum, InvalidApiResponse) as e:
+                        # the response was not valid, log it and attempt again if we haven't had too many attempts already
+                        self.logger.debug("Invalid response to command '%s': %s" % ('CMD_BROADCAST', e))
+                    except Exception as e:
+                        # Some other error occurred in check_response(), perhaps the response was malformed. Log the stack trace but continue.
+                        self.logger.error("Unexpected exception occurred while checking response to command '%s': %s" % ('CMD_BROADCAST', e))
+                    else:
+                        # we have a valid response so decode the response and obtain a dict of device data
+                        device = self.decode_broadcast_response(response)
+                        # if we haven't seen this MAC before attempt to obtain and save the device model then add the device to our results list
+                        if not any((d['mac'] == device['mac']) for d in result_list):
+                            # determine the device model based on the device SSID and add the model to the device dict
+                            device['model'] = self.get_model_from_ssid(device.get('ssid'))
+                            # append the device to our list
+                            result_list.append(device)
+            # close our socket
+            s.close()
+            # now return our results
+            return result_list
+
+        @staticmethod
+        def decode_broadcast_response(raw_data):
+            """Decode a broadcast response and return the results as a dict.
+
+            A GW1000/GW1100 response to a CMD_BROADCAST API command consists of a number of control structures around a payload of a data. The API
+            response is structured as follows:
+                bytes 0-1 incl                  preamble, literal 0xFF 0xFF
+                byte 2                          literal value 0x12
+                bytes 3-4 incl                  payload size (big endian short integer)
+                bytes 5-5+payload size incl     data payload (details below)
+                byte 6+payload size             checksum
+
+            The data payload is structured as follows:
+                bytes 0-5 incl      GW1000/GW1100 MAC address
+                bytes 6-9 incl      GW1000/GW1100 IP address
+                bytes 10-11 incl    GW1000/GW1100 port number
+                bytes 11-           GW1000/GW1100 AP SSID
+
+            Note: The GW1000/GW1100 AP SSID for a given GW1000/GW1100 is fixed in size but this size can vary from device to device and across firmware versions.
+
+            There also seems to be a peculiarity in the CMD_BROADCAST response data payload whereby the first character of the GW1000/GW1100 AP
+            SSID is a non-printable ASCII character. The WS View app appears to ignore or not display this character nor does it appear to be used
+            elsewhere. Consequently this character is ignored.
+
+            raw_data:   a bytestring containing a validated (structure and checksum verified) raw data response to the CMD_BROADCAST API command
+
+            Returns a dict with decoded data keyed as follows:
+                'mac':          GW1000/GW1100 MAC address (string)
+                'ip_address':   GW1000/GW1100 IP address (string)
+                'port':         GW1000/GW1100 port number (integer)
+                'ssid':         GW1000/GW1100 AP SSID (string)
+            """
+
+            # obtain the response size, it's a big endian short (two byte) integer
+            resp_size = struct.unpack('>H', raw_data[3:5])[0]
+            # now extract the actual data payload
+            data = raw_data[5:resp_size + 2]
+            # initialise a dict to hold our result
+            data_dict = dict()
+            # extract and decode the MAC address
+            data_dict['mac'] = bytes_to_hex(data[0:6], separator=":")
+            # extract and decode the IP address
+            data_dict['ip_address'] = '%d.%d.%d.%d' % struct.unpack('>BBBB', data[6:10])
+            # extract and decode the port number
+            data_dict['port'] = struct.unpack('>H', data[10: 12])[0]
+            # get the SSID as a bytestring
+            ssid_b = data[13:]
+            # create a format string so the SSID string can be unpacked into its bytes, remember the length can vary
+            ssid_format = "B" * len(ssid_b)
+            # unpack the SSID bytestring, we now have a tuple of integers representing each of the bytes
+            ssid_t = struct.unpack(ssid_format, ssid_b)
+            # convert the sequence of bytes to unicode characters and assemble as a string and return the result
+            data_dict['ssid'] = "".join([chr(x) for x in ssid_t])
+            # return the result dict
+            return data_dict
+
+        def get_model_from_firmware(self, firmware_string):
+            """Determine the device model from the firmware version.
+
+            To date GW1000 and GW1100 firmware versions have included the device model in the firmware version string returned via the device
+            API. Whilst this is not guaranteed to be the case for future firmware releases, in the absence of any other direct means of
+            obtaining the device model number it is a useful means for determining the device model.
+
+            The check is a simple check to see if the model name is contained in the firmware version string returned by the device API.
+
+            If a known model is found in the firmware version string the model is returned as a string. None is returned if (1) the firmware
+            string is None or (2) a known model is not found in the firmware version string.
+            """
+
+            # do we have a firmware string
+            if firmware_string is not None:
+                # we have a firmware string so look for a known model in the string and return the result
+                return self.get_model(firmware_string)
+            else:
+                # for some reason we have no firmware string, so return None
+                return None
+
+        def get_model_from_ssid(self, ssid_string):
+            """Determine the device model from the device SSID.
+
+            To date the GW1000 and GW1100 device SSID has included the device
+            model in the SSID returned via the device API. Whilst this is not
+            guaranteed to be the case for future firmware releases, in the
+            absence of any other direct means of obtaining the device model
+            number it is a useful means for determining the device model. This
+            is particularly the case when using UDP broadcast to discover
+            devices on the local network.
+
+            Note that it may be possible to alter the SSID used by the device
+            in which case this method may not provide an accurate result.
+            However, as the device SSID is only used during initial device
+            configuration and since altering the device SSID is not a normal
+            part of the initial device configuration, this method of
+            determining the device model is considered adequate for use during
+            discovery by UDP broadcast.
+
+            The check is a simple check to see if the model name is contained
+            in the SSID returned by the device API.
+
+            If a known model is found in the SSID the model is returned as a
+            string. None is returned if (1) the SSID is None or (2) a known
+            model is not found in the SSID.
+            """
+
+            return self.get_model(ssid_string)
+
+        def get_model(self, t):
+            """Determine the device model from a string.
+
+            To date GW1000 and GW1100 firmware versions have included the
+            device model in the firmware version string or the device SSID.
+            Both the firmware version string and device SSID are available via
+            the device API so checking the firmware version string or SSID
+            provides a de facto method of determining the device model.
+
+            This method uses a simple check to see if a known model name is
+            contained in the string concerned.
+
+            Known model strings are contained in a tuple Station.known_models.
+
+            If a known model is found in the string the model is returned as a
+            string. None is returned if a known model is not found in the
+            string.
+            """
+
+            # do we have a string to check
+            if t is not None:
+                # we have a string, now do we have a know model in the string, if so return the model string
+                for model in self.known_models:
+                    if model in t.upper():
+                        return model
+                # we don't have a known model so return None
+                return None
+            else:
+                # we have no string so return None
+                return None
+
+        def get_livedata(self):
+            """Get GW1000/GW1100 live data.
+
+            Sends the command to obtain live data from the GW1000/GW1100 to the
+            API with retries. If the GW1000/GW1100 cannot be contacted
+            re-discovery is attempted. If rediscovery is successful the command
+            is tried again otherwise the lost contact timestamp is set and the
+            exception raised. Any code that calls this method should be
+            prepared to handle a GW1000IOError exception.
+            """
+
+            # send the API command to obtain live data from the GW1000/GW1100,
+            # be prepared to catch the exception raised if the GW1000/GW1100
+            # cannot be contacted
+            try:
+                # return the validated API response
+                return self.send_cmd_with_retries('CMD_GW1000_LIVEDATA')
+            except GW1000IOError:
+                # there was a problem contacting the GW1000/GW1100, it could be
+                # it has changed IP address so attempt to rediscover
+                if not self.rediscover():
+                    # we could not re-discover so raise the exception
+                    raise
+                else:
+                    # we did rediscover successfully so try again, if it fails
+                    # we get another GW1000IOError exception which will be raised
+                    return self.send_cmd_with_retries('CMD_GW1000_LIVEDATA')
+
+        def get_raindata(self):
+            """Get GW1000/GW1100 rain data.
+
+            Sends the command to obtain rain data from the GW10GW1000/GW110000
+            to the API with retries. If the GW1000/GW1100 cannot be contacted a
+            GW1000IOError will have been raised by send_cmd_with_retries()
+            which will be passed through by get_raindata(). Any code calling
+            get_raindata() should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_RAINDATA')
+
+        def get_system_params(self):
+            """Read GW1000/GW1100 system parameters.
+
+            Sends the command to obtain system parameters from the GW1000/GW1100 to the API with retries. If the GW1000/GW1100 cannot
+            be contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
+            get_system_params(). Any code calling get_system_params() should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_SSSS')
+
+        def get_ecowitt_net_params(self):
+            """Get GW1000/GW1100 Ecowitt.net parameters.
+
+            Sends the command to obtain the GW1000/GW1100 Ecowitt.net
+            parameters to the API with retries. If the GW1000/GW1100 cannot be
+            contacted a GW1000IOError will have been raised by
+            send_cmd_with_retries() which will be passed through by
+            get_ecowitt_net_params(). Any code calling get_ecowitt_net_params()
+            should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_ECOWITT')
+
+        def get_wunderground_params(self):
+            """Get GW1000 Weather Underground parameters.
+
+            Sends the command to obtain the GW1000/GW1100 Weather Underground
+            parameters to the API with retries. If the GW1000/GW1100 cannot be
+            contacted a GW1000IOError will have been raised by
+            send_cmd_with_retries() which will be passed through by
+            get_wunderground_params(). Any code calling
+            get_wunderground_params() should be prepared to handle this
+            exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_WUNDERGROUND')
+
+        def get_weathercloud_params(self):
+            """Get GW1000/GW1100 Weathercloud parameters.
+
+            Sends the command to obtain the GW1000/GW1100 Weathercloud
+            parameters to the API with retries. If the GW1000/GW1100 cannot be
+            contacted a GW1000IOError will have been raised by
+            send_cmd_with_retries() which will be passed through by
+            get_weathercloud_params(). Any code calling
+            get_weathercloud_params() should be prepared to handle this
+            exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_WEATHERCLOUD')
+
+        def get_wow_params(self):
+            """Get GW1000/GW1100 Weather Observations Website parameters.
+
+            Sends the command to obtain the GW1000/GW1100 Weather Observations
+            Website parameters to the API with retries. If the GW1000/GW1100
+            cannot be contacted a GW1000IOError will have been raised by
+            send_cmd_with_retries() which will be passed through by
+            get_wow_params(). Any code calling get_wow_params() should be
+            prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_WOW')
+
+        def get_custom_params(self):
+            """Get GW1000/GW1100 custom server parameters.
+
+            Sends the command to obtain the GW1000/GW1100 custom server parameters to the API with retries. If the GW1000/GW1100 cannot be
+            contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
+            get_custom_params(). Any code calling get_custom_params() should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_CUSTOMIZED')
+            
+        def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled):
+            """Set GW1000/GW1100 custom server parameters.
+
+            Sends the command to obtain the GW1000/GW1100 custom server parameters to the API with retries. If the GW1000/GW1100 cannot be
+            contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
+            get_custom_params(). Any code calling set_custom_params() should be prepared to handle this exception.
+            """
+
+            # create payload
+            payload = bytearray(chr(len(custom_server_id)) + custom_server_id + chr(len(custom_password)) + custom_password + chr(len(custom_host)) + custom_host + chr(int(int(custom_port)/256)) + chr(int(int(custom_port) % 256)) + chr(int(int(custom_interval)/256)) + chr(int(int(custom_interval) % 256)) + chr(int(custom_type)) + chr(int(custom_enabled)), 'latin-1')
+            self.logger.debug(f"Customized Server: payload={payload}")
+            return self.send_cmd_with_retries('CMD_WRITE_CUSTOMIZED', payload)
+
+        def get_usr_path(self):
+            """Get GW1000/GW1100 user defined custom path.
+
+            Sends the command to obtain the GW1000/GW1100 user defined custom path to the API with retries. If the GW1000/GW1100 cannot be
+            contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
+            get_usr_path(). Any code calling get_usr_path() should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_USR_PATH')
+            
+        def set_usr_path(self, custom_ecowitt_pathpath, custom_wu_path):
+            """Get GW1000/GW1100 user defined custom path.
+
+            Sends the command to set the GW1000/GW1100 user defined custom path to the API with retries. If the GW1000/GW1100 cannot be
+            contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
+            set_usr_path(). Any code calling set_usr_path() should be prepared to handle this exception.
+            """
+            self.logger.debug(f"set_usr_path: set user path called with custom_ecowitt_pathpath={custom_ecowitt_pathpath} and custom_wu_path={custom_wu_path}")
+            
+            # create payload
+            payload = bytearray()
+            payload.extend(int_to_bytes(len(custom_ecowitt_pathpath), 1))
+            payload.extend(str.encode(custom_ecowitt_pathpath))
+            payload.extend(int_to_bytes(len(custom_wu_path), 1))
+            payload.extend(str.encode(custom_wu_path))
+            self.logger.debug(f"Customized Path: payload={payload}")
+            return self.send_cmd_with_retries('CMD_WRITE_USR_PATH', payload)
+
+        def get_mac_address(self):
+            """Get GW1000/GW1100 MAC address.
+
+            Sends the command to obtain the GW1000/GW1100 MAC address to the
+            API with retries. If the GW1000/GW1100 cannot be contacted a
+            GW1000IOError will have been raised by send_cmd_with_retries()
+            which will be passed through by get_mac_address(). Any code calling
+            get_mac_address() should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_STATION_MAC')
+
+        def get_firmware_version(self):
+            """Get GW1000/GW1100 firmware version.
+
+            Sends the command to obtain GW1000/GW1100 firmware version to the API with retries. If the GW1000/GW1100 cannot be contacted a
+            GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by get_firmware_version(). Any code
+            calling get_firmware_version() should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_FIRMWARE_VERSION')
+            
+        def set_firmware_upgrade(self):
+            """Set GW1000/GW1100 firmware upgrade.
+
+            Sends the command to upgrade GW1000/GW1100 firmware version to the API with retries. If the GW1000/GW1100 cannot be contacted a
+            GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by get_firmware_version(). Any code
+            calling get_firmware_version() should be prepared to handle this exception.
+            """
+            
+            self.logger.debug(f"set_firmware_upgrade: Firmware update called for {self.ip_address.decode()}:{self.port}")
+            # create payload
+            payload = bytearray()
+            payload.extend(self.ip_address)
+            payload.extend(int_to_bytes(self.port, 2))
+            self.logger.debug(f"set_firmware_upgrade: payload={payload}")
+            return self.send_cmd_with_retries('CMD_WRITE_UPDATE', payload)
+
+        def get_sensor_id(self):
+            """Get GW1000/GW1100 sensor ID data.
+
+            Sends the command to obtain sensor ID data from the GW1000/GW1100
+            to the API with retries. If the GW1000/GW1100 cannot be contacted
+            re-discovery is attempted. If rediscovery is successful the command
+            is tried again otherwise the lost contact timestamp is set and the
+            exception raised. Any code that calls this method should be
+            prepared to handle a GW1000IOError exception.
+            """
+
+            # send the API command to obtain sensor ID data from the
+            # GW1000/GW1100, be prepared to catch the exception raised if the
+            # GW1000/GW1100 cannot be contacted
+            try:
+                return self.send_cmd_with_retries('CMD_READ_SENSOR_ID_NEW')
+            except GW1000IOError:
+                # there was a problem contacting the GW1000/GW1100, it could be
+                # it has changed IP address so attempt to rediscover
+                if not self.rediscover():
+                    # we could not re-discover so raise the exception
+                    raise
+                else:
+                    # we did rediscover successfully so try again, if it fails
+                    # we get another GW1000IOError exception which will be
+                    # raised
+                    return self.send_cmd_with_retries('CMD_READ_SENSOR_ID_NEW')
+
+        def get_mulch_offset(self):
+            """Get multi-channel temperature and humidity offset data.
+
+            Sends the command to obtain the multi-channel temperature and
+            humidity offset data to the API with retries. If the GW1000/GW1100
+            cannot be contacted a GW1000IOError will have been raised by
+            send_cmd_with_retries() which will be passed through by
+            get_mulch_offset(). Any code calling get_mulch_offset() should be
+            prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_GET_MulCH_OFFSET')
+
+        def get_pm25_offset(self):
+            """Get PM2.5 offset data.
+
+            Sends the command to obtain the PM2.5 sensor offset data to the API
+            with retries. If the GW1000/GW1100 cannot be contacted a
+            GW1000IOError will have been raised by send_cmd_with_retries()
+            which will be passed through by get_pm25_offset(). Any code
+            calling get_pm25_offset() should be prepared to handle this
+            exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_GET_PM25_OFFSET')
+
+        def get_calibration_coefficient(self):
+            """Get calibration coefficient data.
+
+            Sends the command to obtain the calibration coefficient data to the API with retries. If the GW1000/GW1100 cannot be contacted a
+            GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by get_calibration_coefficient(). Any
+            code calling get_calibration_coefficient() should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_GAIN')
+
+        def get_soil_calibration(self):
+            """Get soil moisture sensor calibration data.
+
+            Sends the command to obtain the soil moisture sensor calibration data to the API with retries. If the GW1000/GW1100 cannot be
+            contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
+            get_soil_calibration(). Any code calling get_soil_calibration() should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_GET_SOILHUMIAD')
+
+        def get_offset_calibration(self):
+            """Get offset calibration data.
+
+            Sends the command to obtain the offset calibration data to the API
+            with retries. If the GW1000/GW1100 cannot be contacted a
+            GW1000IOError will have been raised by send_cmd_with_retries()
+            which will be passed through by get_offset_calibration(). Any code
+            calling get_offset_calibration() should be prepared to handle this
+            exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_READ_CALIBRATION')
+
+        def get_co2_offset(self):
+            """Get WH45 CO2, PM10 and PM2.5 offset data.
+
+            Sends the command to obtain the WH45 CO2, PM10 and PM2.5 sensor
+            offset data to the API with retries. If the GW1000/GW1100 cannot be
+            contacted a GW1000IOError will have been raised by
+            send_cmd_with_retries() which will be passed through by
+            get_offset_calibration(). Any code calling get_offset_calibration()
+            should be prepared to handle this exception.
+            """
+
+            return self.send_cmd_with_retries('CMD_GET_CO2_OFFSET')
+
+        def set_reboot(self):
+            """Reboot GW1000/GW1100 .
+
+            Sends the command to reboot GW1000/GW1100 to the API with retries. If the GW1000/GW1100 cannot be contacted a
+            GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by set_reboot(). Any code
+            calling set_reboot() should be prepared to handle this exception.
+            """
+            
+            self.logger.debug(f"set_reboot: Reboot called for {self.ip_address.decode()}:{self.port}")
+            return self.send_cmd_with_retries('CMD_WRITE_REBOOT')
+            
+        def set_reset(self):
+            """Reset GW1000/GW1100 .
+
+            Sends the command to reboot GW1000/GW1100 to the API with retries. If the GW1000/GW1100 cannot be contacted a
+            GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by set_reboot(). Any code
+            calling set_reboot() should be prepared to handle this exception.
+            """
+            
+            self.logger.debug(f"set_reboot: Reset called for {self.ip_address.decode()}:{self.port}")
+            return self.send_cmd_with_retries('CMD_WRITE_RESET')
+
+        def send_cmd_with_retries(self, cmd, payload=b''):
+            """Send a command to the GW1000/GW1100 API with retries and return the response.
+
+            Send a command to the GW1000/GW1100 and obtain the response. If the the response is valid return the response. If the response is
+            invalid an appropriate exception is raised and the command resent up to self.max_tries times after which the value None is returned.
+
+            cmd: A string containing a valid GW1000/GW1100 API command, eg: 'CMD_READ_FIRMWARE_VERSION'
+            payload: The data to be sent with the API command, byte string.
+
+            Returns the response as a byte string or the value None.
+            """
+
+            # construct the message packet
+            packet = self.build_cmd_packet(cmd, payload)
+            # attempt to send up to 'self.max_tries' times
+            for attempt in range(self.max_tries):
+                response = None
+                # wrap in  try..except so we can catch any errors
+                try:
+                    response = self.send_cmd(packet)
+                except socket.timeout as e:
+                    # a socket timeout occurred, log it
+                    if self.log_failures:
+                        self.logger.debug("Failed to obtain response to attempt %d to send command '%s': %s" % (attempt + 1, cmd, e))
+                except Exception as e:
+                    # an exception was encountered, log it
+                    if self.log_failures:
+                        self.logger.debug("Failed attempt %d to send command '%s': %s" % (attempt + 1, cmd, e))
+                else:
+                    # check the response is valid
+                    # self.logger.debug(f"send_cmd_with_retries: cmd={cmd}, self.commands[cmd]={self.commands[cmd]}, response={response}")
+                    try:
+                        self.check_response(response, self.commands[cmd])
+                    except (InvalidChecksum, InvalidApiResponse) as e:
+                        # the response was not valid, log it and attempt again if we haven't had too many attempts already
+                        self.logger.debug("Invalid response to attempt %d to send command '%s': %s" % (attempt + 1, cmd, e))
+                    except Exception as e:
+                        # Some other error occurred in check_response(), perhaps the response was malformed. Log  but continue.
+                        self.logger.error("Unexpected exception occurred while checking response to attempt %d to send command '%s': %s" % (attempt + 1, cmd, e))
+                    else:
+                        # our response is valid so return it
+                        return response
+                # sleep before our next attempt, but skip the sleep if we have just made our last attempt
+                if attempt < self.max_tries - 1:
+                    time.sleep(self.retry_wait)
+            # if we made it here we failed after self.max_tries attempts first of all log it
+            _msg = ("Failed to obtain response to command '%s' after %d attempts" % (cmd, attempt + 1))
+            if response is not None or self.log_failures:
+                self.logger.error(_msg)
+            # finally raise a GW1000IOError exception
+            raise GW1000IOError(_msg)
+
+        def build_cmd_packet(self, cmd, payload=b''):
+            """Construct an API command packet.
+
+            A GW1000/GW1100 API command packet looks like:
+
+            fixed header, command, size, data 1, data 2...data n, checksum
+
+            where:
+                fixed header is 2 bytes = 0xFFFF
+                command is a 1 byte API command code
+                size is 1 byte being the number of bytes of command to checksum
+                data 1, data 2 ... data n is the data being transmitted and is n bytes long
+                checksum is a byte checksum of command + size + data 1 + data 2 ... + data n
+
+            cmd:     A string containing a valid GW1000/GW1100 API command, eg: 'CMD_READ_FIRMWARE_VERSION'
+            payload: The data to be sent with the API command, byte string.
+
+            Returns an API command packet as a bytestring.
+            """
+
+            # calculate size
+            try:
+                size = len(self.commands[cmd]) + 1 + len(payload) + 1
+            except KeyError:
+                raise UnknownCommand("Unknown API command '%s'" % (cmd,))
+            # construct the portion of the message for which the checksum is calculated
+            body = b''.join([self.commands[cmd], struct.pack('B', size), payload])
+            # calculate the checksum
+            checksum = self.calc_checksum(body)
+            # return the constructed message packet
+            return b''.join([self.header, body, struct.pack('B', checksum)])
+
+        def send_cmd(self, packet):
+            """Send a command to the GW1000/GW1100 API and return the response.
+
+            Send a command to the GW1000/GW1100 and return the response. Socket
+            related errors are trapped and raised, code calling send_cmd should
+            be prepared to handle such exceptions.
+
+            cmd: A valid GW1000/GW1100 API command
+
+            Returns the response as a byte string.
+            """
+
+            # create a socket object for sending commands and broadcasting to the network, would normally do this using a with statement but
+            # with statement support for socket.socket did not appear until python 3.
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # set the socket timeout
+            s.settimeout(self.socket_timeout)
+            # wrap our connect in a try..except so we can catch any socket related exceptions
+            try:
+                # connect to the device
+                s.connect((self.ip_address, self.port))
+                # if required log the packet we are sending
+                # self.logger.debug(f"Sending packet <{packet}> in Hex: '{bytes_to_hex(packet)}' to '{self.ip_address.decode()}:{self.port}'")
+                # send the packet
+                s.sendall(packet)
+                # obtain the response, we assume here the response will be less than 1024 characters
+                response = s.recv(1024)
+                # if required log the response
+                # self.logger.debug(f"Received response in HEX '{bytes_to_hex(response)}' and in Bytes {response}")
+                # return the response
+                return response
+            except socket.error:
+                # we received a socket error, raise it
+                raise
+            finally:
+                # make sure we close our socket
+                s.close()
+
+        def check_response(self, response, cmd_code):
+            """Check the validity of a GW1000/GW1100 API response.
+
+            Checks the validity of a GW1000/GW1100 API response. Two checks are performed:
+                1.  the third byte of the response is the same as the command code used in the API call
+                2.  the calculated checksum of the data in the response matches the checksum byte in the response
+
+            If any check fails an appropriate exception is raised, if all checks pass the method exits without raising an exception.
+
+            response: Response received from the GW1000/GW1100 API call. Bytestring.
+            cmd_code: Command code send to GW1000/GW1100 API. Byte string of length one.
+            """
+
+            # first check that the 3rd byte of the response is the command code that was issued
+            # self.logger.debug(f"CMD out of response is {(response[2])} vs. CMD was {byte_to_int(cmd_code)}")
+            if response[2] == byte_to_int(cmd_code):
+                # now check the checksum
+                calc_checksum = self.calc_checksum(response[2:-1])
+                resp_checksum = response[-1]
+                # self.logger.debug(f"check_response: checksum extracted from response={resp_checksum} vs. checksum calculated from response={calc_checksum}")
+                if calc_checksum == resp_checksum:
+                    # checksum check passed, response is deemed valid
+                    return
+                else:
+                    # checksum check failed, raise an InvalidChecksum exception
+                    _msg = "Invalid checksum in API response. Expected '%s' (0x%s), received '%s' (0x%s)." % (calc_checksum, "{:02X}".format(calc_checksum), resp_checksum, "{:02X}".format(resp_checksum))
+                    raise InvalidChecksum(_msg)
+            else:
+                # command code check failed, raise an InvalidApiResponse exception
+                exp_int = byte_to_int(cmd_code)
+                resp_int = response[2]
+                _msg = "Invalid command code in API response. Expected '%s' (0x%s), received '%s' (0x%s)." % (exp_int, "{:02X}".format(exp_int), resp_int, "{:02X}".format(resp_int))
+                raise InvalidApiResponse(_msg)
+
+        @staticmethod
+        def calc_checksum(data):
+            """Calculate the checksum for a GW1000/GW1100 API call or response.
+
+            The checksum used on the GW1000/GW1100 responses is simply the LSB of the sum of the bytes.
+
+            data: The data on which the checksum is to be calculated. Byte string.
+
+            Returns the checksum as an integer.
+            """
+
+            checksum = sum(data)
+            return checksum - int(checksum / 256) * 256
+
+        def rediscover(self):
+            """Attempt to rediscover a lost GW1000/GW1100.
+
+            Use UDP broadcast to discover a GW1000/GW1100 that may have changed
+            to a new IP. We should not be re-discovering a GW1000/GW1100 for
+            which the user specified an IP, only for those for which we
+            discovered the IP address on startup. If a GW1000/GW1100 is
+            discovered then change my ip_address and port properties as
+            necessary to use the device in future. If the rediscover was
+            successful return True otherwise return False.
+            """
+
+            # we will only rediscover if we first discovered
+            if self.ip_discovered:
+                # log that we are attempting re-discovery
+                if self.log_failures:
+                    self.logger.info("Attempting to re-discover %s..." % self.model)
+                # attempt to discover up to self.max_tries times
+                for attempt in range(self.max_tries):
+                    # sleep before our attempt, but not if its the first one
+                    if attempt > 0:
+                        time.sleep(self.retry_wait)
+                    try:
+                        # discover devices on the local network, the result is
+                        # a list of dicts in IP address order with each dict
+                        # containing data for a unique discovered device
+                        device_list = self.discover()
+                    except socket.error as e:
+                        # log the error
+                        self.logger.debug("Failed attempt %d to detect any devices: %s (%s)" % (attempt + 1, e, type(e)))
+                    else:
+                        # did we find any GW1000/GW1100
+                        if len(device_list) > 0:
+                            # we have at least one, log the fact as well as what we found
+                            gw1000_str = ', '.join([':'.join(['%s:%d' % b]) for b in device_list])
+                            if len(device_list) == 1:
+                                stem = "%s was" % device_list[0]['model']
+                            else:
+                                stem = "Multiple devices were"
+                            self.logger.info("%s found at %s" % (stem, gw1000_str))
+                            # keep our current IP address and port in case we
+                            # don't find a match as we will change our
+                            # ip_address and port properties in order to get
+                            # the MAC for that IP address and port
+                            present_ip = self.ip_address
+                            present_port = self.port
+                            # iterate over each candidate checking their MAC
+                            # address against my mac property. This way we know
+                            # we are connecting to the GW1000/GW1100 we were
+                            # previously using
+                            for _ip, _port in device_list:
+                                # do the MACs match, if so we have our old
+                                # device and we can exit the loop
+                                if self.mac == self.get_mac_address():
+                                    self.ip_address = _ip.encode()
+                                    self.port = _port
+                                    break
+                            else:
+                                # exhausted the device_list without a match,
+                                # revert to our old IP address and port
+                                self.ip_address = present_ip
+                                self.port = present_port
+                                # and continue the outer loop if we have any
+                                # attempts left
+                                continue
+                            # log the new IP address and port
+                            self.logger.info("%s at address %s:%d will be used" % (self.model, self.ip_address.decode(), self.port))
+                            # return True indicating the re-discovery was successful
+                            return True
+                        else:
+                            # did not discover any GW1000/GW1100 so log it
+                            if self.log_failures:
+                                self.logger.debug("Failed attempt %d to detect any devices" % (attempt + 1,))
+                else:
+                    # we exhausted our attempts at re-discovery so log it
+                    if self.log_failures:
+                        self.logger.info("Failed to detect original %s after %d attempts" % (self.model, attempt + 1))
+            else:
+                # an IP address was specified so we cannot go searching, log it
+                if self.log_failures:
+                    self.logger.debug("IP address specified in 'weewx.conf', re-discovery was not attempted")
+            # if we made it here re-discovery was unsuccessful so return False
+            return False
+
+    class Parser(object):
+        """Class to parse GW1000/GW1100 sensor data."""
+
+        # TODO. Would be good to get rid of this too, but it is presently used elsewhere
+        multi_batt = {'wh40': {'mask': 1 << 4},
+                      'wh26': {'mask': 1 << 5},
+                      'wh25': {'mask': 1 << 6},
+                      'wh65': {'mask': 1 << 7}
+                      }
+        # Dictionary keyed by GW1000/GW1100 response element containing various parameters for each response 'field'. Dictionary tuple format is
+        # (decode function name, size of data in bytes, GW1000/GW1100 field name)
+        response_struct = {
+            b'\x01': ('decode_temp', 2, 'intemp'),
+            b'\x02': ('decode_temp', 2, 'outtemp'),
+            b'\x03': ('decode_temp', 2, 'dewpoint'),
+            b'\x04': ('decode_temp', 2, 'windchill'),
+            b'\x05': ('decode_temp', 2, 'heatindex'),
+            b'\x06': ('decode_humid', 1, 'inhumid'),
+            b'\x07': ('decode_humid', 1, 'outhumid'),
+            b'\x08': ('decode_press', 2, 'absbarometer'),
+            b'\x09': ('decode_press', 2, 'relbarometer'),
+            b'\x0A': ('decode_dir', 2, 'winddir'),
+            b'\x0B': ('decode_speed', 2, 'windspeed'),
+            b'\x0C': ('decode_speed', 2, 'gustspeed'),
+            b'\x0D': ('decode_rain', 2, 'rainevent'),
+            b'\x0E': ('decode_rainrate', 2, 'rainrate'),
+            b'\x0F': ('decode_rain', 2, 'rainhour'),
+            b'\x10': ('decode_rain', 2, 'rainday'),
+            b'\x11': ('decode_rain', 2, 'rainweek'),
+            b'\x12': ('decode_big_rain', 4, 'rainmonth'),
+            b'\x13': ('decode_big_rain', 4, 'rainyear'),
+            b'\x14': ('decode_big_rain', 4, 'raintotals'),
+            b'\x15': ('decode_light', 4, 'light'),
+            b'\x16': ('decode_uv', 2, 'solarradiation'),
+            b'\x17': ('decode_uvi', 1, 'uvi'),
+            b'\x18': ('decode_datetime', 6, 'datetime'),
+            b'\x19': ('decode_speed', 2, 'daymaxwind'),
+            b'\x1A': ('decode_temp', 2, 'temp1'),
+            b'\x1B': ('decode_temp', 2, 'temp2'),
+            b'\x1C': ('decode_temp', 2, 'temp3'),
+            b'\x1D': ('decode_temp', 2, 'temp4'),
+            b'\x1E': ('decode_temp', 2, 'temp5'),
+            b'\x1F': ('decode_temp', 2, 'temp6'),
+            b'\x20': ('decode_temp', 2, 'temp7'),
+            b'\x21': ('decode_temp', 2, 'temp8'),
+            b'\x22': ('decode_humid', 1, 'humid1'),
+            b'\x23': ('decode_humid', 1, 'humid2'),
+            b'\x24': ('decode_humid', 1, 'humid3'),
+            b'\x25': ('decode_humid', 1, 'humid4'),
+            b'\x26': ('decode_humid', 1, 'humid5'),
+            b'\x27': ('decode_humid', 1, 'humid6'),
+            b'\x28': ('decode_humid', 1, 'humid7'),
+            b'\x29': ('decode_humid', 1, 'humid8'),
+            b'\x2A': ('decode_pm25', 2, 'pm251'),
+            b'\x2B': ('decode_temp', 2, 'soiltemp1'),
+            b'\x2C': ('decode_moist', 1, 'soilmoist1'),
+            b'\x2D': ('decode_temp', 2, 'soiltemp2'),
+            b'\x2E': ('decode_moist', 1, 'soilmoist2'),
+            b'\x2F': ('decode_temp', 2, 'soiltemp3'),
+            b'\x30': ('decode_moist', 1, 'soilmoist3'),
+            b'\x31': ('decode_temp', 2, 'soiltemp4'),
+            b'\x32': ('decode_moist', 1, 'soilmoist4'),
+            b'\x33': ('decode_temp', 2, 'soiltemp5'),
+            b'\x34': ('decode_moist', 1, 'soilmoist5'),
+            b'\x35': ('decode_temp', 2, 'soiltemp6'),
+            b'\x36': ('decode_moist', 1, 'soilmoist6'),
+            b'\x37': ('decode_temp', 2, 'soiltemp7'),
+            b'\x38': ('decode_moist', 1, 'soilmoist7'),
+            b'\x39': ('decode_temp', 2, 'soiltemp8'),
+            b'\x3A': ('decode_moist', 1, 'soilmoist8'),
+            b'\x3B': ('decode_temp', 2, 'soiltemp9'),
+            b'\x3C': ('decode_moist', 1, 'soilmoist9'),
+            b'\x3D': ('decode_temp', 2, 'soiltemp10'),
+            b'\x3E': ('decode_moist', 1, 'soilmoist10'),
+            b'\x3F': ('decode_temp', 2, 'soiltemp11'),
+            b'\x40': ('decode_moist', 1, 'soilmoist11'),
+            b'\x41': ('decode_temp', 2, 'soiltemp12'),
+            b'\x42': ('decode_moist', 1, 'soilmoist12'),
+            b'\x43': ('decode_temp', 2, 'soiltemp13'),
+            b'\x44': ('decode_moist', 1, 'soilmoist13'),
+            b'\x45': ('decode_temp', 2, 'soiltemp14'),
+            b'\x46': ('decode_moist', 1, 'soilmoist14'),
+            b'\x47': ('decode_temp', 2, 'soiltemp15'),
+            b'\x48': ('decode_moist', 1, 'soilmoist15'),
+            b'\x49': ('decode_temp', 2, 'soiltemp16'),
+            b'\x4A': ('decode_moist', 1, 'soilmoist16'),
+            b'\x4C': ('decode_batt', 16, 'lowbatt'),
+            b'\x4D': ('decode_pm25', 2, 'pm251_24h_avg'),
+            b'\x4E': ('decode_pm25', 2, 'pm252_24h_avg'),
+            b'\x4F': ('decode_pm25', 2, 'pm253_24h_avg'),
+            b'\x50': ('decode_pm25', 2, 'pm254_24h_avg'),
+            b'\x51': ('decode_pm25', 2, 'pm252'),
+            b'\x52': ('decode_pm25', 2, 'pm253'),
+            b'\x53': ('decode_pm25', 2, 'pm254'),
+            b'\x58': ('decode_leak', 1, 'leak1'),
+            b'\x59': ('decode_leak', 1, 'leak2'),
+            b'\x5A': ('decode_leak', 1, 'leak3'),
+            b'\x5B': ('decode_leak', 1, 'leak4'),
+            b'\x60': ('decode_distance', 1, 'lightningdist'),
+            b'\x61': ('decode_utc', 4, 'lightningdettime'),
+            b'\x62': ('decode_count', 4, 'lightningcount'),
+            # WH34 battery data is not obtained from live data rather it is obtained from sensor ID data
+            b'\x63': ('decode_wh34', 3, 'temp9'),
+            b'\x64': ('decode_wh34', 3, 'temp10'),
+            b'\x65': ('decode_wh34', 3, 'temp11'),
+            b'\x66': ('decode_wh34', 3, 'temp12'),
+            b'\x67': ('decode_wh34', 3, 'temp13'),
+            b'\x68': ('decode_wh34', 3, 'temp14'),
+            b'\x69': ('decode_wh34', 3, 'temp15'),
+            b'\x6A': ('decode_wh34', 3, 'temp16'),
+            # WH45 battery data is not obtained from live data rather it is obtained from sensor ID data
+            b'\x70': ('decode_wh45', 16, ('temp17', 'humid17', 'pm10',
+                                          'pm10_24h_avg', 'pm255', 'pm255_24h_avg',
+                                          'co2', 'co2_24h_avg')),
+            b'\x71': (None, None, None),
+            b'\x72': ('decode_wet', 1, 'leafwet1'),
+            b'\x73': ('decode_wet', 1, 'leafwet2'),
+            b'\x74': ('decode_wet', 1, 'leafwet3'),
+            b'\x75': ('decode_wet', 1, 'leafwet4'),
+            b'\x76': ('decode_wet', 1, 'leafwet5'),
+            b'\x77': ('decode_wet', 1, 'leafwet6'),
+            b'\x78': ('decode_wet', 1, 'leafwet7'),
+            b'\x79': ('decode_wet', 1, 'leafwet8')
+        }
+        # tuple of field codes for rain related fields in the GW1000/GW1100 live data so we can isolate these fields
+        rain_field_codes = (b'\x0D', b'\x0E', b'\x0F', b'\x10', b'\x11', b'\x12', b'\x13', b'\x14')
+        # tuple of field codes for wind related fields in the GW1000/GW1100 live data so we can isolate these fields
+        wind_field_codes = (b'\x0A', b'\x0B', b'\x0C', b'\x19')
+
+        def __init__(self, is_wh24=False, debug_rain=False, debug_wind=False):
+
+            # init logger
+            self.logger = logging.getLogger(__name__)
+
+            # Tell our battery state decoding whether we have a WH24 or a WH65 (they both share the same battery state bit). By default we are
+            # coded to use a WH65. But is there a WH24 connected?
+            if is_wh24:
+                # We have a WH24. On startup we are set for a WH65 but if it is a restart we will likely already be setup for a WH24. We need
+                # to handle both cases.
+                if 'wh24' not in self.multi_batt.keys():
+                    # we don't have a 'wh24' entry so create one, it's the same as the 'wh65' entry
+                    self.multi_batt['wh24'] = self.multi_batt['wh65']
+                    # and pop off the no longer needed WH65 decode dict entry
+                    self.multi_batt.pop('wh65')
+            else:
+                # We don't have a WH24 but a WH65. On startup we are set for a WH65 but if it is a restart it is possible we have already
+                # been setup for a WH24. We need to handle both cases.
+                if 'wh65' not in self.multi_batt.keys():
+                    # we don't have a 'wh65' entry so create one, it's the same as the 'wh24' entry
+                    self.multi_batt['wh65'] = self.multi_batt['wh24']
+                    # and pop off the no longer needed WH65 decode dict entry
+                    self.multi_batt.pop('wh24')
+            # get debug_rain and debug_wind
+            self.debug_rain = debug_rain
+            self.debug_wind = debug_wind
+
+        def parse(self, raw_data, timestamp=None):
+            """Parse raw sensor data.
+
+            Parse the raw sensor data and create a dict of sensor observations/status data. Add a timestamp to the data if one does not already exist.
+
+            Returns a dict of observations/status data."""
+
+            # obtain the response size, it's a big endian short (two byte) integer
+            resp_size = struct.unpack(">H", raw_data[3:5])[0]
+            # obtain the response
+            resp = raw_data[5:5 + resp_size - 4]
+            # log the actual sensor data as a sequence of bytes in hex
+            self.logger.debug("sensor data is '%s'" % (bytes_to_hex(resp),))
+            data = {}
+            if len(resp) > 0:
+                index = 0
+                while index < len(resp) - 1:
+                    try:
+                        decode_str, field_size, field = self.response_struct[resp[index:index + 1]]
+                        # self.logger.debug(f"resp[index:index + 1]={resp[index:index + 1]}")
+                    except KeyError:
+                        # We struck a field 'address' we do not know how to process. Ideally we would like to skip and move onto
+                        # the next field (if there is one) but the problem is we do not know how long the data of this unknown
+                        # field is. We could go on guessing the field data size by looking for the next field address but we won't
+                        # know if we do find a valid field address is it a field address or data from this field? Of course this
+                        # could also be corrupt data (unlikely though as it was decoded using a checksum). So all we can really do is
+                        # accept the data we have so far, log the issue and ignore the remaining data.
+                        self.logger.error("Unknown field address '%s' detected. Remaining sensor data ignored." % (bytes_to_hex(resp[index:index + 1]),))
+                        break
+                    else:
+                        _field_data = getattr(self, decode_str)(resp[index + 1:index + 1 + field_size], field)
+                        if _field_data is not None:
+                            data.update(_field_data)
+                            if self.debug_rain and resp[index:index + 1] in self.rain_field_codes:
+                                self.logger.info("parse: raw rain data: field:%s and data:%s decoded as %s=%s" % (bytes_to_hex(resp[index:index + 1]),
+                                                                                                                  bytes_to_hex(resp[index + 1:index + 1 + field_size]),
+                                                                                                                  field,
+                                                                                                                  _field_data[field]))
+                            if self.debug_wind and resp[index:index + 1] in self.wind_field_codes:
+                                self.logger.info("parse: raw wind data: field:%s and data:%s decoded as %s=%s" % (resp[index:index + 1],
+                                                                                                                  bytes_to_hex(resp[index + 1:index + 1 + field_size]),
+                                                                                                                  field,
+                                                                                                                  _field_data[field]))
+                        index += field_size + 1
+            # if it does not exist add a datetime field with the current epoch timestamp
+            if 'datetime' not in data or 'datetime' in data and data['datetime'] is None:
+                self.logger.debug(f"parse: datetime not in data")
+                data['datetime'] = datetime.fromtimestamp(timestamp) if timestamp is not None else datetime.fromtimestamp(int(time.time() + 0.5))
+            return data
+
+        @staticmethod
+        def decode_temp(data, field=None):
+            """Decode temperature data.
+
+            Data is contained in a two byte big endian signed integer and represents tenths of a degree.
+            """
+
+            if len(data) == 2:
+                value = struct.unpack(">h", data)[0] / 10.0
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+
+        @staticmethod
+        def decode_humid(data, field=None):
+            """Decode humidity data.
+
+            Data is contained in a single unsigned byte and represents whole
+            units.
+            """
+
+            if len(data) == 1:
+                value = struct.unpack("B", data)[0]
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+
+        @staticmethod
+        def decode_press(data, field=None):
+            """Decode pressure data.
+
+            Data is contained in a two byte big endian integer and represents
+            tenths of a unit.
+            """
+
+            if len(data) == 2:
+                value = struct.unpack(">H", data)[0] / 10.0
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+                
+        @staticmethod
+        def decode_uv(data, field=None):
+            """Decode pressure data.
+
+            Data is contained in a two byte big endian integer and represents
+            tenths of a unit.
+            """
+
+            if len(data) == 2:
+                value = struct.unpack(">H", data)[0]
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+
+        @staticmethod
+        def decode_dir(data, field=None):
+            """Decode direction data.
+
+            Data is contained in a two byte big endian integer and represents
+            whole degrees.
+            """
+
+            if len(data) == 2:
+                value = struct.unpack(">H", data)[0]
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+
+        @staticmethod
+        def decode_big_rain(data, field=None):
+            """Decode 4 byte rain data.
+
+            Data is contained in a four byte big endian integer and represents
+            tenths of a unit.
+            """
+
+            if len(data) == 4:
+                value = struct.unpack(">L", data)[0] / 10.0
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+
+        @staticmethod
+        def decode_datetime(data, field=None):
+            """Decode date-time data.
+
+            Unknown format but length is six bytes.
+            """
+
+            if len(data) == 6:
+                value = struct.unpack("BBBBBB", data)
+                value = datetime.fromtimestamp(value)       # convert timestamp to datetime
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+
+        @staticmethod
+        def decode_distance(data, field=None):
+            """Decode lightning distance.
+
+            Data is contained in a single byte integer and represents a value
+            from 0 to 40km.
+            """
+
+            if len(data) == 1:
+                value = struct.unpack("B", data)[0]
+                value = value if value <= 40 else None
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+
+        @staticmethod
+        def decode_utc(data, field=None):
+            """Decode UTC time.
+
+            The GW1000/GW1100 API claims to provide 'UTC time' as a 4 byte big endian integer. The 4 byte integer is a unix epoch timestamp;
+            however, the timestamp is offset by the stations timezone. So for a station in the +10 hour timezone, the timestamp returned is the
+            present epoch timestamp plus 10 * 3600 seconds.
+
+            When decoded in localtime the decoded date-time is off by the station time zone, when decoded as GMT the date and time figures
+            are correct but the timezone is incorrect.
+
+            In any case decode the 4 byte big endian integer as is and any further use of this timestamp needs to take the above time zone
+            offset into account when using the timestamp.
+            """
+
+            if len(data) == 4:
+                # unpack the 4 byte int
+                value = struct.unpack(">L", data)[0]
+                # when processing the last lightning strike time if the value
+                # is 0xFFFFFFFF it means we have never seen a strike so return
+                # None
+                value = value if value != 0xFFFFFFFF else None
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+
+        @staticmethod
+        def decode_count(data, field=None):
+            """Decode lightning count.
+
+            Count is an integer stored in a 4 byte big endian integer."""
+
+            if len(data) == 4:
+                value = struct.unpack(">L", data)[0]
+            else:
+                value = None
+            if field is not None:
+                return {field: value}
+            else:
+                return value
+
+        # alias' for other decodes
+        decode_speed = decode_press
+        decode_rain = decode_press
+        decode_rainrate = decode_press
+        decode_light = decode_big_rain
+        decode_uvi = decode_humid
+        decode_moist = decode_humid
+        decode_pm25 = decode_press
+        decode_leak = decode_humid
+        decode_pm10 = decode_press
+        decode_co2 = decode_dir
+        decode_wet = decode_humid
+
+        def decode_wh34(self, data, field=None):
+            """Decode WH34 sensor data.
+
+            Data consists of three bytes:
+
+            Byte    Field               Comments
+            1-2     temperature         standard Ecowitt temperature data, two
+                                        byte big endian signed integer
+                                        representing tenths of a degree
+            3       battery voltage     0.02 * value Volts
+            """
+
+            if len(data) == 3 and field is not None:
+                results = dict()
+                results[field] = self.decode_temp(data[0:2])
+                # we could decode the battery voltage but we will be obtaining
+                # battery voltage data from the sensor IDs in a later step so
+                # we can skip it here
+                return results
+            return {}
+
+        def decode_wh45(self, data, fields=None):
+            """Decode WH45 sensor data.
+
+            WH45 sensor data includes TH sensor values, CO2/PM2.5/PM10 sensor
+            values and 24 hour aggregates and battery state data in 16 bytes.
+
+            The 16 bytes of WH45 sensor data is allocated as follows:
+            Byte(s) #      Data               Format          Comments
+            bytes   1-2    temperature        short           C x10
+                    3      humidity           unsigned byte   percent
+                    4-5    PM10               unsigned short  ug/m3 x10
+                    6-7    PM10 24hour avg    unsigned short  ug/m3 x10
+                    8-9    PM2.5              unsigned short  ug/m3 x10
+                    10-11  PM2.5 24 hour avg  unsigned short  ug/m3 x10
+                    12-13  CO2                unsigned short  ppm
+                    14-15  CO2 24 our avg     unsigned short  ppm
+                    16     battery state      unsigned byte   0-5 <=1 is low
+            """
+
+            if len(data) == 16 and fields is not None:
+                results = dict()
+                results[fields[0]] = self.decode_temp(data[0:2])
+                results[fields[1]] = self.decode_humid(data[2:3])
+                results[fields[2]] = self.decode_pm10(data[3:5])
+                results[fields[3]] = self.decode_pm10(data[5:7])
+                results[fields[4]] = self.decode_pm25(data[7:9])
+                results[fields[5]] = self.decode_pm25(data[9:11])
+                results[fields[6]] = self.decode_co2(data[11:13])
+                results[fields[7]] = self.decode_co2(data[13:15])
+                # we could decode the battery state but we will be obtaining
+                # battery state data from the sensor IDs in a later step so
+                # we can skip it here
+                return results
+            return {}
+
+        @staticmethod
+        def decode_batt(data, field=None):
+            """Decode battery status data.
+
+            GW1000/GW1100 firmware version 1.6.4 and earlier supported 16 bytes
+            of battery state data at response field x4C for the following
+            sensors:
+                WH24, WH25, WH26(WH32), WH31 ch1-8, WH40, WH41/WH43 ch1-4,
+                WH51 ch1-8, WH55 ch1-4, WH57, WH68 and WS80
+
+            As of firmware version 1.6.5 the 16 bytes of battery state data is
+            no longer returned at all. CMD_READ_SENSOR_ID_NEW or
+            CMD_READ_SENSOR_ID must be used to obtain battery state information
+            for connected sensors. The decode_batt() method has been retained
+            to support devices using firmware version 1.6.4 and earlier.
+
+            Since the GW1000/GW1100 driver now obtains battery state
+            information via CMD_READ_SENSOR_ID_NEW or CMD_READ_SENSOR_ID only
+            the decode_batt() method now returns None so that firmware versions
+            before 1.6.5 continue to be supported.
+            """
+
+            return None
+
+    class Sensors(object):
+        """Class to manage GW1000/GW1100 sensor ID data.
+
+        Class Sensors allows access to various elements of sensor ID data via a
+        number of properties and methods when the class is initialised with the
+        GW1000/GW1100 API response to a CMD_READ_SENSOR_ID_NEW or
+        CMD_READ_SENSOR_ID command.
+
+        A Sensors object can be initialised with sensor ID data on
+        instantiation or an existing Sensors object can be updated by calling
+        the set_sensor_id_data() method passing the sensor ID data to be used
+        as the only parameter.
+        """
+
+        # Tuple of sensor ID values for sensors that are not registered with the GW1000/GW1100. 'fffffffe' means the sensor is disabled, 'ffffffff' means the sensor is registering.
+        not_registered = ('fffffffe', 'ffffffff')
+
+        def __init__(self, sensor_id_data=None, show_battery=False, debug_sensors=False):
+            """Initialise myself"""
+
+            # init logger
+            self.logger = logging.getLogger(__name__)
+            # set the show_battery property
+            self.show_battery = show_battery
+            # initialise a dict to hold the parsed sensor data
+            self.sensor_data = dict()
+            # parse the raw sensor ID data and store the results in my parsed
+            # sensor data dict
+            self.set_sensor_id_data(sensor_id_data)
+            # debug sensors
+            self.debug_sensors = debug_sensors
+
+        def set_sensor_id_data(self, id_data):
+            """Parse the raw sensor ID data and store the results."""
+
+            # initialise our parsed sensor ID data dict
+            self.sensor_data = {}
+            # do we have any raw sensor ID data
+            if id_data is not None and len(id_data) > 0:
+                # determine the size of the sensor id data, it's a big endian
+                # short (two byte) integer at bytes 4 and 5
+                data_size = struct.unpack(">H", id_data[3:5])[0]
+                # extract the actual sensor id data
+                data = id_data[5:5 + data_size - 4]
+                # initialise a counter
+                index = 0
+                # iterate over the data
+                while index < len(data):
+                    # get the sensor address
+                    address = data[index:index + 1]
+                    # do we know how to decode this address
+                    if address in Gw1000Collector.sensor_ids.keys():
+                        # get the sensor ID
+                        sensor_id = bytes_to_hex(data[index + 1: index + 5], separator='', caps=False)
+                        # get the method to be used to decode the battery state data
+                        batt_fn = Gw1000Collector.sensor_ids[data[index:index + 1]]['batt_fn']
+                        # get the raw battery state data
+                        batt = data[index + 5]
+                        # if we are not showing all battery state data then the battery state for any sensor with signal == 0 must be set to None, otherwise parse the raw battery state data as applicable
+                        if not self.show_battery and data[index + 6] == 0:
+                            batt_state = None
+                        else:
+                            # parse the raw battery state data
+                            batt_state = getattr(self, batt_fn)(batt)
+                        # now add the sensor to our sensor data dict
+                        self.sensor_data[address] = {'id': sensor_id, 'battery': batt_state, 'signal': data[index + 6]}
+                    else:
+                        if self.debug_sensors:
+                            self.logger.info("Unknown sensor ID '%s'" % bytes_to_hex(address))
+                    # each sensor entry is seven bytes in length so skip to the
+                    # start of the next sensor
+                    index += 7
+
+        @property
+        def addresses(self):
+            """Obtain a list of sensor addresses.
+
+            This includes all sensor addresses reported by the GW1000/GW1100,
+            this includes:
+            - sensors that are actually connected to the GW1000/GW1100
+            - sensors that are attempting to connect to the GW1000/GW1100
+            - GW1000/GW1100 sensor addresses that are searching for a sensor
+            - GW1000/GW1100 sensor addresses that are disabled
+            """
+
+            # this is simply the list of keys to our sensor data dict
+            return self.sensor_data.keys()
+
+        @property
+        def connected_addresses(self):
+            """Obtain a list of sensor addresses for connected sensors only.
+
+            Sometimes we only want a list of addresses for sensors that are actually connected to the GW1000/GW1100. We can filter out those
+            addresses that do not have connected sensors by looking at the sensor ID. If the sensor ID is 'fffffffe' either the sensor is
+            connecting to the GW1000/GW1100 or the GW1000/GW1100 is searching for a sensor for that address. If the sensor ID is 'ffffffff' the
+            GW1000/GW1100 sensor address is disabled.
+            """
+
+            # initialise a list to hold our connected sensor addresses
+            connected_list = list()
+            # iterate over all sensors
+            for address, data in self.sensor_data.items():
+                # if the sensor ID is neither 'fffffffe' or 'ffffffff' then it must be connected
+                if data['id'] not in self.not_registered:
+                    connected_list.append(address)
+            return connected_list
+        
+        @property
+        def connected_sensors(self):
+            """Obtain a list of sensor types for connected sensors only.
+
+            Sometimes we only want a list of sensors that are actually connected to the GW1000/GW1100. 
+            """
+
+            # initialise a list to hold our connected sensors
+            connected_list = list()
+            # iterate over our connected sensors
+            for sensor in self.connected_addresses:
+                # get the sensor name
+                connected_list.append(Gw1000Collector.sensor_ids[sensor]['name'])
+            return connected_list
+
+        @property
+        def data(self):
+            """Obtain the data dict for all known sensors."""
+
+            return self.sensor_data
+
+        def id(self, address):
+            """Obtain the sensor ID for a given sensor address."""
+
+            return self.sensor_data[address]['id']
+
+        def battery_state(self, address):
+            """Obtain the sensor battery state for a given sensor address."""
+
+            return self.sensor_data[address]['battery']
+
+        def signal_level(self, address):
+            """Obtain the sensor signal level for a given sensor address."""
+
+            return self.sensor_data[address]['signal']
+
+        @property
+        def battery_and_signal_data(self):
+            """Obtain a dict of sensor battery state and signal level data.
+
+            Iterate over the list of connected sensors and obtain a dict of sensor battery state data for each connected sensor.
+            """
+
+            # initialise a dict to hold the battery state data
+            data = {}
+            # iterate over our connected sensors
+            for sensor in self.connected_addresses:
+                # get the sensor name
+                sensor_name = Gw1000Collector.sensor_ids[sensor]['name']
+                # create the sensor battery state field for this sensor
+                data[''.join([sensor_name, '_batt'])] = self.battery_state(sensor)
+                # create the sensor signal level field for this sensor
+                data[''.join([sensor_name, '_sig'])] = self.signal_level(sensor)
+
+            # return our data
+            return data
+            
+        @property
+        def battery_description_data(self):
+            """Obtain a dict of sensor battery state description data.
+
+            Iterate over the list of connected sensors and obtain a dict of sensor battery state description data for each connected sensor.
+            """
+            
+            # initialise a dict to hold the battery state description data
+            data = {}
+            for sensor in self.connected_addresses:
+                # get the sensor name
+                sensor_name = Gw1000Collector.sensor_ids[sensor]['name']
+                # create the sensor battery state describtion field for this sensor
+                data[sensor_name] = self.battery_desc(sensor, self.battery_state(sensor))
+
+            # return our data
+            return data
+
+        @staticmethod
+        def battery_desc(address, value):
+            """Determine the battery state description for a given sensor.
+
+            Given the address...
+            """
+
+            if value is not None:
+                batt_fn = Gw1000Collector.sensor_ids[address].get('batt_fn')
+                if batt_fn == 'batt_binary':
+                    if value == 0:
+                        return "OK"
+                    elif value == 1:
+                        return "low"
+                    else:
+                        return 'Unknown'
+                elif batt_fn == 'batt_int':
+                    if value <= 1:
+                        return "low"
+                    elif value == 6:
+                        return "DC"
+                    elif value <= 5:
+                        return "OK"
+                    else:
+                        return 'Unknown'
+                elif batt_fn == 'batt_volt' or batt_fn == 'batt_volt_tenth':
+                    if value <= 1.2:
+                        return "low"
+                    else:
+                        return "OK"
+            else:
+                return 'Unknown'
+
+        @staticmethod
+        def batt_binary(batt):
+            """Decode a binary battery state.
+
+            Battery state is stored in bit 0 as either 0 or 1. If 1 the battery is low, if 0 the battery is normal. We need to mask off bits 1 to 7 as
+            they are not guaranteed to be set in any particular way.
+            """
+
+            return batt & 1
+
+        @staticmethod
+        def batt_int(batt):
+            """Decode a integer battery state.
+
+            According to the API documentation battery state is stored as an integer from 0 to 5 with <=1 being considered low. Experience with
+            WH43 has shown that battery state 6 also exists when the device is run from DC. This does not appear to be documented in the API
+            documentation.
+            """
+
+            return batt
+
+        @staticmethod
+        def batt_volt(batt):
+            """Decode a voltage battery state in 2mV increments.
+
+            Battery state is stored as integer values of battery voltage/0.02 with <=1.2V considered low.
+            """
+
+            return round(0.02 * batt, 2)
+
+        @staticmethod
+        def batt_volt_tenth(batt):
+            """Decode a voltage battery state in 100mV increments.
+
+            Battery state is stored as integer values of battery voltage/0.1
+            with <=1.2V considered low.
+            """
+
+            return round(0.1 * batt, 1)
+
+# ============================================================================
+#                             class Server
+# ============================================================================
+
+
+class Server(object):
+
+    # a queue object for passing data back to the driver
+    my_tcp_queue = queue.Queue()
+
+    def __init__(self, plugin_instance):
+        # init logger
+        self._plugin_instance = plugin_instance
+        self._plugin_instance.logger.debug("Starting TCP Server Object")
+        pass
+
+    def run(self):
+        pass
+
+    def stop(self):
+        pass
+
+# ============================================================================
+#                             class WebserviceHttpHandler
+# ============================================================================
+
+
+class WebserviceHttpHandler(BaseHTTPRequestHandler):
+
+    def __init__(self, request, client_address, server):
+        self.logger = logging.getLogger(__name__)
+        super().__init__(request, client_address, server)
+
+    def reply(self):
+        # standard reply is HTTP code of 200 and the response string
+        ok_answer = "OK\n"
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html')
+        self.send_header('Content-Length', str(len(ok_answer)))
+        self.send_header('Connection', 'Close')
+        self.end_headers()
+
+    def do_POST(self):
+        # get the payload from an HTTP POST
+        length = int(self.headers['Content-Length'])
+        data = self.rfile.read(length)
+        # self.logger.debug(f'POST: type={type(data)};  content={data}')
+        tcp_server_queue.put(data)
+        self.reply()
+
+    def do_PUT(self):
+        pass
+
     def do_GET(self):
-        request_path = self.path
-        request_addr = self.client_address[0]
-        instr = request_path
-        # check authentication
-        if self.AUTH_PWD != "" and self.AUTH_PWD not in request_path and request_path != "/FOSHKplugin/state":
-            self.logger.debug("<INFO> unauthorized get-request from " + str(request_addr) + ": " + str(request_path))
-        # Lieferung im WU-Format
-        elif "updateweatherstation" in request_path or "endpoint" in request_path or "/data/report/" in request_path:
-            # in v4.2.8 the path is automatically set to /data/report/ without a ? - so fix this first
-            instr = instr.replace("/data/report/","?")
-            # eingehender String ist interessant von ? bis Leerzeichen
-            try:
-                payload_start = instr.index("?")+1
-            except ValueError:
-                payload_start = 0
-            if payload_start > 0: payload_start+1
-            instr = instr[payload_start:]
+        # get the query string from an HTTP GET
+        data = urllib.parse.urlparse(self.path).query
+        self.logger.debug(f'GET: {data}')
+        tcp_server_queue.put(data)
+        self.reply()
 
-            # create dictionaries E = Imperial
-            d_e = self.stringToDict(instr,"&")
+# ============================================================================
+#                             class TCPServer
+# ============================================================================
 
-    def stringToDict(self, s, sep):
-        # Parameter: s = String; sep = Separator (UDPstring = " "; WSstring = "&")
-        # Output: d = dict
-        d = {}
-        if s != "" and sep in s:
-            #s = s.replace('\"','\\\"')
-            j = s.replace(sep,"\",\"")
-            j2 = j.replace("=","\":\"")
-            j3 = "{\""+j2+"\"}"
-            try:
-                d = json.loads(j3)
-            except: pass
-        return d
+
+class TCPServer(Server, socketserver.TCPServer):
+
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def __init__(self, address, port, handler, ):
+        self.logger = logging.getLogger(__name__)
+        socketserver.TCPServer.__init__(self, (address, int(port)), handler)
+        self.logger.debug(f'Init socket to listen on {address}:{port}')
+
+    def run(self):
+        self.logger.debug('Starting TCP Server')
+        self.serve_forever()
+
+    def stop(self):
+        self.logger.debug('Stopping TCP Server')
+        self.shutdown()
+        self.server_close()
+
+
+# ============================================================================
+#                             Utility functions
+# ============================================================================
+
+def natural_sort_keys(source_dict):
+    """Return a naturally sorted list of keys for a dict."""
+
+    def atoi(text):
+        return int(text) if text.isdigit() else text
+
+    def natural_keys(text):
+        """Natural key sort.
+
+        Allows use of key=natural_keys to sort a list in human order, eg:
+            alist.sort(key=natural_keys)
+
+        http://nedbatchelder.com/blog/200712/human_sorting.html (See
+        Toothy's implementation in the comments)
+        """
+
+        return [atoi(c) for c in re.split(r'(\d+)', text.lower())]
+
+    # create a list of keys in the dict
+    keys_list = list(source_dict.keys())
+    # naturally sort the list of keys where, for example, xxxxx16 appears in the
+    # correct order
+    keys_list.sort(key=natural_keys)
+    # return the sorted list
+    return keys_list
+
+
+def natural_sort_dict(source_dict):
+    """Return a string representation of a dict sorted naturally by key.
+
+    When represented as a string a dict is displayed in the format:
+        {key a:value a, key b: value b ... key z: value z}
+    but the order of the key:value pairs is unlikely to be alphabetical.
+    Displaying dicts of key:value pairs in logs or on the console in
+    alphabetical order by key assists in the analysis of the the dict data.
+    Where keys are strings with leading digits a natural sort is useful.
+    """
+
+    # first obtain a list of key:value pairs as string sorted naturally by key
+    sorted_dict_fields = ["'%s': '%s'" % (k, source_dict[k]) for k in natural_sort_keys(source_dict)]
+    # return as a string of comma separated key:value pairs in braces
+    return "{%s}" % ", ".join(sorted_dict_fields)
+
+
+def bytes_to_hex(iterable, separator=' ', caps=True):
+    """Produce a hex string representation of a sequence of bytes."""
+
+    # assume 'iterable' can be iterated by iterbytes and the individual
+    # elements can be formatted with {:02X}
+    format_str = "{:02X}" if caps else "{:02x}"
+    try:
+        return separator.join(format_str.format(c) for c in iterable)
+    except ValueError:
+        # most likely we are running python3 and iterable is not a bytestring,
+        # try again coercing iterable to a bytestring
+        return separator.join(format_str.format(c) for c in iterable.encode())
+    except (TypeError, AttributeError):
+        # TypeError - 'iterable' is not iterable
+        # AttributeError - likely because separator is None
+        # either way we can't represent as a string of hex bytes
+        return "cannot represent '%s' as hexadecimal bytes" % (iterable,)
+        
+
+def byte_to_int(rawbytes, signed=False):
+    """
+    Convert bytearray to value with respect to sign format
+
+    :parameter rawbytes: Bytes to convert
+    :parameter signed: True if result should be a signed int, False for unsigned
+    :type signed: bool
+    :return: Converted value
+    :rtype: int
+    """
+
+    return int.from_bytes(rawbytes, byteorder='little', signed=signed)
+    
+
+def int_to_bytes(value, length=1, signed=False):
+    """
+    Convert value to bytearray with respect to defined length and sign format.
+    Value exceeding limit set by length and sign will be truncated
+
+    :parameter value: Value to convert
+    :type value: int
+    :parameter length: number of bytes to create
+    :type length: int
+    :parameter signed: True if result should be a signed int, False for unsigned
+    :type signed: bool
+    :return: Converted value
+    :rtype: bytearray
+    """
+
+    value = value % (2 ** (length * 8))
+    return value.to_bytes(length, byteorder='big', signed=signed)
+
+
+def obfuscate(plain, obf_char='*'):
+    """Obfuscate all but the last x characters in a string.
+
+    Obfuscate all but (at most) the last four characters of a string. Always
+    reveal no more than 50% of the characters. The obfuscation character
+    defaults to '*' but can be set when the function is called.
+    """
+
+    if plain is not None and len(plain) > 0:
+        # obtain the number of the characters to be retained
+        stem = 4
+        stem = 3 if len(plain) < 8 else stem
+        stem = 2 if len(plain) < 6 else stem
+        stem = 1 if len(plain) < 4 else stem
+        stem = 0 if len(plain) < 3 else stem
+        if stem > 0:
+            # we are retaining some characters so do a little string
+            # manipulation
+            obfuscated = obf_char * (len(plain) - stem) + plain[-stem:]
+        else:
+            # we are obfuscating everything
+            obfuscated = obf_char * len(plain)
+        return obfuscated
+    else:
+        # if we received None or a zero length string then return it
+        return plain
+
+
+def timestamp_to_string(ts, format_str="%Y-%m-%d %H:%M:%S %Z"):
+    """Return a string formatted from the timestamp
+    
+    Example:
+    >>> os.environ['TZ'] = 'America/Los_Angeles'
+    >>> time.tzset()
+    >>> print(timestamp_to_string(1196705700))
+    2007-12-03 10:15:00 PST (1196705700)
+    >>> print(timestamp_to_string(None))
+    ******* N/A *******     (    N/A   )
+    """
+    if ts is not None:
+        return "%s (%d)" % (time.strftime(format_str, time.localtime(ts)), ts)
+    else:
+        return "******* N/A *******     (    N/A   )"
+
+
+def to_sorted_string(rec):
+    """Return a sorted string """
+
+    import locale
+    return ", ".join(["%s: %s" % (k, rec.get(k)) for k in sorted(rec, key=locale.strxfrm)])
+
+
+def c_to_f(temp_c, n):
+    """Convert degree celsius to fahrenheit"""
+    
+    return round((temp_c * 9/5) + 32, n)
+
+
+def f_to_c(temp_f, n=1):
+    """Convert fahrenheit to degree celsius"""
+    
+    return round((temp_f - 32) * 5/9, n)
+    
+
+def ver_str_to_num(s):
+    """Extract Verion Number of Firmware out of String"""
+    
+    try:
+        vpos = s.index("V")+1
+        return int(s[vpos:].replace(".", ""))
+    except ValueError:
+        return
+
+def mph_to_kmh(f, n=1):
+    """Convert mph to kmh"""
+
+    return round(float(f)/0.621371, n)
+
+
+def mph_to_ms(f, n=1):
+    """Convert mph to m/s"""
+    
+    return round(float(f)/0.621371*1000/3600, n)
+
+
+def in_to_hpa(f, n=2):       
+    """Convert in to hPa"""
+    
+    return round(float(f)/0.02953, n)
+
+
+def hpa_to_in(f, n=1):
+    """Convert hPa to inHg"""
+    return round(float(f)/33.87, n)
+
+
+def in_to_mm(f, n=2):
+    """Convert in to mm"""
+    
+    return round(float(f)*25.4, n)
+    
+def f_to_m(f, n=1):
+   """Convert feet to m"""
+   
+   return round(float(f)/3.281, n)
+  
