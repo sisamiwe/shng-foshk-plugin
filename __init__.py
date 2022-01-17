@@ -295,7 +295,7 @@ class Foshk(SmartPlugin):
         self.logger.debug("Shutdown von GW1000 Collector Thread called")
         self.api_driver.closePort()
         self.gateway_connected = False
-        
+
         self.logger.debug("Shutdown von FoshkPlugin Thread for getting API data called")
         self.get_api_data_thread_shutdown()
         
@@ -359,11 +359,8 @@ class Foshk(SmartPlugin):
             pass
 
     def get_api_data(self):
-        """
-        Gets data for collector loop
+        """ Gets data for collector loop"""
 
-        It is called within run() method.
-        """
         for packet in self.api_driver.genLoopPackets():
             # log packet
             self.logger.debug(f"get_api_data: packet={packet}")
@@ -373,7 +370,7 @@ class Foshk(SmartPlugin):
             self.update_item_values(packet)
             
     def get_tcp_data(self):
-        """Poll the data from queue"""
+        """ Gets data for collector loop"""
 
         for packet in self.tcp_driver.genLoopPackets():
             # log packet
@@ -3892,6 +3889,7 @@ class Consumer(object):
 
     def get_queue(self):
         return Consumer.queue
+
 
 class EcowittClient(Consumer):
     """Use the ecowitt protocol (not WU protocol) to capture data
