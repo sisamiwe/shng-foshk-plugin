@@ -30,9 +30,6 @@
 # TODO
 #  - tswarning                  is there a thunderstorm coming 
 #
-#  - hourlyrain                 ist eigentlich bereits im Paket
-#  - totalrainmm                ist eigentlich bereits im Paket
-#
 #  - set CMD_WRITE_CALIBRATION
 #  - set CMD_WRITE_RAINDATA
 #  - set CMD_WRITE_GAIN
@@ -102,7 +99,7 @@ class Foshk(SmartPlugin):
         self._broadcast_address = None
         self._broadcast_port = None
         self._gateway_address = self.get_parameter_value('Gateway_IP') if self.get_parameter_value('Gateway_IP') != '0.0.0.0' else None
-        self._gateway_port = self.get_parameter_value('Gateway_Port') if self.get_parameter_value('Gateway_Port') != 0 else None
+        self._gateway_port = self.get_parameter_value('Gateway_Port') if (self.get_parameter_value('Gateway_Port') != 0 and is_port_valid(self.get_parameter_value('Gateway_Port'))) else None
         self._gateway_poll_cycle = self.get_parameter_value('Gateway_Poll_Cycle')
         self._fw_update_check_cycle = self.get_parameter_value('FW_Update_Check_Cycle') * 24 * 60 * 60                    # convert from days into seconds
         self._battery_warning = bool(self.get_parameter_value('Battery_Warning'))
@@ -115,7 +112,11 @@ class Foshk(SmartPlugin):
             self._http_server_port = self.select_port_for_tcp_server(default_tcp_port)
             self._data_cylce = _ecowitt_data_cycle if _ecowitt_data_cycle > 16 else 16
             self.logger.debug(f"Receiving ECOWITT data via has been enabled. Data upload to {self._http_server_ip}:{self._http_server_port} with an interval of {self._data_cylce}s will be set.")
-        
+
+            if not self._http_server_ip or not self._http_server_port:
+                self.logger.error(f"Receiving ECOWITT data via has been enabled, but not able to define server ip or port with setting {self._http_server_ip}:{self._http_server_port}")
+                self._init_complete = False
+
         # define properties
         self.items = {}                                                             # dict to hold Items using Plugin attribute
         self.data_dict = {}                                                         # dict to hold all live data gotten from weatherstation gateway
@@ -129,6 +130,8 @@ class Foshk(SmartPlugin):
         self.alive = False                                                          # plugin alive
         self._altitude = self.get_sh()._elev                                        # altitude of installation used from shNG setting
         self._my_language = self.get_sh().get_defaultlanguage()                     # current shNG language (= 'de')
+        self.get_api_data_loop = None                                               # get_api_data_loop object
+        self.get_tcp_data_loop = None                                               # get_tcp_data_loop object
 
         # get a Gw1000Driver object
         try:
@@ -137,13 +140,6 @@ class Foshk(SmartPlugin):
             self.gateway_connected = True
         except GW1000IOError as e:
             self.logger.error(f"Unable to connect to device: {e}")
-            self._init_complete = False
-
-        # start thread to get data from api driver
-        try:
-            self.get_api_data_thread_startup()  
-        except Exception as e:
-            self.logger.error(f"Unable to start 'get_api_data' thread: {e}")
             self._init_complete = False
         
         # if use of customer service is enabled
@@ -154,125 +150,22 @@ class Foshk(SmartPlugin):
             except Exception as e:
                 self.logger.error(f"Unable to start 'tcp_driver' thread: {e}")
                 self._init_complete = False
-            # start thread to get data from tcp server
-            try:
-                self.get_tcp_data_thread_startup()  
-            except Exception as e:
-                self.logger.error(f"Unable to start 'get_tcp_data' thread: {e}")
-                self._init_complete = False
 
-        # check webinterface
+        # get webinterface
         if not self.init_webinterface(WebInterface):
             self.logger.error("Unable to start Webinterface")
             self._init_complete = False
         else:
             self.logger.debug(f"Init of Plugin {self.get_shortname()} complete")
             
-    def select_port_for_tcp_server(self, port):
-        """Check if default port for tcp server is free and can be used"""
-    
-        for attempt in range(20):
-            port = port + attempt
-            # self.logger.debug(f"try port={port}")
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            result = sock.connect_ex(('127.0.0.1', port))
-            if result == 0:
-                self.logger.debug(f"select_port_for_tcp_server: Port {port} is already in use. Try next one")
-            else:
-                # self.logger.debug(f"select_port_for_tcp_server: Port {port} can be used")
-                return port
-
-    @property
-    def get_batterywarning(self):
-        return self._battery_warning
-
-    @property
-    def get_sensorwarning(self):
-        return self._sensor_warning
-
-    @property
-    def get_language(self):
-        return self._my_language
-
-    @property
-    def get_broadcast_address(self):
-        return self._broadcast_address
-
-    @property
-    def get_broadcast_port(self):
-        return self._broadcast_port
-
-    @property
-    def get_gateway_address(self):
-        return self._gateway_address
-
-    @property
-    def get_gateway_port(self):
-        return self._gateway_port
-
-    @property
-    def get_gateway_poll_cycle(self):
-        return self._gateway_poll_cycle
-            
-    def get_api_data_thread_startup(self):
-        """Start a thread that get data from the GW1000/GW1100 driver."""
-
-        try:
-            _name = 'plugins.' + self.get_fullname() + '.get_api_data'
-            self.api_data_thread = threading.Thread(target=self.get_api_data, name=_name)
-            self.api_data_thread.start()
-            self.logger.debug("FoshkPlugin thread for 'get_api_data' has been started")
-        except threading.ThreadError:
-            self.logger.error("Unable to launch FoshkPlugin threadfor 'get_api_data'.")
-            self.api_data_thread = None
-
-    def get_api_data_thread_shutdown(self):
-        """Shut down the thread that gets data from the GW1000/GW1100 driver."""
-
-        if self.api_data_thread:
-            # terminate the thread
-            self.api_data_thread.join(5)
-            # log the outcome
-            if self.api_data_thread.is_alive():
-                self.logger.error("Unable to shut down 'get_api_data' thread")
-            else:
-                self.logger.info("FoshkPlugin thread 'get_api_data' has been terminated")
-                self.api_data_thread = None
-
-    def get_tcp_data_thread_startup(self):
-        """Start a thread that get data from the TCP Server."""
-
-        try:
-            _name = 'plugins.' + self.get_fullname() + '.get_tcp_data'
-            self.tcp_data_thread = threading.Thread(target=self.get_tcp_data, name=_name)
-            self.tcp_data_thread.start()
-            self.logger.debug("FoshkPlugin thread for 'get_tcp_data' has been started")
-        except threading.ThreadError:
-            self.logger.error("Unable to launch FoshkPlugin thread for 'get_tcp_data'.")
-            self.tcp_data_thread = None
-
-    def get_tcp_data_thread_shutdown(self):
-        """Shut down the thread that gets data from the TCP Server."""
-
-        if self.tcp_data_thread:
-            # terminate the thread
-            self.tcp_data_thread.join(5)
-            # log the outcome
-            if self.tcp_data_thread.is_alive():
-                self.logger.error("Unable to shut down 'get_tcp_data' thread")
-            else:
-                self.logger.info("FoshkPlugin 'get_tcp_data' thread has been terminated")
-                self.tcp_data_thread = None
-
     def run(self):
         """
         Run method for the plugin
         """
         self.logger.debug("Run method called")
-        # set plugin state to alive
         self.alive = True
         
-        # add scheduler for update check
+        # add scheduler for update check if FW-Check is activated
         if self._fw_update_check_cycle > 0:
             self.scheduler_add('Foshk FW Update Check', self.check_firmware_update, cycle=self._fw_update_check_cycle)
             
@@ -281,16 +174,32 @@ class Foshk(SmartPlugin):
             self.set_custom_params(custom_server_id='', custom_password='', custom_host=self._http_server_ip, custom_port=self._http_server_port, custom_interval=self._data_cylce, custom_type=False, custom_enabled=True)
             self.set_usr_path()
 
-        # set property to selected IP
+        # set class property to selected IP
         self._gateway_address = self.api_driver.collector.station.get_gateway_ip
         self._gateway_port = self.api_driver.collector.station.get_gateway_port
+         
+        # start endless loop for 'get_api_data' in own thread until plugin stops
+        try:
+            self.get_api_data_thread_startup()  
+        except Exception as e:
+            self.logger.error(f"Unable to start 'get_api_data' thread: {e}")
+            self._init_complete = False
+        
+        # if use of customer service is enabled
+        if self._use_customer_server:
+            # start endless loop for 'get_tcp_data' in own thread until plugin stops
+            try:
+                self.get_tcp_data_thread_startup()  
+            except Exception as e:
+                self.logger.error(f"Unable to start 'get_tcp_data' thread: {e}")
+                self._init_complete = False
 
     def stop(self):
         """
         Stop method for the plugin
         """
-        self.logger.debug("Stop method called")
         self.alive = False
+        self.logger.debug(f"Stop method called. self.alive={self.alive}")
         
         self.logger.debug("Shutdown von GW1000 Collector Thread called")
         self.api_driver.closePort()
@@ -330,14 +239,6 @@ class Foshk(SmartPlugin):
             if foshk_attibute.lower().startswith('set'):
                 return self.update_item
 
-    # def parse_logic(self, logic):
-        # """
-        # Default plugin parse_logic method
-        # """
-        # if 'xxx' in logic.conf:
-            # # self.function(logic['name'])
-            # pass
-
     def update_item(self, item, caller=None, source=None, dest=None):
         """
         Item has been updated
@@ -358,25 +259,85 @@ class Foshk(SmartPlugin):
                 self.logger.debug(f"update_item was called with item {item.property.path} from caller {caller}, source {source} and dest {dest}")
             pass
 
+    def select_port_for_tcp_server(self, port):
+        """Check if default port for tcp server is free and can be used"""
+    
+        for attempt in range(20):
+            port = port + attempt
+            # self.logger.debug(f"try port={port}")
+            if is_port_in_use(port):
+                self.logger.debug(f"select_port_for_tcp_server: Port {port} is already in use. Try next one")
+            else:
+                # self.logger.debug(f"select_port_for_tcp_server: Port {port} can be used")
+                return port
+
+    def get_api_data_thread_startup(self):
+        """Start a thread that get data from the GW1000/GW1100 driver."""
+
+        try:
+            _name = 'plugins.' + self.get_fullname() + '.get_api_data'
+            self.api_data_thread = threading.Thread(target=self.get_api_data, name=_name)
+            self.api_data_thread.start()
+            self.logger.debug("FoshkPlugin thread for 'get_api_data' has been started")
+        except threading.ThreadError:
+            self.logger.error("Unable to launch FoshkPlugin thread for 'get_api_data'.")
+            self.api_data_thread = None
+
+    def get_api_data_thread_shutdown(self):
+        """Shut down the thread that gets data from the GW1000/GW1100 driver."""
+
+        if self.api_data_thread:
+            self.api_data_thread.join(5)
+            if self.api_data_thread.is_alive():
+                self.logger.error("Unable to shut down 'get_api_data' thread")
+            else:
+                self.logger.info("FoshkPlugin thread 'get_api_data' has been terminated")
+                self.api_data_thread = None
+
+    def get_tcp_data_thread_startup(self):
+        """Start a thread that get data from the TCP Server."""
+
+        try:
+            _name = 'plugins.' + self.get_fullname() + '.get_tcp_data'
+            self.tcp_data_thread = threading.Thread(target=self.get_tcp_data, name=_name)
+            self.tcp_data_thread.start()
+            self.logger.debug("FoshkPlugin thread for 'get_tcp_data' has been started")
+        except threading.ThreadError:
+            self.logger.error("Unable to launch FoshkPlugin thread for 'get_tcp_data'.")
+            self.tcp_data_thread = None
+
+    def get_tcp_data_thread_shutdown(self):
+        """Shut down the thread that gets data from the TCP Server."""
+
+        if self.tcp_data_thread:
+            self.tcp_data_thread.join(5)
+            if self.tcp_data_thread.is_alive():
+                self.logger.error("Unable to shut down 'get_tcp_data' thread")
+            else:
+                self.logger.info("FoshkPlugin 'get_tcp_data' thread has been terminated")
+                self.tcp_data_thread = None
+
     def get_api_data(self):
-        """ Gets data for collector loop"""
+        """ Gets data from collector in endless loop"""
 
-        for packet in self.api_driver.genLoopPackets():
-            # log packet
-            self.logger.debug(f"get_api_data: packet={packet}")
-            # put packet to property
-            self.data_dict = packet
-            # start item update
-            self.update_item_values(packet)
-            
+        while self.alive:
+            for packet in self.api_driver.genLoopPackets():
+                # log packet
+                self.logger.debug(f"get_api_data: packet={packet}")
+                # put packet to property
+                self.data_dict = packet
+                # start item update
+                self.update_item_values(packet)
+
     def get_tcp_data(self):
-        """ Gets data for collector loop"""
+        """ Gets data from client in endless loop"""
 
-        for packet in self.tcp_driver.genLoopPackets():
-            # log packet
-            self.logger.debug(f"get_tcp_data: packet={packet}")
-            # put packet to property
-            self.data_dict2 = packet
+        while self.alive:
+            for packet in self.tcp_driver.genLoopPackets():
+                # log packet
+                self.logger.debug(f"get_tcp_data: packet={packet}")
+                # put packet to property
+                self.data_dict2 = packet
 
     def update_item_values(self, data):
         """
@@ -424,12 +385,12 @@ class Foshk(SmartPlugin):
             use_app = "WS View"
             
             if ver_str_to_num(remote_firmware) > ver_str_to_num(current_firmware):
-                self.logger.warning(f"Firmware update for {model} available. Installed version is: {current_firmware}, avaiable version is: {remote_firmware}. Use the app {use_app} to update!")
+                self.logger.warning(f"Firmware update for {model} available. Installed version is: {current_firmware}, available version is: {remote_firmware}. Use the app {use_app} to update!")
                 for i in range(len(remote_firmware_notes)):
                     self.logger.warning(remote_firmware_notes[i].strip())
                 self.update_available = True
             else:
-                self.logger.info(f"No newer firmware found for {model}. Installed version is: {current_firmware}, avaiable version is: {remote_firmware}.")
+                self.logger.info(f"No newer firmware found for {model}. Installed version is: {current_firmware}, available version is: {remote_firmware}.")
                 self.update_available = False            
             
     def set_usr_path(self, custom_ecowitt_pathpath="/data/report/", custom_wu_path="/weatherstation/updateweatherstation.php?"):
@@ -459,6 +420,38 @@ class Foshk(SmartPlugin):
             self.logger.debug(f"reset: {result}")
         else:
             self.logger.error(f"reset: {result}")
+            
+    @property
+    def get_batterywarning(self):
+        return self._battery_warning
+
+    @property
+    def get_sensorwarning(self):
+        return self._sensor_warning
+
+    @property
+    def get_language(self):
+        return self._my_language
+
+    @property
+    def get_broadcast_address(self):
+        return self._broadcast_address
+
+    @property
+    def get_broadcast_port(self):
+        return self._broadcast_port
+
+    @property
+    def get_gateway_address(self):
+        return self._gateway_address
+
+    @property
+    def get_gateway_port(self):
+        return self._gateway_port
+
+    @property
+    def get_gateway_poll_cycle(self):
+        return self._gateway_poll_cycle
 
 # ============================================================================
 #                               GW1000 API Error classes
@@ -481,7 +474,7 @@ class UnknownCommand(Exception):
     """Exception raised when an unknown API command is used."""
 
 # ============================================================================
-#                               GW1000 API classes
+#                                 GW1000 Object
 # ============================================================================
 
 
@@ -1065,6 +1058,10 @@ class Gw1000(object):
             return _beaufort_descriptions_de[speed_in_bft]
         return _beaufort_descriptions_en[speed_in_bft]
 
+# ============================================================================
+#                               GW1000 API classes
+# ============================================================================
+
 
 class Gw1000Driver(Gw1000):
     """GW1000/GW1100 driver class.
@@ -1217,7 +1214,6 @@ class Gw1000Driver(Gw1000):
                         self._plugin_instance.logger.info(f"genLoopPackets: Packet {timestamp_to_string(packet['dateTime'])}: {natural_sort_dict(packet)}")
                     # yield the loop packet
                     yield packet
-                    time.sleep(self.poll_interval)
                 
                 # if it's a tuple then it's a tuple with an exception and exception text
                 elif isinstance(queue_data, BaseException):
@@ -3714,7 +3710,7 @@ class Gw1000Collector(Collector):
             return round(0.1 * batt, 1)
 
 # ============================================================================
-#                            GW1000 TCP/ECOWITT classes
+#                           GW1000 TCP/ECOWITT classes
 # ============================================================================
 
 
@@ -3744,7 +3740,7 @@ class Gw1000TcpDriver(Gw1000):
         self.ip_selected_gateway = self._plugin_instance.get_gateway_address
 
     def closePort(self):
-        self._plugin_instance.logger.info('TCP: shutting down server thread')
+        self._plugin_instance.logger.info('Stop and Shutdown of FoshkPlugin TCP Server called')
         self.client.stop_server()
         self.client.shutdown()
 
@@ -3859,27 +3855,14 @@ class Gw1000TcpDriver(Gw1000):
                 
 
 class Consumer(object):
-    """The Consumer contains two primary parts - a Server and a Parser.  The
-    Server will be a TCP server as a data sink.  When it receives data, it 
-    places a string on a queue.
-    The driver then pops items of the queue and hands them over to the parser.
-    The Parser processes each string and spits out a dictionary that contains
-    the parsed data.
-
-    The handler is only used by the TCP server.  It provides the response to
-    the client requests.
-
-    """
+    """The Consumer contains primarly the queue to put the received data to"""
 
     queue = queue.Queue()
 
     def __init__(self, plugin_instance):
 
-        # init instance
         self._plugin_instance = plugin_instance
-        
-        # do logging
-        self._plugin_instance.logger.debug("Starting Collector Object")
+        self._plugin_instance.logger.debug(f"Starting Collector Object of instance {self._plugin_instance}")
 
     def startup(self):
         pass
@@ -3931,12 +3914,12 @@ class EcowittClient(Consumer):
     """
     
     sensor_ids = {
-            'wh65': {'long_name': 'WH65', 'batt_fn': 'batt_binary'},
-            'wh68': {'long_name': 'WH68', 'batt_fn': 'batt_volt'},
-            'ws80': {'long_name': 'WS80', 'batt_fn': 'batt_volt'},
-            'wh40': {'long_name': 'WH40', 'batt_fn': 'batt_binary'},
-            'wh25': {'long_name': 'WH25', 'batt_fn': 'batt_binary'},
-            'wh26': {'long_name': 'WH26', 'batt_fn': 'batt_binary'},
+            'wh65':     {'long_name': 'WH65',     'batt_fn': 'batt_binary'},
+            'wh68':     {'long_name': 'WH68',     'batt_fn': 'batt_volt'},
+            'ws80':     {'long_name': 'WS80',     'batt_fn': 'batt_volt'},
+            'wh40':     {'long_name': 'WH40',     'batt_fn': 'batt_binary'},
+            'wh25':     {'long_name': 'WH25',     'batt_fn': 'batt_binary'},
+            'wh26':     {'long_name': 'WH26',     'batt_fn': 'batt_binary'},
             'wh31_ch1': {'long_name': 'WH31 ch1', 'batt_fn': 'batt_binary'},
             'wh31_ch2': {'long_name': 'WH31 ch2', 'batt_fn': 'batt_binary'},
             'wh31_ch3': {'long_name': 'WH31 ch3', 'batt_fn': 'batt_binary'},
@@ -3957,7 +3940,7 @@ class EcowittClient(Consumer):
             'wh41_ch2': {'long_name': 'WH41 ch2', 'batt_fn': 'batt_int'},
             'wh41_ch3': {'long_name': 'WH41 ch3', 'batt_fn': 'batt_int'},
             'wh41_ch4': {'long_name': 'WH41 ch4', 'batt_fn': 'batt_int'},
-            'wh57': {'long_name': 'WH57', 'batt_fn': 'batt_int'},
+            'wh57':     {'long_name': 'WH57',     'batt_fn': 'batt_int'},
             'wh55_ch1': {'long_name': 'WH55 ch1', 'batt_fn': 'batt_int'},
             'wh55_ch2': {'long_name': 'WH55 ch2', 'batt_fn': 'batt_int'},
             'wh55_ch3': {'long_name': 'WH55 ch3', 'batt_fn': 'batt_int'},
@@ -3970,7 +3953,7 @@ class EcowittClient(Consumer):
             'wh34_ch6': {'long_name': 'WH34 ch6', 'batt_fn': 'batt_volt'},
             'wh34_ch7': {'long_name': 'WH34 ch7', 'batt_fn': 'batt_volt'},
             'wh34_ch8': {'long_name': 'WH34 ch8', 'batt_fn': 'batt_volt'},
-            'wh45': {'long_name': 'WH45', 'batt_fn': 'batt_int'},
+            'wh45':     {'long_name': 'WH45',     'batt_fn': 'batt_int'},
             'wh35_ch1': {'long_name': 'WH35 ch1', 'batt_fn': 'batt_volt'},
             'wh35_ch2': {'long_name': 'WH35 ch2', 'batt_fn': 'batt_volt'},
             'wh35_ch3': {'long_name': 'WH35 ch3', 'batt_fn': 'batt_volt'},
@@ -3983,10 +3966,10 @@ class EcowittClient(Consumer):
 
     def __init__(self, tcp_server_address, tcp_server_port, data_cycle=0, use_th32=False, show_battery=False, debug_rain=False, debug_wind=False, debug_sensors=False, plugin_instance=None):
 
-        # now initialize my superclasses
+        # initialize superclasses
         super(EcowittClient, self).__init__(plugin_instance)
 
-        # init instance
+        # get instance
         self._plugin_instance = plugin_instance
 
         self._server_thread = None
@@ -3999,7 +3982,7 @@ class EcowittClient(Consumer):
         # get a parser object to parse any data from the station
         self.parser = EcowittClient.Parser(plugin_instance)
         
-        # init tcp server
+        # get tcp server object
         self._server = EcowittClient.TCPServer(tcp_server_address, tcp_server_port, EcowittClient.Handler, plugin_instance)
         
         # get a sensors object to handle sensor data
@@ -4029,11 +4012,8 @@ class EcowittClient(Consumer):
         """Shut down the thread that collects data from the GW1000/GW1100 TCP."""
 
         if self._server_thread:
-            # tell the thread to stop collecting data
             self.collect_data = False
-            # terminate the thread
             self._server_thread.join(10.0)
-            # log the outcome
             if self._server_thread.is_alive():
                 self._plugin_instance.logger.error("Unable to shut down Gw1000Collector thread")
             else:
@@ -4044,7 +4024,6 @@ class EcowittClient(Consumer):
     def sensors(self):
         """Get the current Sensors object."""
         
-        # return our Sensors object
         return self.sensors_obj
 
     @property
@@ -4119,7 +4098,7 @@ class EcowittClient(Consumer):
             self.serve_forever()
 
         def stop(self):
-            self._plugin_instance.logger.debug("stop tcp server")
+            self._plugin_instance.logger.debug("Stop von FoshkPlugin TCP Server called")
             self.shutdown()
             self.server_close()
 
@@ -4308,7 +4287,7 @@ class EcowittClient(Consumer):
                 'wh25batt':             (None,      'wh25_batt')
                 }
 
-            result = {}
+            data_dict = {}
             for key in data:
                 try:
                     decoder, field = response_struct[key]
@@ -4317,22 +4296,21 @@ class EcowittClient(Consumer):
                     pass
                 else:
                     if decoder:
-                        result[field] = decoder(data[key])
+                        data_dict[field] = decoder(data[key])
                     else:
-                        result[field] = data[key]
-            
-            return result
+                        data_dict[field] = data[key]
+            return data_dict
 
         @staticmethod
         def clean_data(data):
             """Harmonize field names and convert into metric units"""
             _ignore_fields = ['passkey', 'firmware', 'frequency', 'model', 'client_ip']
             
-            result = {}
+            data_dict = {}
             for key in data:
                 if key.lower() not in _ignore_fields:
-                    result[key] = data[key]
-            return result
+                    data_dict[key] = data[key]
+            return data_dict
 
     class Sensors(object):
         """Class to manage GW1000/GW1100 sensor ID data."""
@@ -4662,3 +4640,14 @@ def f_to_m(f, n=1):
 def obfuscate_passwords(msg):
     """Hide password"""
     return re.sub(r'(PASSWORD|PASSKEY)=[^&]+', r'\1=XXXX', msg)
+
+
+def is_port_valid(port):
+    """check if port is between 1 and 65535"""
+    return True if 1 <= port <= 65535 else False
+    
+    
+def is_port_in_use(port):
+    """Check if default port for tcp server is free and can be used"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
