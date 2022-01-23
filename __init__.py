@@ -130,8 +130,6 @@ class Foshk(SmartPlugin):
         self.alive = False                                                          # plugin alive
         self._altitude = self.get_sh()._elev                                        # altitude of installation used from shNG setting
         self._my_language = self.get_sh().get_defaultlanguage()                     # current shNG language (= 'de')
-        self.get_api_data_loop = None                                               # get_api_data_loop object
-        self.get_tcp_data_loop = None                                               # get_tcp_data_loop object
 
         # get a Gw1000Driver object
         try:
@@ -199,8 +197,7 @@ class Foshk(SmartPlugin):
         Stop method for the plugin
         """
         self.alive = False
-        self.logger.debug(f"Stop method called. self.alive={self.alive}")
-        
+
         self.logger.debug("Shutdown von GW1000 Collector Thread called")
         self.api_driver.closePort()
         self.gateway_connected = False
@@ -277,6 +274,7 @@ class Foshk(SmartPlugin):
         try:
             _name = 'plugins.' + self.get_fullname() + '.get_api_data'
             self.api_data_thread = threading.Thread(target=self.get_api_data, name=_name)
+            self.api_data_thread.daemon = False
             self.api_data_thread.start()
             self.logger.debug("FoshkPlugin thread for 'get_api_data' has been started")
         except threading.ThreadError:
@@ -287,7 +285,7 @@ class Foshk(SmartPlugin):
         """Shut down the thread that gets data from the GW1000/GW1100 driver."""
 
         if self.api_data_thread:
-            self.api_data_thread.join(5)
+            self.api_data_thread.join()
             if self.api_data_thread.is_alive():
                 self.logger.error("Unable to shut down 'get_api_data' thread")
             else:
@@ -300,6 +298,7 @@ class Foshk(SmartPlugin):
         try:
             _name = 'plugins.' + self.get_fullname() + '.get_tcp_data'
             self.tcp_data_thread = threading.Thread(target=self.get_tcp_data, name=_name)
+            self.tcp_data_thread.daemon = False
             self.tcp_data_thread.start()
             self.logger.debug("FoshkPlugin thread for 'get_tcp_data' has been started")
         except threading.ThreadError:
@@ -310,7 +309,7 @@ class Foshk(SmartPlugin):
         """Shut down the thread that gets data from the TCP Server."""
 
         if self.tcp_data_thread:
-            self.tcp_data_thread.join(5)
+            self.tcp_data_thread.join()
             if self.tcp_data_thread.is_alive():
                 self.logger.error("Unable to shut down 'get_tcp_data' thread")
             else:
@@ -452,6 +451,7 @@ class Foshk(SmartPlugin):
     @property
     def get_gateway_poll_cycle(self):
         return self._gateway_poll_cycle
+
 
 # ============================================================================
 #                               GW1000 API Error classes
@@ -1083,6 +1083,8 @@ class Gw1000Driver(Gw1000):
         # get data poll cycle
         self.poll_interval = self._plugin_instance.get_gateway_poll_cycle
 
+        self.driver_alive = False
+
         # now initialize my superclasses
         super(Gw1000Driver, self).__init__(self.poll_interval, plugin_instance)
         
@@ -1147,15 +1149,15 @@ class Gw1000Driver(Gw1000):
         
         # start the Gw1000Collector in its own thread
         self.collector.startup()
+        self.driver_alive = True
 
     def genLoopPackets(self):
         """Generator function that returns loop packets.
 
         Run a continuous loop checking the Gw1000Collector queue for data. When data arrives map the raw data to a loop packet and yield the packet.
         """
-
         # generate loop packets forever
-        while True:
+        while self.driver_alive:
             # wrap in a try to catch any instances where the queue is empty
             try:
                 # get any data from the collector queue
@@ -1214,7 +1216,8 @@ class Gw1000Driver(Gw1000):
                         self._plugin_instance.logger.info(f"genLoopPackets: Packet {timestamp_to_string(packet['dateTime'])}: {natural_sort_dict(packet)}")
                     # yield the loop packet
                     yield packet
-                
+                    # time.sleep(self.poll_interval)
+
                 # if it's a tuple then it's a tuple with an exception and exception text
                 elif isinstance(queue_data, BaseException):
                     # We have an exception. The collector did not deem it serious enough to want to shutdown or it would have sent None instead. If it is anything else we log it and then raise it.
@@ -1321,6 +1324,7 @@ class Gw1000Driver(Gw1000):
         """Close down the driver port."""
 
         # in this case there is no port to close, just shutdown the collector
+        self.driver_alive = False
         self.collector.shutdown()
 
 
@@ -3736,17 +3740,19 @@ class Gw1000TcpDriver(Gw1000):
         
         # start the ECOWITT client in its own thread
         self.client.startup()
+        self.driver_alive = True
 
         self.ip_selected_gateway = self._plugin_instance.get_gateway_address
 
     def closePort(self):
         self._plugin_instance.logger.info('Stop and Shutdown of FoshkPlugin TCP Server called')
+        self.driver_alive = False
         self.client.stop_server()
         self.client.shutdown()
 
     def genLoopPackets(self):
         # generate loop packets forever
-        while True:
+        while self.driver_alive:
             # wrap in a try to catch any instances where the queue is empty
             try:
                 # get any data from the collector queue
