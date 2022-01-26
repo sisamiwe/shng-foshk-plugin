@@ -27,8 +27,8 @@
 
 #########################################################################
 #
-# TODO
-#  - tswarning                  is there a thunderstorm coming 
+# ToDo
+#  - tswarning                  is there a thunderstorm coming
 #
 #  - set CMD_WRITE_CALIBRATION
 #  - set CMD_WRITE_RAINDATA
@@ -94,14 +94,14 @@ class Foshk(SmartPlugin):
 
         # call init code of parent class (SmartPlugin)
         super().__init__()
-        
+
         # get the parameters for the plugin (as defined in metadata plugin.yaml):
         self._broadcast_address = None
         self._broadcast_port = None
-        self._gateway_address = self.get_parameter_value('Gateway_IP') 
+        self._gateway_address = self.get_parameter_value('Gateway_IP')
         if self._gateway_address == '127.0.0.1':
             self._gateway_address = None
-        self._gateway_port = self.get_parameter_value('Gateway_Port') 
+        self._gateway_port = self.get_parameter_value('Gateway_Port')
         if self._gateway_port == 0 or not is_port_valid(self._gateway_port):
             self._gateway_port = None
         self._gateway_poll_cycle = self.get_parameter_value('Gateway_Poll_Cycle')
@@ -123,7 +123,7 @@ class Foshk(SmartPlugin):
         self.items = {}                                                             # dict to hold Items using Plugin attribute
         self.data_dict = {}                                                         # dict to hold all live data gotten from weatherstation gateway
         self.data_dict2 = {}                                                        # dict to hold all data gotten from weatherstation gateway via tcp
-        self.gateway_connected = False                                              # is gateway connected; driver established    
+        self.gateway_connected = False                                              # is gateway connected; driver established
         self.api_data_thread = None                                                 # thread property for get data via api
         self.tcp_data_thread = None                                                 # thread property for get data via http
         self.update_available = False                                               # is a newer firmware available
@@ -135,14 +135,14 @@ class Foshk(SmartPlugin):
 
         # get a Gw1000Driver object
         try:
-            self.logger.debug(f"Start interrogating.....")                                                                                                                                                                              
+            self.logger.debug(f"Start interrogating.....")
             self.api_driver = Gw1000Driver(self)
             self.logger.debug(f"Interrogating {self.api_driver.collector.station.model} at {self.api_driver.collector.station.ip_address.decode()}:{self.api_driver.collector.station.port}")
             self.gateway_connected = True
         except GW1000IOError as e:
             self.logger.error(f"Unable to connect to device: {e}")
             self._init_complete = False
-        
+
         # if use of customer service is enabled
         if self._use_customer_server:
             # initialize tcp server
@@ -154,22 +154,22 @@ class Foshk(SmartPlugin):
 
         # get webinterface
         if not self.init_webinterface(WebInterface):
-            self.logger.warning("Webintertface not initialized")                           
+            self.logger.warning("Webintertface not initialized")
             # self._init_complete = False
         else:
             self.logger.debug(f"Init of Plugin {self.get_shortname()} complete")
-            
+
     def run(self):
         """ Run method for the plugin
         """
-        
+
         self.logger.debug("Run method called")
         self.alive = True
-        
+
         # add scheduler for update check if FW-Check is activated
         if self._fw_update_check_cycle > 0:
             self.scheduler_add('Foshk FW Update Check', self.check_firmware_update, cycle=self._fw_update_check_cycle)
-            
+
         # if customer server is used, set parameters accordingly
         if self._use_customer_server:
             self.set_custom_params(custom_server_id='', custom_password='', custom_host=self._http_server_ip, custom_port=self._http_server_port, custom_interval=self._data_cycle, custom_type=False, custom_enabled=True)
@@ -178,24 +178,24 @@ class Foshk(SmartPlugin):
         # set class property to selected IP
         self._gateway_address = self.api_driver.collector.station.get_gateway_ip
         self._gateway_port = self.api_driver.collector.station.get_gateway_port
-         
+
         # start endless loop for 'get_api_data' in own thread until plugin stops
         try:
-            self.get_api_data_thread_startup()  
+            self.get_api_data_thread_startup()
         except Exception as e:
             self.logger.error(f"Unable to start 'get_api_data' thread: {e}")
         # if use of customer service is enabled
         if self._use_customer_server:
             # start endless loop for 'get_tcp_data' in own thread until plugin stops
             try:
-                self.get_tcp_data_thread_startup()  
+                self.get_tcp_data_thread_startup()
             except Exception as e:
                 self.logger.error(f"Unable to start 'get_tcp_data' thread: {e}")
 
     def stop(self):
         """ Stop method for the plugin
         """
-        
+
         self.alive = False
 
         self.logger.debug("Shutdown von GW1000 Collector Thread called")
@@ -204,20 +204,20 @@ class Foshk(SmartPlugin):
 
         self.logger.debug("Shutdown von FoshkPlugin Thread for getting API data called")
         self.get_api_data_thread_shutdown()
-        
+
         if self._fw_update_check_cycle > 0:
             self.scheduler_remove('Foshk FW Update Check')
-        
+
         if self._use_customer_server:
             self.logger.debug("Shutdown von FoshkPlugin Thread for getting TCP data called")
             self.get_tcp_data_thread_shutdown()
-        
+
             self.logger.debug("Stop von FoshkPlugin TCP Server called")
             self.tcp_driver.closePort()
 
     def parse_item(self, item):
         """ Default plugin parse_item method. Is called when the plugin is initialized.
-        
+
         The plugin can, corresponding to its attribute keywords, decide what to do with
         the item in future, like adding it to an internal array for future reference
         :param item:    The item to process.
@@ -228,13 +228,21 @@ class Foshk(SmartPlugin):
                         with the item, caller, source and dest as arguments and in case of the knx plugin the value
                         can be sent to the knx with a knx write function within the knx plugin.
         """
-        
+
         if self.has_iattr(item.conf, 'foshk_attibute'):
             # self.logger.debug(f"parse item: {item}")
-            foshk_attibute = self.get_iattr_value(item.conf, 'foshk_attibute')
-            self.items[foshk_attibute] = item
-            
-            if foshk_attibute.lower().startswith('set'):
+            _foshk_attribute = (self.get_iattr_value(item.conf, 'foshk_attibute')).lower()
+
+            if self.has_iattr(item.conf, 'foshk_datasource'):
+                _foshk_datasource = (self.get_iattr_value(item.conf, 'foshk_datasource')).lower()
+                if _foshk_datasource == 'ecowitt' and not self._use_customer_server:
+                    self.logger.warning(f" Item {item.id()} should use datasource {_foshk_datasource} as per item.yaml, but 'ECOWITT'-protocol not enabled. Item ignored")
+                else:
+                    self.items[_foshk_attribute] = (item, _foshk_datasource)
+            else:
+                self.items[_foshk_attribute] = (item, 'api')
+
+            if _foshk_attribute.startswith('set'):
                 return self.update_item
 
     def update_item(self, item, caller=None, source=None, dest=None):
@@ -249,7 +257,7 @@ class Foshk(SmartPlugin):
         :param source: if given it represents the source
         :param dest: if given it represents the dest
         """
-        
+
         if self.alive and caller != self.get_shortname():
             self.logger.info(f"Update item: {item.property.path}, item has been changed outside this plugin")
 
@@ -260,7 +268,7 @@ class Foshk(SmartPlugin):
     def select_port_for_tcp_server(self, port):
         """Check if default port for tcp server is free and can be used
         """
-    
+
         for attempt in range(20):
             port = port + attempt
             # self.logger.debug(f"try port={port}")
@@ -333,7 +341,7 @@ class Foshk(SmartPlugin):
                 # put packet to property
                 self.data_dict = packet
                 # start item update
-                self.update_item_values(packet)
+                self.update_item_values(packet, 'api')
 
     def get_tcp_data(self):
         """ Gets data from client in endless loop
@@ -345,37 +353,42 @@ class Foshk(SmartPlugin):
                 self.logger.debug(f"get_tcp_data: packet={packet}")
                 # put packet to property
                 self.data_dict2 = packet
+                # start item update
+                self.update_item_values(packet, 'ecowitt')
 
-    def update_item_values(self, data):
+    def update_item_values(self, data, source):
         """ Updates the value of connected items
         """
-        
+
+        self.logger.debug(f"update_item_values: Called with source={source}")
+
         for foshk_attibute in self.items:
-            item = self.items[foshk_attibute]
-            # self.logger.debug(f"update_item_values: foshk_attibute={foshk_attibute}; item={item.id()}")
-            if foshk_attibute in data:
+            item = self.items[foshk_attibute][0]
+            datasource = self.items[foshk_attibute][1]
+            # self.logger.debug(f"update_item_values: foshk_attibute={foshk_attibute}; item={item.id()}, datasource={datasource}")
+            if foshk_attibute in data and datasource == source:
                 value = data.get(foshk_attibute)
-                # self.logger.debug(f"update_item_values: item={item.id()} with foshk_attibute={foshk_attibute} updated with value={value}")
+                self.logger.debug(f"update_item_values: Value {value} set for item={item.id()} with foshk_attibute={foshk_attibute}, datasource={datasource}")
                 if item is not None:
-                    item(value, self.get_shortname())
-                    
+                    item(value, self.get_shortname(), source)
+
     def firmware_update(self):
         """ Run firmware update
         """
-        
+
         result = self.api_driver.collector.firmware_update()
         if result == 'SUCCESS':
             self.logger.debug(f"firmware_update: {result}")
         else:
             self.logger.error(f"firmware_update: {result}")
-            
+
     def check_firmware_update(self):
         """ Check if firmware update is available
         """
 
         fw_info = requests.get(fw_update_url)
         self.logger.debug(f"check_firmware_update: getting update info from {fw_update_url} results in {fw_info.status_code}")
-        
+
         if fw_info.status_code == 200:
             # get current firmware version
             current_firmware = self.api_driver.firmware_version
@@ -389,12 +402,12 @@ class Foshk(SmartPlugin):
             config = configparser.ConfigParser(allow_no_value=True, strict=False)
             # read response text
             config.read_string(fw_info.text)
-            
+
             # extract information for given model
             remote_firmware = config.get(model, "VER", fallback="unknown")
             remote_firmware_notes = config.get(model, "NOTES", fallback="").split(";")
             use_app = "WS View"
-            
+
             if ver_str_to_num(remote_firmware) > ver_str_to_num(current_firmware):
                 self.logger.warning(f"Firmware update for {model} available. Installed version is: {current_firmware}, available version is: {remote_firmware}. Use the app {use_app} to update!")
                 for i in range(len(remote_firmware_notes)):
@@ -402,48 +415,48 @@ class Foshk(SmartPlugin):
                 self.update_available = True
             else:
                 self.logger.info(f"No newer firmware found for {model}. Installed version is: {current_firmware}, available version is: {remote_firmware}.")
-                self.update_available = False            
-            
+                self.update_available = False
+
     def set_usr_path(self, custom_ecowitt_pathpath="/data/report/", custom_wu_path="/weatherstation/updateweatherstation.php?"):
-        """ Set user path for Ecowitt data to receive 
+        """ Set user path for Ecowitt data to receive
         """
-    
+
         result = self.api_driver.collector.set_usr_path(custom_ecowitt_pathpath, custom_wu_path)
         if result == 'SUCCESS' or result == 'NO NEED':
             self.logger.debug(f"set_usr_path: {result}")
         else:
             self.logger.error(f"set_usr_path: {result}")
-            
+
     def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled):
-        """ Set customer parameter for Ecowitt data to receive 
+        """ Set customer parameter for Ecowitt data to receive
         """
-        
+
         result = self.api_driver.collector.set_custom_params(custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled)
         if result == 'SUCCESS' or result == 'NO NEED':
             self.logger.debug(f"set_custom_params: {result}")
         else:
             self.logger.error(f"set_custom_params: {result}")
-        
+
     def reboot(self):
         """ Reboot device
         """
-        
+
         result = self.api_driver.collector.reboot()
         if result == 'SUCCESS' or result == 'NO NEED':
             self.logger.debug(f"reboot: {result}")
         else:
             self.logger.error(f"reboot: {result}")
-            
+
     def reset(self):
         """ Reset device
         """
-        
+
         result = self.api_driver.collector.reset()
         if result == 'SUCCESS' or result == 'NO NEED':
             self.logger.debug(f"reset: {result}")
         else:
             self.logger.error(f"reset: {result}")
-            
+
     @property
     def get_batterywarning(self):
         return self._battery_warning
@@ -505,40 +518,40 @@ class UnknownCommand(Exception):
 class Gw1000(object):
     """ Base class for interacting with a GW1000/GW1100.
 
-    There are a number of common properties and methods (eg IP address, field map, rain calculation etc) when dealing with a GW1000/GW1100 as a driver. 
+    There are a number of common properties and methods (eg IP address, field map, rain calculation etc) when dealing with a GW1000/GW1100 as a driver.
     This class captures those common features.
     """
 
     def __init__(self, data_cycle, plugin_instance):
         """Initialise a GW1000 object."""
-        
+
         # init logger
         self._plugin_instance = plugin_instance
         self._plugin_instance.logger.debug("Init Gw1000 Object")
-        
+
         # set the language property to the global language
         self.language = self._plugin_instance.get_language
-        
+
         # how often (in seconds) we will receive data
         self.data_cycle = data_cycle
-        
+
         # Is a WH32 in use. WH32 TH sensor can override/provide outdoor TH data to the GW1000/GW1100. In terms of TH data the process is transparent
         # and we do not need to know if a WH32 or other sensor is providing outdoor TH data but in terms of battery state we need to know so the
         # battery state data can be reported against the correct sensor.
         use_th32 = False
-        
+
         # do we show all battery state data including nonsense data or do we filter those sensors with signal state == 0
         self.show_battery = False
-        
+
         # create deque to hold 10 minutes of wind speed, wind direction and windgust
         self.wind_avg10m = deque(maxlen=(int(10*60/int(self.data_cycle))))
-        
+
         # is there a battery warning (any battery low/critical)
         self.battery_warning = False
-        
+
         # is there a sensor warning (any missed sensor)
         self.sensor_warning = False
-        
+
         # SET SPECIFIC LOGGERS
         # set specific debug settings rain
         self.debug_rain = False
@@ -548,13 +561,13 @@ class Gw1000(object):
         self.debug_loop = False
         # set specific debug settings sensors
         self.debug_sensors = False
-        
+
         # initialise last lightning count and last rain properties
         self.last_lightning = None
         self.last_rain = None
         self.rain_mapping_confirmed = False
         self.rain_total_field = None
-        
+
         # Finally, log any config that is not being pushed any further down. Log specific debug but only if set ie. True
         debug_list = []
         if self.debug_rain:
@@ -568,17 +581,17 @@ class Gw1000(object):
 
     def add_calculated_data(self, data):
         """ Add calculated data to dict
-        
+
         :param data: dict of parsed GW1000/GW1100 API data
         """
-        
+
         if "outtemp" in data:
-        
+
             if "windspeed" in data:
                 data['weather_text'] = round(self.get_windchill_index_metric(data["outtemp"], data["windspeed"]), 1)
                 if data.keys() >= {"outhumid"}:
                     data['feels_like'] = round(self.calculate_feels_like(data["outtemp"], data["windspeed"], data["outhumid"]), 1)
-                
+
             if "outhumid" in data:
                 dewpt_c = self.get_dew_point_c(data["outtemp"], data["outhumid"])
                 frostpt_c = self.get_frost_point_c(data["outtemp"], dewpt_c)
@@ -588,7 +601,7 @@ class Gw1000(object):
 
         if "winddir" in data:
             data['winddir_text'] = self.get_wind_dir_text(data["winddir"], self.language)
-            
+
         if "windspeed" in data:
             windspeed_bft = self.get_beaufort_number(data["windspeed"])
             windspeed_bft_text = self.get_beaufort_description(windspeed_bft, self.language)
@@ -597,22 +610,22 @@ class Gw1000(object):
 
         if "absbarometer" in data:
             data['weather_text'] = self.get_weather_now(data["absbarometer"], self.language)
-            
+
         if any(k in data for k in ('winddir', 'windspeed', 'gustspeed')):
             self.wind_avg10m.append([int(time.time()), data["windspeed"], data["winddir"], data["gustspeed"]])
-            
+
             if "windspeed_avg10m" not in data:
                 data['windspeed_avg10m'] = self.get_avg_wind(self.wind_avg10m, 1)
-            
+
             if "winddir_avg10m" not in data:
                 data['winddir_avg10m'] = self.get_avg_wind(self.wind_avg10m, 2)
 
             if "gustspeed_avg10m" not in data:
                 data['gustspeed_avg10m'] = self.get_max_wind(self.wind_avg10m, 3)
-           
+
 # ToDo  sunhours
 # ToDo  ptrend
-        
+
     def get_cumulative_rain_field(self, data):
         """Determine the cumulative rain field used to derive field 'rain'.
 
@@ -623,12 +636,12 @@ class Gw1000(object):
         """
 
         self.rain_total_field = None
-        
+
         for key in ('raintotals', 'rainyear', 'rainmonth'):
             if key in data:
                 self.rain_total_field = key
                 break
-        
+
         if self.rain_total_field:
             self.rain_mapping_confirmed = True
             self._plugin_instance.logger.info(f"Using '{self.rain_total_field}' for rain total")
@@ -644,7 +657,7 @@ class Gw1000(object):
 
         :param data: dict of parsed GW1000/GW1100 API data
         """
-        
+
         # have we decided on a field to use and is the field present
         if self.rain_mapping_confirmed and self.rain_total_field in data:
             # yes on both counts, so get the new total
@@ -678,7 +691,7 @@ class Gw1000(object):
 
     def calculate_feels_like(self, temperature_c, windspeed_kmh, rel_hum):
         """ Computes the feels-like temperature
-    
+
         :param temperature_c: ambient temperature in celsius
         :type temperature_c: float
         :param windspeed_kmh: wind speed in km/h
@@ -688,18 +701,18 @@ class Gw1000(object):
         :return: feels like temperature in celsius
         :rtype: float
         """
-        
+
         # convert to fahrenheit and mph
         temperature_f = (temperature_c * 9/5) + 32
         windspeed_mph = windspeed_kmh * 0.621371192
- 
+
         # Try Wind Chill first
         feels_like = self.get_windchill_index_imperial(temperature_f, windspeed_mph)
- 
+
         # Replace it with the Heat Index, if necessary
         if feels_like == temperature_f and temperature_f >= 80:
             feels_like = self.get_heat_index(temperature_f, windspeed_mph)
-        
+
         # convert back to celsius and return
         return (feels_like - 32) * 5/9
 
@@ -715,9 +728,9 @@ class Gw1000(object):
         :param rain:      current cumulative rain value
         :param last_rain: last cumulative rain value
         """
-        
+
         logger = logging.getLogger(__name__)
-        
+
         # logger.debug(f"delta_rain: rain={rain}, last_rain={last_rain}")
 
         # do we have a last rain value
@@ -751,7 +764,7 @@ class Gw1000(object):
         :param count:      current cumulative lightning count
         :param last_count: last cumulative lightning count
         """
-        
+
         logger = logging.getLogger(__name__)
 
         # do we have a last count
@@ -772,11 +785,11 @@ class Gw1000(object):
             return count
         # otherwise return the difference between the counts
         return count - last_count
-    
-    @staticmethod   
+
+    @staticmethod
     def get_dew_point_c(t_air_c, rel_humidity):
         """Compute the dew point in degrees Celsius
-        
+
         :param t_air_c: current ambient temperature in degrees Celsius
         :type t_air_c: float
         :param rel_humidity: relative humidity in %
@@ -784,7 +797,7 @@ class Gw1000(object):
         :return: the dew point in degrees Celsius
         :rtype: float
         """
-        
+
         val_a = 17.27
         val_b = 237.7
         try:
@@ -793,11 +806,11 @@ class Gw1000(object):
         except ValueError:
             dew_point = -9999
         return dew_point
-        
-    @staticmethod  
+
+    @staticmethod
     def get_frost_point_c(t_air_c, dew_point_c):
         """Compute the frost point in degrees Celsius
-        
+
         :param t_air_c: current ambient temperature in degrees Celsius
         :type t_air_c: float
         :param dew_point_c: current dew point in degrees Celsius
@@ -805,7 +818,7 @@ class Gw1000(object):
         :return: the frost point in degrees Celsius
         :rtype: float
         """
-        
+
         try:
             dew_point_k = 273.15 + dew_point_c
             t_air_k = 273.15 + t_air_c
@@ -815,10 +828,10 @@ class Gw1000(object):
             frost_point_c = -9999
         return frost_point_c
 
-    @staticmethod  
+    @staticmethod
     def get_windchill_index_metric(t_air_c, wind_speed):
         """Compute the wind chill index
-        
+
         :param t_air_c: current ambient temperature in degrees Celsius
         :type t_air_c: float
         :param wind_speed: wind speed in kilometers/hour
@@ -826,13 +839,13 @@ class Gw1000(object):
         :return: the wind chill index
         :rtype: float
         """
-    
+
         return 13.12 + 0.6215*t_air_c - 11.37*math.pow(wind_speed, 0.16) + 0.3965*t_air_c*math.pow(wind_speed, 0.16)
 
-    @staticmethod  
+    @staticmethod
     def get_windchill_index_imperial(air_temp_f, wind_speed_mph):
         """Compute the wind chill index
-        
+
         :param air_temp_f: current ambient temperature in fahrenheit
         :type air_temp_f: float
         :param wind_speed_mph: wind speed in miles/hour
@@ -840,18 +853,18 @@ class Gw1000(object):
         :return: the wind chill index
         :rtype: float
         """
-        
+
         if air_temp_f <= 50 and wind_speed_mph >= 3:
             windchill = 35.74 + (0.6215*air_temp_f) - 35.75*(wind_speed_mph**0.16) + ((0.4275*air_temp_f)*(wind_speed_mph**0.16))
         else:
             windchill = air_temp_f
-    
+
         return windchill
-    
-    @staticmethod 
+
+    @staticmethod
     def get_heat_index(temperature_f, rel_hum):
         """Compute the heat index
-        
+
         :param temperature_f: current ambient temperature in fahrenheit
         :type temperature_f: float
         :param rel_hum: rel humitidy
@@ -859,7 +872,7 @@ class Gw1000(object):
         :return: the heat index
         :rtype: float
         """
-        
+
         heat_index = 0.5 * (temperature_f + 61.0 + ((temperature_f-68.0)*1.2) + (rel_hum*0.094))
         if heat_index >= 80:
             heat_index = -42.379 + 2.04901523*temperature_f + 10.14333127*rel_hum - .22475541*temperature_f*rel_hum - .00683783*temperature_f*temperature_f - .05481717*rel_hum*rel_hum + .00122874*temperature_f*temperature_f*rel_hum + .00085282*temperature_f*rel_hum*rel_hum - .00000199*temperature_f*temperature_f*rel_hum*rel_hum
@@ -868,11 +881,11 @@ class Gw1000(object):
                 if rel_hum > 85 and 80 <= temperature_f <= 87:
                     heat_index = heat_index + ((rel_hum-85)/10) * ((87-temperature_f)/5)
         return heat_index
-        
+
     @staticmethod
     def get_weather_now(hpa, lang='de'):
         """ Computes text for current weather condition
-    
+
         :param hpa: current air pressure in hpa
         :type hpa: float
         :param lang: acronym of language
@@ -880,7 +893,7 @@ class Gw1000(object):
         :return: wind direction text
         :rtype: str
         """
-        
+
         _weather_now_de = ["undefiniert", "stürmisch, Regen", "regnerisch", "wechselhaft", "sonnig", "trocken, Gewitter"]
         _weather_now_en = ["undefined", "stormy, rainy", "rainy", "unstable", "sunny", "dry, thunderstorm"]
 
@@ -905,7 +918,7 @@ class Gw1000(object):
     @staticmethod
     def get_wind_dir_text(wdir, lang='de'):
         """ Computes wind direction text on wind direction in degrees
-    
+
         :param wdir: wind direction in degrees
         :type wdir: float
         :param lang: acronym of language
@@ -913,7 +926,7 @@ class Gw1000(object):
         :return: wind direction text
         :rtype: str
         """
-        
+
         _wind_dir_zz = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
         _wind_dir_de = ["Nord", "Nordnordost", "Nordost", "Ostnordost", "Ost", "Ostsüdost", "Südost", "Südsüdost", "Süd", "Südsüdwest", "Südwest", "Westsüdwest", "West", "Westnordwest", "Nordwest", "Nordnordwest"]
         _wind_dir_en = ["north", "north-northeast", "northeast", "east-northeast", "east", "east-southeast", "southeast", "south-southeast", "south", "south-southwest", "southwest", "west-southwest", "west", "west-northwest", "north-west", "north-northwest"]
@@ -927,18 +940,18 @@ class Gw1000(object):
             dir_list = _wind_dir_xx
         else:
             dir_list = _wind_dir_zz
-        
+
         try:
             val = int((float(wdir)/22.5)+.5)
             s = dir_list[(val % 16)]
         except ValueError:
             s = "null"
         return s
-    
+
     @staticmethod
     def make_weather_forecast(diff, lang='de'):
         """ Computes weather forecast based on changes for relative air pressure
-    
+
         :param diff: pressure difference between now and 3 hours ago
         :type diff: float
         :param lang: acronym of language
@@ -946,7 +959,7 @@ class Gw1000(object):
         :return: the wind chill index
         :rtype: float
         """
-    
+
         # diff = CurDiff3h = round(baromrelhpa - ago3h_baromrelhpa,1)
         # CurDiff1h = round(baromrelhpa - ago1h_baromrelhpa,1)
         # d_m.update({"pchange3" : str(CurDiff3h)})
@@ -959,7 +972,7 @@ class Gw1000(object):
             _weather_forecast = _weather_forecast_de
         else:
             _weather_forecast = _weather_forecast_en                                             # defaults to english
-      
+
         if diff <= -8:
             wproglvl = 0               # Sturm mit Hagel
         elif -8 < diff <= -5:
@@ -985,7 +998,7 @@ class Gw1000(object):
     @staticmethod
     def cloud_ceiling(temp, dewpt):
         """ Computes cloud ceiling (Wolkenuntergrenze)
-    
+
         :param temp: outside temperatur in celsius
         :type temp: float
         :param dewpt: outside dew point in celsius
@@ -996,21 +1009,21 @@ class Gw1000(object):
 
         # Faustformel für die Berechnung der Höhe der Wolkenuntergrenze von Quellwolken: Höhe in Meter = 122 mal Spread (Taupunktdifferenz)
         return (temp - dewpt) * 122
-    
-    @staticmethod    
+
+    @staticmethod
     def get_avg_wind(d, w):
         """ get avg from deque d , field w """
-        
+
         s = 0
         for i in range(len(d)):
             s = s + d[i][w]
         a = round(s/len(d), 1)
         return a
-    
+
     @staticmethod
     def get_max_wind(d, w):
         """ get max from deque d, field w """
-        
+
         s = 0
         for i in range(len(d)):
             if d[i][w] > s:
@@ -1021,7 +1034,7 @@ class Gw1000(object):
     @staticmethod
     def get_beaufort_number(speed_in_mps):
         """ get the beaufort number from windspeed in meters per second"""
-        
+
         try:
             # Origin of table: https://www.smarthomeng.de/vom-winde-verweht
             table = [
@@ -1041,11 +1054,11 @@ class Gw1000(object):
             return min(filter(lambda x: x[0] >= speed_in_mps, table))[1]
         except ValueError:
             return None
-            
+
     @staticmethod
     def get_beaufort_description(speed_in_bft, lang='de'):
         """ get the beaufort description from beaufort number"""
-        
+
         # source for german descriptions https://www.smarthomeng.de/vom-winde-verweht
         _beaufort_descriptions_de = ["Windstille",
                                      "leiser Zug",
@@ -1076,7 +1089,7 @@ class Gw1000(object):
                                      "Hurricane-force"]
 
         logger = logging.getLogger(__name__)
-    
+
         if speed_in_bft is None:
             logger.warning(f"speed_in_bft is given as None")
             return None
@@ -1108,10 +1121,10 @@ class Gw1000Driver(Gw1000):
 
     def __init__(self, plugin_instance):
         """Initialise a GW1000/GW1100 driver object."""
-        
+
         # get instance
         self._plugin_instance = plugin_instance
-        
+
         # get data poll cycle
         self.poll_interval = self._plugin_instance.get_gateway_poll_cycle
 
@@ -1119,29 +1132,29 @@ class Gw1000Driver(Gw1000):
 
         # now initialize my superclasses
         super().__init__(self.poll_interval, plugin_instance)
-        
+
         # network broadcast address and port
-        self.broadcast_address = self._plugin_instance.get_broadcast_address 
+        self.broadcast_address = self._plugin_instance.get_broadcast_address
         if self.broadcast_address is None:
             self.broadcast_address = default_broadcast_address
-        self.broadcast_port = self._plugin_instance.get_broadcast_port 
+        self.broadcast_port = self._plugin_instance.get_broadcast_port
         if self.broadcast_port is None:
             self.broadcast_port = default_broadcast_port
         self.socket_timeout = default_socket_timeout
         self.broadcast_timeout = default_broadcast_timeout
-        
+
         # set the port property from obtain the GW1000/GW1100 port from the config dict for port number we have a default value we can use, so if port is not specified use the default
         self.port = self._plugin_instance.get_gateway_port  # will be None if it need to be auto detected
-        
+
         # how many times to poll the API before giving up, default is default_max_tries
         self.max_tries = default_max_tries
-        
+
         # wait time in seconds between retries, default is default_retry_wait seconds
         self.retry_wait = default_retry_wait
 
         # set the IP address property to the GW1000/GW1100 IP address
         self.ip_address = self._plugin_instance.get_gateway_address  # will be None if it need to be auto detected
-        
+
         # log the relevant settings/parameters we are using
         self._plugin_instance.logger.debug("Starting Gw1000Driver")
 
@@ -1149,9 +1162,9 @@ class Gw1000Driver(Gw1000):
         # and we do not need to know if a WH32 or other sensor is providing outdoor TH data but in terms of battery state we need to know so the
         # battery state data can be reported against the correct sensor.
         use_th32 = False
-        
+
         # log all found sensors since beginning of plugin as a set
-        self.sensors = set()
+        self.sensors = []
 
         # create an Gw1000Collector object to interact with the GW1000/GW1100 API
         self.collector = Gw1000Collector(ip_address=self.ip_address,
@@ -1172,7 +1185,7 @@ class Gw1000Driver(Gw1000):
 
         # log setup
         if self.ip_address is None and self.port is None:
-            self._plugin_instance.logger.info(f'{self.collector.station.model} IP address and port not specified, attempting to discover {self.collector.station.model}...') 
+            self._plugin_instance.logger.info(f'{self.collector.station.model} IP address and port not specified, attempting to discover {self.collector.station.model}...')
         elif self.ip_address is None:
             self._plugin_instance.logger.info(f'{self.collector.station.model} IP address not specified, attempting to discover {self.collector.station.model}...')
         elif self.port is None:
@@ -1182,7 +1195,7 @@ class Gw1000Driver(Gw1000):
         self._plugin_instance.logger.debug(f'max tries is {self.max_tries}, retry wait time is {self.retry_wait} seconds')
         self._plugin_instance.logger.debug(f'broadcast address is {self.broadcast_address}:{self.broadcast_port}, broadcast timeout is {self.broadcast_timeout} seconds')
         self._plugin_instance.logger.debug(f'socket timeout is {self.socket_timeout} seconds')
-        
+
         # start the Gw1000Collector in its own thread
         self.collector.startup()
         self.driver_alive = True
@@ -1192,7 +1205,7 @@ class Gw1000Driver(Gw1000):
 
         Run a continuous loop checking the Gw1000Collector queue for data. When data arrives map the raw data to a loop packet and yield the packet.
         """
-        
+
         # generate loop packets forever
         while self.driver_alive:
             # wrap in a try to catch any instances where the queue is empty
@@ -1214,24 +1227,26 @@ class Gw1000Driver(Gw1000):
                     # Now start to create a loop packet. A loop packet must have a timestamp, if we have one (key 'datetime') in the received data use it otherwise allocate one.
                     if 'datetime' in queue_data:
                         packet = {'dateTime': queue_data['datetime']}
-                        if self.debug_loop:
-                            self._plugin_instance.logger.info(f"Received {self.collector.station.model} data (debug_loop): {timestamp_to_string(queue_data['datetime'])} {natural_sort_dict(queue_data)}")
-                        else:
-                            self._plugin_instance.logger.info(f"Received {self.collector.station.model} data: {natural_sort_dict(queue_data)}")
                     else:
                         # we don't have a timestamp so create one
                         packet = {'dateTime': int(time.time() + 0.5)}
-                    
+
+                    if self.debug_loop:
+                        self._plugin_instance.logger.debug(
+                            f"Received {self.collector.station.model} data (debug_loop): {timestamp_to_string(packet['dateTime'])} {natural_sort_dict(queue_data)}")
+                    # else:
+                    #     self._plugin_instance.logger.debug(f"Received {self.collector.station.model} data: {natural_sort_dict(queue_data)}")
+
                     # if not already determined, determine which cumulative rain field will be used to determine the per period rain field
                     if not self.rain_mapping_confirmed:
                         self.get_cumulative_rain_field(queue_data)
-                    
+
                     # get the rainfall for this period from total
                     self.calculate_rain(queue_data)
-                    
+
                     # get the lightning strike count for this period from total
                     self.calculate_lightning_count(queue_data)
-                    
+
                     # add calculated data to queue_data
                     self.add_calculated_data(queue_data)
 
@@ -1245,7 +1260,7 @@ class Gw1000Driver(Gw1000):
 
                     # add the queue_data to the empty packet
                     packet.update(queue_data)
-                    
+
                     # log the packet if necessary, there are several debug settings that may require this, start from the highest (most encompassing) and work to the lowest (least encompassing)
                     if self.debug_loop:
                         self._plugin_instance.logger.info(f"genLoopPackets: Packet {timestamp_to_string(packet['dateTime'])}: {natural_sort_dict(packet)}")
@@ -1256,7 +1271,7 @@ class Gw1000Driver(Gw1000):
                 # if it's a tuple then it's a tuple with an exception and exception text
                 elif isinstance(queue_data, BaseException):
                     # We have an exception. The collector did not deem it serious enough to want to shutdown or it would have sent None instead. If it is anything else we log it and then raise it.
-                    
+
                     # first extract our exception
                     e = queue_data
                     # and process it if we have something
@@ -1265,7 +1280,7 @@ class Gw1000Driver(Gw1000):
                         self._plugin_instance.logger.error(f"Caught unexpected exception {e.__class__.__name__}: {e}")
                         # then raise it
                         raise e
-                
+
                 # if it's None then its a signal the Collector needs to shutdown
                 elif queue_data is None:
                     # if debug_loop log what we received
@@ -1279,7 +1294,7 @@ class Gw1000Driver(Gw1000):
 
     def check_battery(self, data):
         """Check if batteries states are critical, create log entry and add a separate field for battery warning."""
-        
+
         # get battery data
         raw_data = self.collector.battery_desc
         # init string to collect message
@@ -1290,7 +1305,7 @@ class Gw1000Driver(Gw1000):
                 if batterycheck != '':
                     batterycheck += ', '
                 batterycheck += key
-        # check result, create log entry data field 
+        # check result, create log entry data field
         if batterycheck != "":
             data['battery_warning'] = 0
             if not self.battery_warning:
@@ -1301,22 +1316,22 @@ class Gw1000Driver(Gw1000):
             self._plugin_instance.logger.info("<OK> Battery level for all sensors is ok again")
             self.battery_warning = False
             data['battery_warning'] = 0
-        
+
     def check_sensors(self, data):
         """Check if all know sensors are still connected, create log entry and add a separate field for sensor warning."""
-        
+
         # get currently connected sensors
         connected_sensors = self.collector.sensors.connected_sensors
-        self._plugin_instance.logger.debug(f"check_sensors: connected_sensors={connected_sensors}")
+        # self._plugin_instance.logger.debug(f"check_sensors: connected_sensors={connected_sensors}")
         # log all found sensors during runtime
-        self.sensors = set.union(self.sensors, set(connected_sensors))
-        # check if all sensors are still connected, create log entry data field 
-        if set(connected_sensors) == self.sensors:
+        self.sensors = list(set(self.sensors + connected_sensors))
+        # check if all sensors are still connected, create log entry data field
+        if set(connected_sensors) == set(self.sensors):
             # self._plugin_instance.logger.debug(f"check_sensors: All sensors are still connected!")
             self.sensor_warning = False
             data['sensor_warning'] = 0
         else:
-            missing_sensors = self.sensors.difference(set(connected_sensors))
+            missing_sensors = list(set(self.sensors).difference(set(connected_sensors)))
             self._plugin_instance.logger.error(f"check_sensors: The following sensors where lost: {missing_sensors}")
             self.sensor_warning = True
             data['sensor_warning'] = 1
@@ -1434,7 +1449,7 @@ class Gw1000Collector(Collector):
         b'\x2e': {'name': 'wh35_ch7', 'long_name': 'WH35 ch7', 'batt_fn': 'batt_volt'},
         b'\x2f': {'name': 'wh35_ch8', 'long_name': 'WH35 ch8', 'batt_fn': 'batt_volt'}
     }
-    
+
     # list of dicts of weather services that I know about
     services = [{'name': 'ecowitt_net', 'long_name': 'Ecowitt.net'},
                 {'name': 'wunderground', 'long_name': 'Wunderground'},
@@ -1450,25 +1465,25 @@ class Gw1000Collector(Collector):
 
         # initialize my base class:
         super().__init__(plugin_instance)
-        
+
         # handle plugin instance
         self._plugin_instance = plugin_instance
-        
+
         # init logger
         self.logger = logging.getLogger(__name__)
-        
+
         # interval between polls of the API, use a default
         self.poll_interval = poll_interval
-        
+
         # how many times to poll the API before giving up, default is default_max_tries
         self.max_tries = max_tries
-        
+
         # period in seconds to wait before polling again, default is default_retry_wait seconds
         self.retry_wait = retry_wait
-        
+
         # are we using a th32 sensor
         self.use_th32 = use_th32
-        
+
         # get a station object to do the handle the interaction with the GW1000/GW1100 API
         self.station = Gw1000Collector.Station(ip_address=ip_address,
                                                port=port,
@@ -1478,31 +1493,31 @@ class Gw1000Collector(Collector):
                                                broadcast_timeout=broadcast_timeout,
                                                max_tries=max_tries,
                                                retry_wait=retry_wait)
-        
+
         # Do we have a WH24 attached? First obtain our system parameters.
         _sys_params = self.station.get_system_params()
-        
+
         # WH24 is indicated by the 6th byte being 0
         is_wh24 = _sys_params[5] == 0
-        
+
         # Tell our sensor id decoding whether we have a WH24 or a WH65. By default we are coded to use a WH65. Is there a WH24 connected?
         if is_wh24:
             # set the WH24 sensor id decode dict entry
             self.sensor_ids[b'\x00']['name'] = 'wh24'
             self.sensor_ids[b'\x00']['long_name'] = 'WH24'
-        
+
         # start off logging failures
         self.log_failures = True
-        
+
         # get a parser object to parse any data from the station
         self.parser = Gw1000Collector.Parser(is_wh24, debug_rain, debug_wind)
-        
+
         # get a sensors object to handle sensor ID data
         self.sensors_obj = Gw1000Collector.Sensors(show_battery=show_battery, debug_sensors=debug_sensors, plugin_instance=plugin_instance)
-        
+
         # create a thread property
         self.thread = None
-        
+
         # we start off not collecting data, it will be turned on later when we are threaded
         self.collect_data = False
 
@@ -1660,7 +1675,7 @@ class Gw1000Collector(Collector):
         # extract the actual data
         data = response[4:4 + raw_data_size - 3]
         # initialise a dict to hold our final data
-        offset_dict = {}
+        offset_dict = dict()
         # and decode/store the offset data
         # bytes 0 and 1 hold the CO2 offset
         offset_dict['co2'] = struct.unpack(">h", data[0:2])[0]
@@ -1755,13 +1770,13 @@ class Gw1000Collector(Collector):
     @property
     def system_parameters(self):
         """Obtain GW1000/GW1100 system parameters."""
-        
+
         frequency = {0: '433 MHz',
                      1: '866 MHz',
                      2: '915 MHz',
                      3: '920 MHz'
                      }
-        
+
         sensor_type = {0: 'WH24',
                        1: 'WH65'
                        }
@@ -1957,7 +1972,7 @@ class Gw1000Collector(Collector):
 
         # obtain the GW1000/GW1100 MAC address bytes
         station_mac_b = self.station.get_mac_address()
-        
+
         # return the formatted string
         # return bytes_to_hex(station_mac_b[4:10], separator=":")
         # return station_mac_b[4:10].hex(":")
@@ -1984,7 +1999,7 @@ class Gw1000Collector(Collector):
         # the firmware string starts at byte 5 and is str_length bytes long, convert the sequence of bytes to unicode characters and assemble as a
         # string and return the result
         return "".join([chr(x) for x in firmware_t[5:5 + str_length]])
-        
+
     @property
     def sensors(self):
         """Get the current Sensors object.
@@ -2001,23 +2016,23 @@ class Gw1000Collector(Collector):
         self.sensors_obj.set_sensor_id_data(response)
         # return our Sensors object
         return self.sensors_obj
-        
+
     @property
     def battery_desc(self):
         """Battery description"""
-    
+
         return self.sensors.battery_description_data
-        
+
     def firmware_update(self):
         """Update the GW1000/GW1100 firmware."""
 
         response = self.station.set_firmware_upgrade()
         result = 'SUCCESS' if response[4] == 0 else 'FAIL'
         return result
-        
+
     def set_usr_path(self, custom_ecowitt_pathpath, custom_wu_path):
         """Set the customized path.
-        
+
         current is read to determine, whether writing new configuration is needed
         """
 
@@ -2025,7 +2040,7 @@ class Gw1000Collector(Collector):
         _ecowitt_path = current_usr_path['ecowitt path']
         _wu_path = current_usr_path['wu path']
         # _wu_path += '?' if _wu_path.endswith('php') else _wu_path
-        
+
         self.logger.debug(f"To be set customized path: Ecowitt: current='{_ecowitt_path}' vs. new='{custom_ecowitt_pathpath}' and WU: current='{_wu_path}' vs. new='{custom_wu_path}'")
 
         if not (_ecowitt_path == custom_ecowitt_pathpath and _wu_path == custom_wu_path):
@@ -2039,13 +2054,13 @@ class Gw1000Collector(Collector):
 
     def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled):
         """Set the customized parameters.
-        
+
         current configuration is read to dertermine, wether writing new configuration is needed
         """
-        
+
         current_custom_params = self.custom
         new_custom_params = {'server id': custom_server_id, 'password': custom_password, 'server': custom_host, 'port': custom_port, 'interval': custom_interval, 'protocol type': ['Ecowitt', 'WU'][int(custom_type)], 'active': bool(int(custom_enabled))}
-        
+
         if new_custom_params.items() <= current_custom_params.items():
             self.logger.debug(f"Customized Server settings already correct; No need to do it again")
             result = 'NO NEED'
@@ -2062,7 +2077,7 @@ class Gw1000Collector(Collector):
         response = self.station.set_reboot()
         result = 'SUCCESS' if response[4] == 0 else 'FAIL'
         return result
-        
+
     def reset(self):
         """Reset the GW1000/GW1100."""
 
@@ -2107,13 +2122,13 @@ class Gw1000Collector(Collector):
         """Class used to collect data via the GW1000/GW1100 API in a thread."""
 
         def __init__(self, client):
-            
+
             # init logger
             self.logger = logging.getLogger(__name__)
-            
+
             # initialise our parent
             threading.Thread.__init__(self)
-            
+
             # keep reference to the client we are supporting
             self.client = client
             self.name = 'gw1000-collector'
@@ -2182,7 +2197,7 @@ class Gw1000Collector(Collector):
             'CMD_GET_CO2_OFFSET': b'\x53',
             'CMD_SET_CO2_OFFSET': b'\x54'
         }
-        
+
         # header used in each API command and response packet
         header = b'\xff\xff'
 
@@ -2226,11 +2241,11 @@ class Gw1000Collector(Collector):
                             disc_ip = self.device_list[0]['ip_address']
                             disc_port = self.device_list[0]['port']
                             # log the fact as well as what we found
-                                    # gw1000_str = ', '.join([':'.join(['%s at %s:%d' % (d['model'], d['ip_address'], d['port'])]) for d in self.device_list])
+                                        # gw1000_str = ', '.join([':'.join(['%s at %s:%d' % (d['model'], d['ip_address'], d['port'])]) for d in self.device_list])
                             gw1000_str = ', '.join(f"{d['model']}: {d['ip_address']}:{ d['port']}" for d in self.device_list)
-                            
+
                             if len(self.device_list) == 1:
-                                stem = f"{self.device_list[0]['model']} was" 
+                                stem = f"{self.device_list[0]['model']} was"
                             else:
                                 stem = "Multiple devices were"
                             self.logger.info(f"{stem} found: {gw1000_str}. First one selected for plugin. To use dedicated one, define IP of dedicated Gateway in Plugin Setup.")
@@ -2584,7 +2599,7 @@ class Gw1000Collector(Collector):
             """
 
             return self.send_cmd_with_retries('CMD_READ_CUSTOMIZED')
-            
+
         def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled):
             """Set GW1000/GW1100 custom server parameters.
 
@@ -2606,7 +2621,7 @@ class Gw1000Collector(Collector):
             """
 
             return self.send_cmd_with_retries('CMD_READ_USR_PATH')
-            
+
         def set_usr_path(self, custom_ecowitt_pathpath, custom_wu_path):
             """Get GW1000/GW1100 user defined custom path.
 
@@ -2615,7 +2630,7 @@ class Gw1000Collector(Collector):
             set_usr_path(). Any code calling set_usr_path() should be prepared to handle this exception.
             """
             self.logger.debug(f"set_usr_path: set user path called with custom_ecowitt_pathpath={custom_ecowitt_pathpath} and custom_wu_path={custom_wu_path}")
-            
+
             payload = bytearray()
             payload.extend(int_to_bytes(len(custom_ecowitt_pathpath), 1))
             payload.extend(str.encode(custom_ecowitt_pathpath))
@@ -2645,7 +2660,7 @@ class Gw1000Collector(Collector):
             """
 
             return self.send_cmd_with_retries('CMD_READ_FIRMWARE_VERSION')
-            
+
         def set_firmware_upgrade(self):
             """Set GW1000/GW1100 firmware upgrade.
 
@@ -2653,7 +2668,7 @@ class Gw1000Collector(Collector):
             GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by get_firmware_version(). Any code
             calling get_firmware_version() should be prepared to handle this exception.
             """
-            
+
             self.logger.debug(f"set_firmware_upgrade: Firmware update called for {self.ip_address.decode()}:{self.port}")
             payload = bytearray()
             payload.extend(self.ip_address)
@@ -2763,10 +2778,10 @@ class Gw1000Collector(Collector):
             GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by set_reboot(). Any code
             calling set_reboot() should be prepared to handle this exception.
             """
-            
+
             self.logger.debug(f"set_reboot: Reboot called for {self.ip_address.decode()}:{self.port}")
             return self.send_cmd_with_retries('CMD_WRITE_REBOOT')
-            
+
         def set_reset(self):
             """Reset GW1000/GW1100 .
 
@@ -2774,7 +2789,7 @@ class Gw1000Collector(Collector):
             GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by set_reboot(). Any code
             calling set_reboot() should be prepared to handle this exception.
             """
-            
+
             self.logger.debug(f"set_reboot: Reset called for {self.ip_address.decode()}:{self.port}")
             return self.send_cmd_with_retries('CMD_WRITE_RESET')
 
@@ -2863,16 +2878,16 @@ class Gw1000Collector(Collector):
             body.extend(struct.pack('B', size))
             body.extend(payload)
             # body = b''.join([self.commands[cmd], struct.pack('B', size), payload])
-            
+
             # calculate the checksum
             checksum = self.calc_checksum(body)
-            
+
             # finalize message
             cmd_packet = bytearray()
             cmd_packet.extend(self.header)
             cmd_packet.extend(body)
             cmd_packet.extend(struct.pack('B', checksum))
-            
+
             # return the constructed message packet
             # return b''.join([self.header, body, struct.pack('B', checksum)])
             return cmd_packet
@@ -2996,7 +3011,7 @@ class Gw1000Collector(Collector):
                                         # gw1000_str = ', '.join([':'.join(['%s:%d' % b]) for b in self.device_list])
                             gw1000_str = ', '.join(f"{d['model']}: {d['ip_address']}:{ d['port']}" for d in self.device_list)
                             if len(self.device_list) == 1:
-                                stem = f"{self.device_list[0]['model']} was" 
+                                stem = f"{self.device_list[0]['model']} was"
                             else:
                                 stem = "Multiple devices were"
                             self.logger.info(f"{stem} found at {gw1000_str}")
@@ -3288,7 +3303,7 @@ class Gw1000Collector(Collector):
                 return {field: value}
             else:
                 return value
-                
+
         @staticmethod
         def decode_uv(data, field=None):
             """Decode pressure data.
@@ -3516,16 +3531,16 @@ class Gw1000Collector(Collector):
 
             # get instance
             self._plugin_instance = plugin_instance
-            
+
             # set the show_battery property
             self.show_battery = show_battery
-            
+
             # initialise a dict to hold the parsed sensor data
             self.sensor_data = {}
-            
+
             # parse the raw sensor ID data and store the results in my parsed sensor data dict
             self.set_sensor_id_data(sensor_id_data)
-            
+
             # debug sensors
             self.debug_sensors = debug_sensors
 
@@ -3602,12 +3617,12 @@ class Gw1000Collector(Collector):
                 if data['id'] not in self.not_registered:
                     connected_list.append(address)
             return connected_list
-        
+
         @property
         def connected_sensors(self):
             """Obtain a list of sensor types for connected sensors only.
 
-            Sometimes we only want a list of sensors that are actually connected to the GW1000/GW1100. 
+            Sometimes we only want a list of sensors that are actually connected to the GW1000/GW1100.
             """
 
             # initialise a list to hold our connected sensors
@@ -3659,14 +3674,14 @@ class Gw1000Collector(Collector):
 
             # return our data
             return data
-            
+
         @property
         def battery_description_data(self):
             """Obtain a dict of sensor battery state description data.
 
             Iterate over the list of connected sensors and obtain a dict of sensor battery state description data for each connected sensor.
             """
-            
+
             # initialise a dict to hold the battery state description data
             data = {}
             for sensor in self.connected_addresses:
@@ -3760,13 +3775,13 @@ class Gw1000TcpDriver(Gw1000):
 
     def __init__(self, tcp_server_address, tcp_server_port, data_cycle, plugin_instance):
         """Initialise a GW1000/GW1100 API driver object."""
-        
+
         # now initialize my superclasses
         super().__init__(data_cycle, plugin_instance)
-        
+
         # init instance
         self._plugin_instance = plugin_instance
-        
+
         # log the relevant settings/parameters we are using
         self._plugin_instance.logger.debug("Starting Gw1000TcpDriver")
 
@@ -3775,7 +3790,7 @@ class Gw1000TcpDriver(Gw1000):
 
         # get ECOWITT client
         self.client = EcowittClient(tcp_server_address, tcp_server_port, debug_rain=False, debug_wind=False, plugin_instance=plugin_instance)
-        
+
         # start the ECOWITT client in its own thread
         self.client.startup()
         self.driver_alive = True
@@ -3848,12 +3863,12 @@ class Gw1000TcpDriver(Gw1000):
 
                     # log the packet if necessary, there are several debug settings that may require this, start from the highest (most encompassing) and work to the lowest (least encompassing)
                     if self.debug_loop:
-                        self._plugin_instance.logger.info(f"TCP genLoopPackets: Packet {timestamp_to_string(packet['dateTime'])}: {natural_sort_dict(packet)}")
+                        self._plugin_instance.logger.info(f"TCP: genLoopPackets: Packet {timestamp_to_string(packet['dateTime'])}: {natural_sort_dict(packet)}")
                     # yield the loop packet
                     yield packet
                 # else:
                     # self._plugin_instance.logger.debug(f"TCP: Received message was from client_ip={client_ip} and therefore not from seleted  gateway={self.ip_selected_gateway}. Message will be ignored.")
-                
+
     def check_battery(self, data):
         """Check if batteries states are critical, create log entry and add a separate field for battery warning."""
 
@@ -3867,37 +3882,37 @@ class Gw1000TcpDriver(Gw1000):
                 if batterycheck != '':
                     batterycheck += ', '
                 batterycheck += key
-        # check result, create log entry data field 
+        # check result, create log entry data field
         if batterycheck != "":
             data['battery_warning'] = 0
             if not self.battery_warning:
-                self._plugin_instance.logger.warning(f"<WARNING> Battery level for sensor(s) {batterycheck} is critical - please swap battery")
+                self._plugin_instance.logger.warning(f"<WARNING> TCP: Battery level for sensor(s) {batterycheck} is critical - please swap battery")
                 self.battery_warning = True
                 data['battery_warning'] = 1
         elif self.battery_warning:
-            self._plugin_instance.logger.info("<OK> Battery level for all sensors is ok again")
+            self._plugin_instance.logger.info("<OK> TCP: Battery level for all sensors is ok again")
             self.battery_warning = False
             data['battery_warning'] = 0
-            
+
     def check_sensors(self, data):
         """Check if all know sensors are still connected, create log entry and add a separate field for sensor warning."""
-        
+
         # get currently connected sensors
         connected_sensors = self.client.sensors.connected_sensors
         # log all found sensors during runtime
         self.sensors = list(set(self.sensors + connected_sensors))
-        
-        # check if all sensors are still connected, create log entry data field 
-        if set(connected_sensors) == self.sensors:
+
+        # check if all sensors are still connected, create log entry data field
+        if set(connected_sensors) == set(self.sensors):
             # self._plugin_instance.logger.debug(f"check_sensors: All sensors are still connected!")
             self.sensor_warning = False
             data['sensor_warning'] = 0
         else:
             missing_sensors = list(set(self.sensors).difference(set(connected_sensors)))
-            self._plugin_instance.logger.error(f"check_sensors: The following sensors where lost: {missing_sensors}")
+            self._plugin_instance.logger.error(f"TCP: check_sensors: The following sensors where lost: {missing_sensors}")
             self.sensor_warning = True
             data['sensor_warning'] = 1
-                
+
 
 class Consumer(object):
     """The Consumer contains primarly the queue to put the received data to"""
@@ -3907,7 +3922,6 @@ class Consumer(object):
     def __init__(self, plugin_instance):
 
         self._plugin_instance = plugin_instance
-        self._plugin_instance.logger.debug(f"Starting Collector Object of instance {self._plugin_instance}")
 
     def startup(self):
         pass
@@ -3955,9 +3969,9 @@ class EcowittClient(Consumer):
 
     Here the IPADDR is 192.168.76.8, and the SSID uses the last 4 digits of the
     MAC address.
-   
+
     """
-    
+
     sensor_ids = {
             'wh65':     {'long_name': 'WH65',     'batt_fn': 'batt_binary'},
             'wh68':     {'long_name': 'WH68',     'batt_fn': 'batt_volt'},
@@ -4026,13 +4040,13 @@ class EcowittClient(Consumer):
 
         # get a parser object to parse any data from the station
         self.parser = EcowittClient.Parser(plugin_instance)
-        
+
         # get tcp server object
         self._server = EcowittClient.TCPServer(tcp_server_address, tcp_server_port, EcowittClient.Handler, plugin_instance)
-        
+
         # get a sensors object to handle sensor data
         self.sensors_obj = EcowittClient.Sensors(show_battery=show_battery, debug_sensors=debug_sensors, plugin_instance=plugin_instance)
- 
+
     def run_server(self):
         self._server.run()
 
@@ -4064,16 +4078,16 @@ class EcowittClient(Consumer):
             else:
                 self._plugin_instance.logger.info("Gw1000Collector thread has been terminated")
         self._server_thread = None
-        
+
     @property
     def sensors(self):
         """Get the current Sensors object."""
-        
+
         return self.sensors_obj
 
     @property
     def battery_desc(self):
-    
+
         return self.sensors_obj.battery_description_data
 
     @property
@@ -4081,11 +4095,11 @@ class EcowittClient(Consumer):
         """Obtain the GW1000/GW1100 firmware version string."""
 
         return self.sensors_obj.sensor_data['firmware']
-        
+
     @property
     def model(self):
         """Obtain the model."""
-        
+
         t = self.sensors_obj.sensor_data['model']
         if t is not None:
             # we have a string, now do we have a know model in the string, if so return the model string
@@ -4097,7 +4111,7 @@ class EcowittClient(Consumer):
         else:
             # we have no string so return None
             return None
-            
+
     @property
     def frequency(self):
         """Obtain the GW1000/GW1100 frequency."""
@@ -4125,7 +4139,7 @@ class EcowittClient(Consumer):
             pass
 
     class TCPServer(Server, socketserver.TCPServer):
-    
+
         daemon_threads = True
         allow_reuse_address = True
 
@@ -4133,7 +4147,7 @@ class EcowittClient(Consumer):
 
             # init instance
             self._plugin_instance = plugin_instance
-            
+
             # init TCP Server
             self._plugin_instance.logger.info(f"start tcp server at {address}:{port}")
             socketserver.TCPServer.__init__(self, (address, int(port)), handler)
@@ -4188,9 +4202,9 @@ class EcowittClient(Consumer):
 
     class Parser(object):
         """Class to parse GW1000/GW1100 ECOWITT data."""
-    
+
         def __init__(self, plugin_instance):
-            
+
             # set properties
             self._last_rain = None
             self._rain_mapping_confirmed = False
@@ -4350,7 +4364,7 @@ class EcowittClient(Consumer):
         def clean_data(data):
             """Harmonize field names and convert into metric units"""
             _ignore_fields = ['passkey', 'firmware', 'frequency', 'model', 'client_ip']
-            
+
             data_dict = {}
             for key in data:
                 if key.lower() not in _ignore_fields:
@@ -4365,16 +4379,16 @@ class EcowittClient(Consumer):
 
             # get instance logger
             self._plugin_instance = plugin_instance
-            
+
             # set the show_battery property
             self.show_battery = show_battery
-            
+
             # initialise a dict to hold the parsed sensor data
             self.sensor_data = {}
 
             # parse the raw sensor ID data and store the results in my parsed sensor data dict
             # self.set_sensor_id_data(sensor_id_data)
-            
+
             # debug sensors
             self.debug_sensors = debug_sensors
 
@@ -4390,7 +4404,7 @@ class EcowittClient(Consumer):
                 if element.endswith('batt'):
                     connected_list.append(element[:-5])
             return connected_list
-            
+
         @property
         def battery_description_data(self):
             """Obtain a dict of sensor battery state description data"""
@@ -4402,7 +4416,7 @@ class EcowittClient(Consumer):
                     data[sensor] = self.battery_desc(sensor, self.sensor_data[element])
             # return our data
             return data
-            
+
         @staticmethod
         def battery_desc(address, value):
             """Determine the battery state description for a given sensor."""
@@ -4537,7 +4551,7 @@ def bytes_to_hex(iterable, separator=' ', caps=True):
         # AttributeError - likely because separator is None
         # either way we can't represent as a string of hex bytes
         return "cannot represent '%s' as hexadecimal bytes" % (iterable,)
-        
+
 
 def byte_to_int(rawbytes, signed=False):
     """
@@ -4551,7 +4565,7 @@ def byte_to_int(rawbytes, signed=False):
     """
 
     return int.from_bytes(rawbytes, byteorder='little', signed=signed)
-    
+
 
 def int_to_bytes(value, length=1, signed=False):
     """
@@ -4602,7 +4616,7 @@ def obfuscate(plain, obf_char='*'):
 
 def timestamp_to_string(ts, format_str="%Y-%m-%d %H:%M:%S %Z"):
     """Return a string formatted from the timestamp
-    
+
     Example:
     >>> import os
     >>> os.environ['TZ'] = 'America/Los_Angeles'
@@ -4627,19 +4641,19 @@ def to_sorted_string(rec):
 
 def c_to_f(temp_c, n):
     """Convert degree celsius to fahrenheit"""
-    
+
     return round((temp_c * 9/5) + 32, n)
 
 
 def f_to_c(temp_f, n=1):
     """Convert fahrenheit to degree celsius"""
-    
+
     return round((temp_f - 32) * 5/9, n)
-    
+
 
 def ver_str_to_num(s):
     """Extract Verion Number of Firmware out of String"""
-    
+
     try:
         vpos = s.index("V")+1
         return int(s[vpos:].replace(".", ""))
@@ -4655,13 +4669,13 @@ def mph_to_kmh(f, n=1):
 
 def mph_to_ms(f, n=1):
     """Convert mph to m/s"""
-    
+
     return round(float(f)/0.621371*1000/3600, n)
 
 
-def in_to_hpa(f, n=2):       
+def in_to_hpa(f, n=2):
     """Convert in to hPa"""
-    
+
     return round(float(f)/0.02953, n)
 
 
@@ -4672,13 +4686,13 @@ def hpa_to_in(f, n=1):
 
 def in_to_mm(f, n=2):
     """Convert in to mm"""
-    
+
     return round(float(f)*25.4, n)
 
 
 def f_to_m(f, n=1):
     """Convert feet to m"""
-   
+
     return round(float(f)/3.281, n)
 
 
@@ -4690,8 +4704,8 @@ def obfuscate_passwords(msg):
 def is_port_valid(port):
     """check if port is between 1 and 65535"""
     return True if 1 <= port <= 65535 else False
-    
-    
+
+
 def is_port_in_use(port):
     """Check if default port for tcp server is free and can be used"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

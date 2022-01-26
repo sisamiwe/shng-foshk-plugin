@@ -89,8 +89,8 @@ item_attributes:
     foshk_attibute:
         type: str
         description:
-            de: 'Datenattribut der Foshk-API'
-            en: 'Data attribute of Foshk API'
+            de: 'Datenattribut der Foshk'
+            en: 'Data attribute of Foshk'
         valid_list:
             - intemp
             - outtemp
@@ -325,91 +325,98 @@ item_attributes:
             - windspeed_avg10m
             - winddir_avg10m
             - gustspeed_avg10m
+            
+    foshk_datasource:
+        type: str
+        description:
+            de: 'Datenquelle der Werte für Items; API vs. ECOWITT'
+            en: 'Data source for item values; API vs. ECOWITT'
+        valid_list_ci:
+            - api
+            - ecowitt            
 
 item_structs: NONE
-    # Definition of item-structure templates for this plugin (enter 'item_structs: NONE', if section should be empty)
 
-#item_attribute_prefixes:
-    # Definition of item attributes that only have a common prefix (enter 'item_attribute_prefixes: NONE' or ommit this section, if section should be empty)
-    # NOTE: This section should only be used, if really nessesary (e.g. for the stateengine plugin)
+item_attribute_prefixes: NONE
 
 plugin_functions:
     firmware_update:
-        type: foo
+        type: bool
         description:
-            de: ''
-            en: ''
+            de: 'Firmware update'
+            en: 'command firmware update'
 
     reboot:
-        type: foo
+        type: bool
         description:
-            de: ''
-            en: ''
+            de: 'Reboot'
+            en: 'command reboot'
 
     reset:
-        type: foo
+        type: bool
         description:
-            de: ''
-            en: ''
+            de: 'Reset'
+            en: 'command reset'
 
     set_usr_path:
         type: foo
         description:
-            de: ''
-            en: ''
+            de: 'Setzen des UserPath für Ecowitt und WU Daten upload'
+            en: 'set user path for Ecowitt and WU data upload'
         parameters:
             custom_ecowitt_pathpath:
                 type: str
                 description:
-                    de: ''
-                    en: ''
+                    de: 'UserPath für Ecowitt'
+                    en: 'User path for Ecowitt'
             custom_wu_path:
                 type: str
                 description:
-                    de: ''
-                    en: ''
+                    de: 'UserPath für WU'
+                    en: 'User path for WU'
 
     set_custom_params:
         type: foo
         description:
-            de: ''
-            en: ''
+            de: 'Setzen der Parameter für customized Data Upload'
+            en: 'Set paramaters for customized data Upload'
         parameters:
             custom_server_id:
                 type: str
                 description:
-                    de: ''
-                    en: ''
+                    de: 'Server ID'
+                    en: 'server id'
             custom_password:
                 type: str
                 description:
-                    de: ''
-                    en: ''
+                    de: 'Passwort'
+                    en: 'password'
             custom_host:
                 type: ipv4
                 description:
-                    de: ''
-                    en: ''
+                    de: 'IP Adresse des Servers, auf den die Daten geladen werden sollen'
+                    en: 'ip address of the server the data should be uploaded to'
             custom_port:
                 type: num
                 description:
-                    de: ''
-                    en: ''
+                    de: 'Port des Servers, auf den die Daten geladen werden sollen'
+                    en: 'port address of the server the data should be uploaded to'
             custom_interval:
                 type: num
                 description:
-                    de: ''
-                    en: ''
+                    de: 'Zyklus, in dem die Daten auf den Server geladen werden'
+                    en: 'Cycle, in which the the data will be uploaded'
+                valid_min: 16
+                valid_max: 300
             custom_type:
                 type: bool
                 description:
-                    de: ''
-                    en: ''
+                    de: 'WU (=True) oder Ecowitt (=False) Protokoll'
+                    en: 'WU (=True) or Ecowitt (=False) protocol'
             custom_enabled:
                 type: bool
                 description:
-                    de: ''
-                    en: ''
+                    de: 'AN/AUS für das benutzerdefinierte Hochladen der Daten'
+                    en: 'ON/OFF of customized data upload'
 
 logic_parameters: NONE
-    # Definition of logic parameters defined by this plugin (enter 'logic_parameters: NONE', if section should be empty)
