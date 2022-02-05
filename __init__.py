@@ -29,21 +29,21 @@
 #
 # ToDo
 #  - tswarning                  is there a thunderstorm coming
-#
 #  - set CMD_WRITE_CALIBRATION
 #  - set CMD_WRITE_RAINDATA
 #  - set CMD_WRITE_GAIN
-#
 #  - sunhours
 #  - ptrend
-#
-#########################################################################
+#  - correct datetime of packets to timezone
+########################################
+
 
 # API: https://osswww.ecowitt.net/uploads/20210716/WN1900%20GW1000,1100%20WH2680,2650%20telenet%20v1.6.0%20.pdf
 
 
 from lib.model.smartplugin import SmartPlugin
 from lib.utils import Utils
+from lib.shtime import Shtime
 from .webif import WebInterface
 
 import logging
@@ -57,8 +57,7 @@ import math
 from collections import deque
 import requests
 import configparser
-from datetime import datetime
-from datetime import timezone
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 import socketserver
 import urllib.parse as urlparse
@@ -91,10 +90,13 @@ class Foshk(SmartPlugin):
     PLUGIN_VERSION = '1.0.0'
 
     def __init__(self, sh):
-        """Initalizes the plugin."""
+        """Initializes the plugin."""
 
         # call init code of parent class (SmartPlugin)
         super().__init__()
+
+        # init instance of shtime
+        # shtime = Shtime.get_instance()
 
         # get the parameters for the plugin (as defined in metadata plugin.yaml):
         self._broadcast_address = None
@@ -122,8 +124,8 @@ class Foshk(SmartPlugin):
 
         # define properties
         self.items = {}                                                             # dict to hold Items using Plugin attribute
-        self.data_dict = {}                                                         # dict to hold all live data gotten from weatherstation gateway
-        self.data_dict2 = {}                                                        # dict to hold all data gotten from weatherstation gateway via tcp
+        self.data_dict = {}                                                         # dict to hold all live data gotten from weather station gateway
+        self.data_dict2 = {}                                                        # dict to hold all data gotten from weather station gateway via tcp
         self.gateway_connected = False                                              # is gateway connected; driver established
         self.api_data_thread = None                                                 # thread property for get data via api
         self.tcp_data_thread = None                                                 # thread property for get data via http
@@ -155,7 +157,7 @@ class Foshk(SmartPlugin):
 
         # get webinterface
         if not self.init_webinterface(WebInterface):
-            self.logger.warning("Webintertface not initialized")
+            self.logger.warning("Webinterface not initialized")
             # self._init_complete = False
         else:
             self.logger.debug(f"Init of Plugin {self.get_shortname()} complete")
@@ -363,13 +365,13 @@ class Foshk(SmartPlugin):
 
         self.logger.debug(f"update_item_values: Called with source={source}")
 
-        for foshk_attibute in self.items:
-            item = self.items[foshk_attibute][0]
-            datasource = self.items[foshk_attibute][1]
-            # self.logger.debug(f"update_item_values: foshk_attibute={foshk_attibute}; item={item.id()}, datasource={datasource}")
-            if foshk_attibute in data and datasource == source:
-                value = data.get(foshk_attibute)
-                self.logger.debug(f"update_item_values: Value {value} set for item={item.id()} with foshk_attibute={foshk_attibute}, datasource={datasource}")
+        for foshk_attribute in self.items:
+            item = self.items[foshk_attribute][0]
+            datasource = self.items[foshk_attribute][1]
+            # self.logger.debug(f"update_item_values: foshk_attribute={foshk_attribute}; item={item.id()}, datasource={datasource}")
+            if foshk_attribute in data and datasource == source:
+                value = data.get(foshk_attribute)
+                self.logger.debug(f"update_item_values: Value {value} set for item={item.id()} with foshk_attribute={foshk_attribute}, datasource={datasource}")
                 if item is not None:
                     item(value, self.get_shortname(), source)
 
@@ -399,7 +401,7 @@ class Foshk(SmartPlugin):
                 if i in current_firmware.upper():
                     model = i
 
-            # establish configparster
+            # establish configparser
             config = configparser.ConfigParser(allow_no_value=True, strict=False)
             # read response text
             config.read_string(fw_info.text)
@@ -409,7 +411,7 @@ class Foshk(SmartPlugin):
             remote_firmware_notes = config.get(model, "NOTES", fallback="").split(";")
             use_app = "WS View"
 
-            if ver_str_to_num(remote_firmware) > ver_str_to_num(current_firmware):
+            if ver_str_to_num(remote_firmware) and ver_str_to_num(current_firmware) and (ver_str_to_num(remote_firmware) > ver_str_to_num(current_firmware)):
                 self.logger.warning(f"Firmware update for {model} available. Installed version is: {current_firmware}, available version is: {remote_firmware}. Use the app {use_app} to update!")
                 for i in range(len(remote_firmware_notes)):
                     self.logger.warning(remote_firmware_notes[i].strip())
@@ -418,11 +420,11 @@ class Foshk(SmartPlugin):
                 self.logger.info(f"No newer firmware found for {model}. Installed version is: {current_firmware}, available version is: {remote_firmware}.")
                 self.update_available = False
 
-    def set_usr_path(self, custom_ecowitt_pathpath="/data/report/", custom_wu_path="/weatherstation/updateweatherstation.php?"):
+    def set_usr_path(self, custom_ecowitt_path="/data/report/", custom_wu_path="/weatherstation/updateweatherstation.php?"):
         """ Set user path for Ecowitt data to receive
         """
 
-        result = self.api_driver.collector.set_usr_path(custom_ecowitt_pathpath, custom_wu_path)
+        result = self.api_driver.collector.set_usr_path(custom_ecowitt_path, custom_wu_path)
         if result == 'SUCCESS' or result == 'NO NEED':
             self.logger.debug(f"set_usr_path: {result}")
         else:
@@ -1225,16 +1227,21 @@ class Gw1000Driver(Gw1000):
 
                 # if the data is of instance dict, it must have data
                 if isinstance(queue_data, dict):
-                    # Now start to create a loop packet. A loop packet must have a timestamp, if we have one (key 'datetime') in the received data use it otherwise allocate one.
-                    if 'datetime' in queue_data:
-                        packet = {'dateTime': queue_data['datetime']}
+                    self._plugin_instance.logger.debug(f"genLoopPackets: queue_data={queue_data}")
+                    # Now start to create a loop packet.
+
+                    # put timestamp of now to packet
+                    packet = {'timestamp': int(time.time() + 0.5)}
+
+                    if 'datetime' in queue_data and isinstance(queue_data['datetime'], datetime):
+                        packet['datetime_utc'] = queue_data['datetime']
                     else:
-                        # we don't have a timestamp so create one
-                        packet = {'dateTime': int(time.time() + 0.5)}
+                        # we don't have a datetime at utc so create one
+                        packet['datetime_utc'] = datetime.utcnow().replace(tzinfo=timezone.utc)
 
                     if self.debug_loop:
                         self._plugin_instance.logger.debug(
-                            f"Received {self.collector.station.model} data (debug_loop): {timestamp_to_string(packet['dateTime'])} {natural_sort_dict(queue_data)}")
+                            f"Received {self.collector.station.model} data (debug_loop): {timestamp_to_string(packet['datetime'])} {natural_sort_dict(queue_data)}")
                     # else:
                     #     self._plugin_instance.logger.debug(f"Received {self.collector.station.model} data: {natural_sort_dict(queue_data)}")
 
@@ -1264,7 +1271,7 @@ class Gw1000Driver(Gw1000):
 
                     # log the packet if necessary, there are several debug settings that may require this, start from the highest (most encompassing) and work to the lowest (least encompassing)
                     if self.debug_loop:
-                        self._plugin_instance.logger.info(f"genLoopPackets: Packet {timestamp_to_string(packet['dateTime'])}: {natural_sort_dict(packet)}")
+                        self._plugin_instance.logger.info(f"genLoopPackets: Packet {timestamp_to_string(packet['datetime'])}: {natural_sort_dict(packet)}")
                     # yield the loop packet
                     yield packet
                     # time.sleep(self.poll_interval)
@@ -1792,7 +1799,7 @@ class Gw1000Collector(Collector):
         data_dict = dict()
         data_dict['frequency'] = frequency[data[0]]
         data_dict['sensor type'] = sensor_type[data[1]]
-        data_dict['utc'] = datetime.fromtimestamp(self.parser.decode_utc(data[2:6]))
+        data_dict['utc'] = datetime.fromtimestamp(self.parser.decode_utc(data[2:6])).replace(tzinfo=timezone.utc)
         data_dict['timezone index'] = data[6]
         data_dict['daylight saving time'] = data[7] != 0
         return data_dict
@@ -2242,7 +2249,6 @@ class Gw1000Collector(Collector):
                             disc_ip = self.device_list[0]['ip_address']
                             disc_port = self.device_list[0]['port']
                             # log the fact as well as what we found
-                                        # gw1000_str = ', '.join([':'.join(['%s at %s:%d' % (d['model'], d['ip_address'], d['port'])]) for d in self.device_list])
                             gw1000_str = ', '.join(f"{d['model']}: {d['ip_address']}:{ d['port']}" for d in self.device_list)
 
                             if len(self.device_list) == 1:
@@ -3364,7 +3370,7 @@ class Gw1000Collector(Collector):
 
             if len(data) == 6:
                 value = struct.unpack("BBBBBB", data)
-                value = datetime.fromtimestamp(value[0])       # convert timestamp to datetime
+                value = datetime.fromtimestamp(value[0]).replace(tzinfo=timezone.utc)       # convert timestamp to datetime
             else:
                 value = None
             if field is not None:
@@ -3687,7 +3693,7 @@ class Gw1000Collector(Collector):
             for sensor in self.connected_addresses:
                 # get the sensor name
                 sensor_name = Gw1000Collector.sensor_ids[sensor]['name']
-                # create the sensor battery state describtion field for this sensor
+                # create the sensor battery state description field for this sensor
                 data[sensor_name] = self.battery_desc(sensor, self.battery_state(sensor))
 
             # return our data
@@ -3816,6 +3822,7 @@ class Gw1000TcpDriver(Gw1000):
                 # there was nothing in the queue so continue
                 pass
             else:
+                # self._plugin_instance.logger.debug(f"genLoopPackets TCP: queue_data={queue_data}")
                 parsed_data = self.client.parser.parse(queue_data)
                 # self._plugin_instance.logger.debug(f"TCP: parsed_data={parsed_data}")
 
@@ -3823,19 +3830,21 @@ class Gw1000TcpDriver(Gw1000):
                 # self._plugin_instance.logger.debug(f"TCP: client_ip={client_ip}, gateway_ip={self.ip_selected_gateway}")
 
                 if client_ip == self.ip_selected_gateway:
-
                     con_data = self.client.parser.convert_data(parsed_data)
                     self.client.sensors_obj.get_sensor_data(con_data)
                     # self._plugin_instance.logger.debug(f"TCP: con_data={con_data}")
 
                     clean_data = self.client.parser.clean_data(con_data)
-                    # self._plugin_instance.logger.debug(f"TCP: clean_data={clean_data}")
+                    self._plugin_instance.logger.debug(f"genLoopPackets TCP: clean_data={clean_data}")
 
-                    if 'datetime' in clean_data:
-                        packet = {'dateTime': clean_data['datetime']}
+                    # put timestamp of now to packet
+                    packet = {'timestamp': int(time.time() + 0.5)}
+
+                    if 'datetime' in clean_data and isinstance(clean_data['datetime'], datetime):
+                        packet['datetime_utc'] = clean_data['datetime']
                     else:
-                        # we don't have a timestamp so create one
-                        packet = {'dateTime': int(time.time() + 0.5)}
+                        # we don't have a datetime at utc so create one
+                        packet['datetime_utc'] = datetime.utcnow().replace(tzinfo=timezone.utc)
 
                     # if not already determined, determine which cumulative rain field will be used to determine the per period rain field
                     if not self.rain_mapping_confirmed:
@@ -3863,11 +3872,11 @@ class Gw1000TcpDriver(Gw1000):
 
                     # log the packet if necessary, there are several debug settings that may require this, start from the highest (most encompassing) and work to the lowest (least encompassing)
                     if self.debug_loop:
-                        self._plugin_instance.logger.info(f"TCP: genLoopPackets: Packet {timestamp_to_string(packet['dateTime'])}: {natural_sort_dict(packet)}")
+                        self._plugin_instance.logger.info(f"TCP: genLoopPackets: Packet {timestamp_to_string(packet['datetime'])}: {natural_sort_dict(packet)}")
                     # yield the loop packet
                     yield packet
                 # else:
-                    # self._plugin_instance.logger.debug(f"TCP: Received message was from client_ip={client_ip} and therefore not from seleted  gateway={self.ip_selected_gateway}. Message will be ignored.")
+                    # self._plugin_instance.logger.debug(f"TCP: Received message was from client_ip={client_ip} and therefore not from selected  gateway={self.ip_selected_gateway}. Message will be ignored.")
 
     def check_battery(self, data):
         """Check if batteries states are critical, create log entry and add a separate field for battery warning."""
@@ -3915,7 +3924,7 @@ class Gw1000TcpDriver(Gw1000):
 
 
 class Consumer(object):
-    """The Consumer contains primarly the queue to put the received data to"""
+    """The Consumer contains primarely the queue to put the received data to"""
 
     queue = queue.Queue()
 
@@ -4182,7 +4191,7 @@ class EcowittClient(Consumer):
             self.reply()
             try:
                 data = data.decode()
-            except:
+            except Exception:
                 pass
             else:
                 data += f'&client_ip={client_ip}'
@@ -4212,7 +4221,7 @@ class EcowittClient(Consumer):
 
         @staticmethod
         def parse(data):
-            """Parse the ecowitt data and add it to a dictionnary."""
+            """Parse the ecowitt data and add it to a dictionary."""
 
             data_dict = {}
             line = data.splitlines()[0]
@@ -4223,7 +4232,7 @@ class EcowittClient(Consumer):
                         value = float(value)
                         if value.is_integer():
                             value = int(value)
-                    except:
+                    except Exception:
                         if type(value) is str:
                             value = value.lstrip()
                         pass
@@ -4240,7 +4249,7 @@ class EcowittClient(Consumer):
                 'stationtype':          (None,      'firmware'),
                 'freq':                 (None,      'frequency'),
                 'model':                (None,      'model'),
-                'dateutc':              (None,      'dateutc'),
+                'dateutc':              (dateutc,   'datetime'),
                 # Indoor
                 'tempinf':              (f_to_c,    'intemp'),
                 'humidityin':           (None,      'inhumid'),
@@ -4710,3 +4719,17 @@ def is_port_in_use(port):
     """Check if default port for tcp server is free and can be used"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('127.0.0.1', port)) == 0
+
+
+def dateutc(datetimestr):
+    """Decodes string in datetime format to datetime object"""
+    try:
+        dt = datetime.strptime(datetimestr, "%Y-%m-%d+%H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    else:
+        return dt
+
+
+def utc_to_local(utc_dt):
+    return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=Shtime.tz())
