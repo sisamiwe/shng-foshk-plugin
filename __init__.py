@@ -58,6 +58,7 @@ from collections import deque
 import requests
 import configparser
 from datetime import datetime
+from datetime import timezone
 from http.server import BaseHTTPRequestHandler
 import socketserver
 import urllib.parse as urlparse
@@ -3008,7 +3009,6 @@ class Gw1000Collector(Collector):
                         # did we find any GW1000/GW1100
                         if len(self.device_list) > 0:
                             # we have at least one, log the fact as well as what we found
-                                        # gw1000_str = ', '.join([':'.join(['%s:%d' % b]) for b in self.device_list])
                             gw1000_str = ', '.join(f"{d['model']}: {d['ip_address']}:{ d['port']}" for d in self.device_list)
                             if len(self.device_list) == 1:
                                 stem = f"{self.device_list[0]['model']} was"
@@ -3251,7 +3251,7 @@ class Gw1000Collector(Collector):
             # if it does not exist add a datetime field with the current epoch timestamp
             if 'datetime' not in data or ('datetime' in data and data['datetime'] is None):
                 # self.logger.debug(f"parse: datetime not in data")
-                data['datetime'] = datetime.fromtimestamp(timestamp) if timestamp is not None else datetime.fromtimestamp(int(time.time() + 0.5))
+                datetime.fromtimestamp(timestamp).replace(tzinfo=timezone.utc) if timestamp is not None else datetime.fromtimestamp(int(time.time() + 0.5)).replace(tzinfo=timezone.utc)
             return data
 
         @staticmethod
