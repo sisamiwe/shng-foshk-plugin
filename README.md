@@ -1,1 +1,0 @@
-# shng-foshk-plugin

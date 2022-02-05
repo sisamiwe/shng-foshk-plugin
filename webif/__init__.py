@@ -60,7 +60,6 @@ class WebInterface(SmartPluginWebIf):
 
         self.tplenv = self.init_template_environment()
 
-
     @cherrypy.expose
     def index(self, reload=None):
         """
@@ -72,9 +71,19 @@ class WebInterface(SmartPluginWebIf):
         """
         tmpl = self.tplenv.get_template('index.html')
         # add values to be passed to the Jinja2 template eg: tmpl.render(p=self.plugin, interface=interface, ...)
+        return tmpl.render(p=self.plugin)
+
+        # get list of items with the attribute knx_dpt
+        plgitems = []
+        for item in self.items.return_items():
+            if 'foshk_attibute' in item.conf:
+                plgitems.append(item)
+
+        # additionally hand over the list of items, sorted by item-path
+        tmpl = self.tplenv.get_template('index.html')
         return tmpl.render(p=self.plugin,
-                           items=sorted(self.items.return_items(), key=lambda k: str.lower(k['_path'])),
-                           item_count=0)
+                           items=sorted(plgitems, key=lambda k: str.lower(k['_path'])),
+                           )
 
 
     @cherrypy.expose
