@@ -85,12 +85,16 @@ known_models = ('GW1000', 'GW1100', 'WH2650')
 
 
 class Foshk(SmartPlugin):
-    """Main class of the Plugin. Does all plugin specific stuff and provides the update functions for the items."""
+    """
+    Main class of the Plugin. Does all plugin specific stuff and provides the update functions for the items.
+    """
 
     PLUGIN_VERSION = '1.0.0'
 
     def __init__(self, sh):
-        """Initializes the plugin."""
+        """
+        Initializes the plugin.
+        """
 
         # call init code of parent class (SmartPlugin)
         super().__init__()
@@ -163,7 +167,8 @@ class Foshk(SmartPlugin):
             self.logger.debug(f"Init of Plugin {self.get_shortname()} complete")
 
     def run(self):
-        """ Run method for the plugin
+        """
+        Run method for the plugin
         """
 
         self.logger.debug("Run method called")
@@ -196,7 +201,8 @@ class Foshk(SmartPlugin):
                 self.logger.error(f"Unable to start 'get_tcp_data' thread: {e}")
 
     def stop(self):
-        """ Stop method for the plugin
+        """
+        Stop method for the plugin
         """
 
         self.alive = False
@@ -219,7 +225,8 @@ class Foshk(SmartPlugin):
             self.tcp_driver.closePort()
 
     def parse_item(self, item):
-        """ Default plugin parse_item method. Is called when the plugin is initialized.
+        """
+        Default plugin parse_item method. Is called when the plugin is initialized.
 
         The plugin can, corresponding to its attribute keywords, decide what to do with
         the item in future, like adding it to an internal array for future reference
@@ -249,7 +256,8 @@ class Foshk(SmartPlugin):
                 return self.update_item
 
     def update_item(self, item, caller=None, source=None, dest=None):
-        """ Item has been updated
+        """
+        Item has been updated
 
         This method is called, if the value of an item has been updated by SmartHomeNG.
         It should write the changed value out to the device (hardware/interface) that
@@ -269,7 +277,14 @@ class Foshk(SmartPlugin):
             pass
 
     def select_port_for_tcp_server(self, port):
-        """Check if default port for tcp server is free and can be used
+        """
+        Check if default port for tcp server is free and can be used
+
+        :param port: port number to be used
+        :type port: int
+
+        :return: selected port
+        :rtype: int
         """
 
         for attempt in range(20):
@@ -282,7 +297,8 @@ class Foshk(SmartPlugin):
                 return port
 
     def get_api_data_thread_startup(self):
-        """Start a thread that get data from the GW1000/GW1100 driver.
+        """
+        Start a thread that get data from the GW1000/GW1100 driver.
         """
 
         try:
@@ -296,7 +312,8 @@ class Foshk(SmartPlugin):
             self.api_data_thread = None
 
     def get_api_data_thread_shutdown(self):
-        """Shut down the thread that gets data from the GW1000/GW1100 driver.
+        """
+        Shut down the thread that gets data from the GW1000/GW1100 driver.
         """
 
         if self.api_data_thread:
@@ -308,7 +325,8 @@ class Foshk(SmartPlugin):
                 self.api_data_thread = None
 
     def get_tcp_data_thread_startup(self):
-        """Start a thread that get data from the TCP Server.
+        """
+        Start a thread that get data from the TCP Server.
         """
 
         try:
@@ -322,7 +340,8 @@ class Foshk(SmartPlugin):
             self.tcp_data_thread = None
 
     def get_tcp_data_thread_shutdown(self):
-        """Shut down the thread that gets data from the TCP Server.
+        """
+        Shut down the thread that gets data from the TCP Server.
         """
 
         if self.tcp_data_thread:
@@ -334,7 +353,8 @@ class Foshk(SmartPlugin):
                 self.tcp_data_thread = None
 
     def get_api_data(self):
-        """ Gets data from collector in endless loop
+        """
+        Gets data from collector in endless loop
         """
 
         while self.alive:
@@ -347,7 +367,8 @@ class Foshk(SmartPlugin):
                 self.update_item_values(packet, 'api')
 
     def get_tcp_data(self):
-        """ Gets data from client in endless loop
+        """
+        Gets data from client in endless loop
         """
 
         while self.alive:
@@ -360,7 +381,13 @@ class Foshk(SmartPlugin):
                 self.update_item_values(packet, 'ecowitt')
 
     def update_item_values(self, data, source):
-        """ Updates the value of connected items
+        """
+        Updates the value of connected items
+
+        :param data: data to be used for update
+        :type data: dict
+        :param source: source the data come from
+        :type source: str
         """
 
         self.logger.debug(f"update_item_values: Called with source={source}")
@@ -376,7 +403,8 @@ class Foshk(SmartPlugin):
                     item(value, self.get_shortname(), source)
 
     def firmware_update(self):
-        """ Run firmware update
+        """
+        Run firmware update
         """
 
         result = self.api_driver.collector.firmware_update()
@@ -386,7 +414,8 @@ class Foshk(SmartPlugin):
             self.logger.error(f"firmware_update: {result}")
 
     def check_firmware_update(self):
-        """ Check if firmware update is available
+        """
+        Check if firmware update is available
         """
 
         fw_info = requests.get(fw_update_url)
@@ -421,7 +450,13 @@ class Foshk(SmartPlugin):
                 self.update_available = False
 
     def set_usr_path(self, custom_ecowitt_path="/data/report/", custom_wu_path="/weatherstation/updateweatherstation.php?"):
-        """ Set user path for Ecowitt data to receive
+        """
+        Set user path for Ecowitt data to receive
+
+        :param custom_ecowitt_path: path for ecowitt data upload
+        :type custom_ecowitt_path: str
+        :param custom_wu_path: path for wu data upload
+        :type custom_wu_path: str
         """
 
         result = self.api_driver.collector.set_usr_path(custom_ecowitt_path, custom_wu_path)
@@ -431,7 +466,23 @@ class Foshk(SmartPlugin):
             self.logger.error(f"set_usr_path: {result}")
 
     def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled):
-        """ Set customer parameter for Ecowitt data to receive
+        """
+        Set customer parameter for Ecowitt data to receive
+
+        :param custom_server_id: custom_server_id
+        :type custom_server_id: str
+        :param custom_password: custom_password
+        :type custom_password: str
+        :param custom_host: Ip address of customer host
+        :type custom_host: ipv4
+        :param custom_port: port of customer host
+        :type custom_port: int
+        :param custom_interval: cycle of data upload
+        :type custom_interval: int
+        :param custom_type: type of custom data upload
+        :type custom_type: bool
+        :param custom_enabled: enable / disable custom upload
+        :type custom_enabled: bool
         """
 
         result = self.api_driver.collector.set_custom_params(custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled)
@@ -441,7 +492,8 @@ class Foshk(SmartPlugin):
             self.logger.error(f"set_custom_params: {result}")
 
     def reboot(self):
-        """ Reboot device
+        """
+        Reboot device
         """
 
         result = self.api_driver.collector.reboot()
@@ -451,7 +503,8 @@ class Foshk(SmartPlugin):
             self.logger.error(f"reboot: {result}")
 
     def reset(self):
-        """ Reset device
+        """
+        Reset device
         """
 
         result = self.api_driver.collector.reset()
@@ -519,14 +572,17 @@ class UnknownCommand(Exception):
 
 
 class Gw1000(object):
-    """ Base class for interacting with a GW1000/GW1100.
+    """
+    Base class for interacting with a GW1000/GW1100.
 
     There are a number of common properties and methods (eg IP address, field map, rain calculation etc) when dealing with a GW1000/GW1100 as a driver.
     This class captures those common features.
     """
 
     def __init__(self, data_cycle, plugin_instance):
-        """Initialise a GW1000 object."""
+        """
+        Initialise a GW1000 object.
+        """
 
         # init logger
         self._plugin_instance = plugin_instance
@@ -583,9 +639,11 @@ class Gw1000(object):
             self._plugin_instance.logger.info(" ".join(debug_list))
 
     def add_calculated_data(self, data):
-        """ Add calculated data to dict
+        """
+        Add calculated data to dict
 
         :param data: dict of parsed GW1000/GW1100 API data
+        :type data: dict
         """
 
         if "outtemp" in data:
@@ -626,16 +684,15 @@ class Gw1000(object):
             if "gustspeed_avg10m" not in data:
                 data['gustspeed_avg10m'] = self.get_max_wind(self.wind_avg10m, 3)
 
-# ToDo  sunhours
-# ToDo  ptrend
-
     def get_cumulative_rain_field(self, data):
-        """Determine the cumulative rain field used to derive field 'rain'.
+        """
+        Determine the cumulative rain field used to derive field 'rain'.
 
         Ecowitt rain gauges/GW1000/GW1100 emit various rain totals but result needs a per period value for field rain. Try the 'big' (4 byte)
         counters starting at the longest period and working our way down. This should only need be done once.
 
-        :param data: dic of parsed GW1000/GW1100 API data
+        :param data: dict of parsed GW1000/GW1100 API data
+        :type data: dict
         """
 
         self.rain_total_field = None
@@ -653,12 +710,14 @@ class Gw1000(object):
             self._plugin_instance.logger.info("No suitable field found for rain total")
 
     def calculate_rain(self, data):
-        """Calculate total rainfall for a period.
+        """
+        Calculate total rainfall for a period.
 
         'rain' is calculated as the change in a user designated cumulative rain field between successive periods. 'rain' is only calculated if the
         field to be used has been selected and the designated field exists.
 
         :param data: dict of parsed GW1000/GW1100 API data
+        :type data: dict
         """
 
         # have we decided on a field to use and is the field present
@@ -674,12 +733,14 @@ class Gw1000(object):
             self.last_rain = new_total
 
     def calculate_lightning_count(self, data):
-        """Calculate total lightning strike count for a period.
+        """
+        Calculate total lightning strike count for a period.
 
         'lightning_strike_count' is calculated as the change in field 'lightningcount' between successive periods. 'lightning_strike_count'
         is only calculated if 'lightningcount' exists.
 
         :param data: dict of parsed GW1000/GW1100 API data
+        :type data: dict
         """
 
         # is the lightningcount field present
@@ -693,7 +754,8 @@ class Gw1000(object):
             self.last_lightning = new_total
 
     def calculate_feels_like(self, temperature_c, windspeed_kmh, rel_hum):
-        """ Computes the feels-like temperature
+        """
+        Computes the feels-like temperature
 
         :param temperature_c: ambient temperature in celsius
         :type temperature_c: float
@@ -701,6 +763,7 @@ class Gw1000(object):
         :type windspeed_kmh: float
         :param rel_hum: relative humidity
         :type rel_hum: float
+
         :return: feels like temperature in celsius
         :rtype: float
         """
@@ -721,7 +784,8 @@ class Gw1000(object):
 
     @staticmethod
     def delta_rain(rain, last_rain):
-        """Calculate rainfall from successive cumulative values.
+        """
+        Calculate rainfall from successive cumulative values.
 
         Rainfall is calculated as the difference between two cumulative values.
         If either value is None the value None is returned. If the previous
@@ -757,7 +821,8 @@ class Gw1000(object):
 
     @staticmethod
     def delta_lightning(count, last_count):
-        """Calculate lightning strike count from successive cumulative values.
+        """
+        Calculate lightning strike count from successive cumulative values.
 
         Lightning strike count is calculated as the difference between two
         cumulative values. If either value is None the value None is returned.
@@ -791,7 +856,8 @@ class Gw1000(object):
 
     @staticmethod
     def get_dew_point_c(t_air_c, rel_humidity):
-        """Compute the dew point in degrees Celsius
+        """
+        Compute the dew point in degrees Celsius
 
         :param t_air_c: current ambient temperature in degrees Celsius
         :type t_air_c: float
@@ -812,12 +878,14 @@ class Gw1000(object):
 
     @staticmethod
     def get_frost_point_c(t_air_c, dew_point_c):
-        """Compute the frost point in degrees Celsius
+        """
+        Compute the frost point in degrees Celsius
 
         :param t_air_c: current ambient temperature in degrees Celsius
         :type t_air_c: float
         :param dew_point_c: current dew point in degrees Celsius
         :type dew_point_c: float
+
         :return: the frost point in degrees Celsius
         :rtype: float
         """
@@ -833,12 +901,14 @@ class Gw1000(object):
 
     @staticmethod
     def get_windchill_index_metric(t_air_c, wind_speed):
-        """Compute the wind chill index
+        """
+        Compute the wind chill index
 
         :param t_air_c: current ambient temperature in degrees Celsius
         :type t_air_c: float
         :param wind_speed: wind speed in kilometers/hour
         :type wind_speed: float
+
         :return: the wind chill index
         :rtype: float
         """
@@ -847,12 +917,14 @@ class Gw1000(object):
 
     @staticmethod
     def get_windchill_index_imperial(air_temp_f, wind_speed_mph):
-        """Compute the wind chill index
+        """
+        Compute the wind chill index
 
         :param air_temp_f: current ambient temperature in fahrenheit
         :type air_temp_f: float
         :param wind_speed_mph: wind speed in miles/hour
         :type wind_speed_mph: float
+
         :return: the wind chill index
         :rtype: float
         """
@@ -866,12 +938,14 @@ class Gw1000(object):
 
     @staticmethod
     def get_heat_index(temperature_f, rel_hum):
-        """Compute the heat index
+        """
+        Compute the heat index
 
         :param temperature_f: current ambient temperature in fahrenheit
         :type temperature_f: float
-        :param rel_hum: rel humitidy
+        :param rel_hum: rel humidity
         :type rel_hum: float
+
         :return: the heat index
         :rtype: float
         """
@@ -887,12 +961,14 @@ class Gw1000(object):
 
     @staticmethod
     def get_weather_now(hpa, lang='de'):
-        """ Computes text for current weather condition
+        """
+        Computes text for current weather condition
 
         :param hpa: current air pressure in hpa
         :type hpa: float
         :param lang: acronym of language
         :type lang: str
+
         :return: wind direction text
         :rtype: str
         """
@@ -920,12 +996,14 @@ class Gw1000(object):
 
     @staticmethod
     def get_wind_dir_text(wdir, lang='de'):
-        """ Computes wind direction text on wind direction in degrees
+        """
+        Computes wind direction text on wind direction in degrees
 
         :param wdir: wind direction in degrees
         :type wdir: float
         :param lang: acronym of language
         :type lang: str
+
         :return: wind direction text
         :rtype: str
         """
@@ -953,12 +1031,14 @@ class Gw1000(object):
 
     @staticmethod
     def make_weather_forecast(diff, lang='de'):
-        """ Computes weather forecast based on changes for relative air pressure
+        """
+        Computes weather forecast based on changes for relative air pressure
 
         :param diff: pressure difference between now and 3 hours ago
         :type diff: float
         :param lang: acronym of language
         :type lang: str
+
         :return: the wind chill index
         :rtype: float
         """
@@ -1000,12 +1080,14 @@ class Gw1000(object):
 
     @staticmethod
     def cloud_ceiling(temp, dewpt):
-        """ Computes cloud ceiling (Wolkenuntergrenze)
+        """
+        Computes cloud ceiling (Wolkenuntergrenze)
 
         :param temp: outside temperatur in celsius
         :type temp: float
         :param dewpt: outside dew point in celsius
         :type dewpt: float
+
         :return: cloud ceiling in meter
         :rtype: float
         """
@@ -1015,7 +1097,9 @@ class Gw1000(object):
 
     @staticmethod
     def get_avg_wind(d, w):
-        """ get avg from deque d , field w """
+        """
+        get avg from deque d , field w
+        """
 
         s = 0
         for i in range(len(d)):
@@ -1025,7 +1109,9 @@ class Gw1000(object):
 
     @staticmethod
     def get_max_wind(d, w):
-        """ get max from deque d, field w """
+        """
+        get max from deque d, field w
+        """
 
         s = 0
         for i in range(len(d)):
@@ -1036,7 +1122,9 @@ class Gw1000(object):
 
     @staticmethod
     def get_beaufort_number(speed_in_mps):
-        """ get the beaufort number from windspeed in meters per second"""
+        """
+        get the beaufort number from windspeed in meters per second
+        """
 
         try:
             # Origin of table: https://www.smarthomeng.de/vom-winde-verweht
@@ -1060,7 +1148,9 @@ class Gw1000(object):
 
     @staticmethod
     def get_beaufort_description(speed_in_bft, lang='de'):
-        """ get the beaufort description from beaufort number"""
+        """
+        get the beaufort description from beaufort number
+        """
 
         # source for german descriptions https://www.smarthomeng.de/vom-winde-verweht
         _beaufort_descriptions_de = ["Windstille",
@@ -1123,7 +1213,9 @@ class Gw1000Driver(Gw1000):
     parse the API responses respectively."""
 
     def __init__(self, plugin_instance):
-        """Initialise a GW1000/GW1100 driver object."""
+        """
+        Initialise a GW1000/GW1100 driver object.
+        """
 
         # get instance
         self._plugin_instance = plugin_instance
@@ -1204,7 +1296,8 @@ class Gw1000Driver(Gw1000):
         self.driver_alive = True
 
     def genLoopPackets(self):
-        """Generator function that returns loop packets.
+        """
+        Generator function that returns loop packets.
 
         Run a continuous loop checking the Gw1000Collector queue for data. When data arrives map the raw data to a loop packet and yield the packet.
         """
@@ -1301,7 +1394,9 @@ class Gw1000Driver(Gw1000):
                 # if it's none of the above (which it should never be) we don't know what to do with it so pass and wait for the next item in the queue
 
     def check_battery(self, data):
-        """Check if batteries states are critical, create log entry and add a separate field for battery warning."""
+        """
+        Check if batteries states are critical, create log entry and add a separate field for battery warning.
+        """
 
         # get battery data
         raw_data = self.collector.battery_desc
@@ -1326,7 +1421,9 @@ class Gw1000Driver(Gw1000):
             data['battery_warning'] = 0
 
     def check_sensors(self, data):
-        """Check if all know sensors are still connected, create log entry and add a separate field for sensor warning."""
+        """
+        Check if all know sensors are still connected, create log entry and add a separate field for sensor warning.
+        """
 
         # get currently connected sensors
         connected_sensors = self.collector.sensors.connected_sensors
@@ -1346,7 +1443,8 @@ class Gw1000Driver(Gw1000):
 
     @property
     def hardware_name(self):
-        """Return the hardware name.
+        """
+        Return the hardware name.
 
         Use the device model from our Collector's Station object, but if this
         is None use the driver name.
@@ -1357,19 +1455,24 @@ class Gw1000Driver(Gw1000):
 
     @property
     def mac_address(self):
-        """Return the GW1000/GW1100 MAC address."""
+        """
+        Return the GW1000/GW1100 MAC address.
+        """
 
         return self.collector.mac_address
 
     @property
     def firmware_version(self):
-        """Return the GW1000/GW1100 firmware version string."""
+        """
+        Return the GW1000/GW1100 firmware version string.
+        """
 
         return self.collector.firmware_version
 
     @property
     def sensor_id_data(self):
-        """Return the GW1000/GW1100 sensor identification data.
+        """
+        Return the GW1000/GW1100 sensor identification data.
 
         The sensor ID data is available via the data property of the Collector objects' sensors property.
         """
@@ -1377,7 +1480,9 @@ class Gw1000Driver(Gw1000):
         return self.collector.sensors.data
 
     def closePort(self):
-        """Close down the driver port."""
+        """
+        Close down the driver port.
+        """
 
         # in this case there is no port to close, just shutdown the collector
         self.driver_alive = False
@@ -1385,7 +1490,9 @@ class Gw1000Driver(Gw1000):
 
 
 class Collector(object):
-    """Base class for a client that polls an API."""
+    """
+    Base class for a client that polls an API.
+    """
 
     # a queue object for passing data back to the driver
     my_queue = queue.Queue()
@@ -1404,7 +1511,9 @@ class Collector(object):
 
 
 class Gw1000Collector(Collector):
-    """Class to poll the GW1000/GW1100 API, decode and return data to the driver."""
+    """
+    Class to poll the GW1000/GW1100 API, decode and return data to the driver.
+    """
 
     # map of sensor ids to short name, long name and battery byte decode function
     sensor_ids = {
@@ -1469,7 +1578,9 @@ class Gw1000Collector(Collector):
     def __init__(self, ip_address=None, port=None, broadcast_address=None, broadcast_port=None, socket_timeout=None, broadcast_timeout=None,
                  poll_interval=0, max_tries=default_max_tries, retry_wait=default_retry_wait,
                  use_th32=False, show_battery=False, debug_rain=False, debug_wind=False, debug_sensors=False, plugin_instance=None):
-        """Initialise our class."""
+        """
+        Initialise our class.
+        """
 
         # initialize my base class:
         super().__init__(plugin_instance)
@@ -1530,7 +1641,8 @@ class Gw1000Collector(Collector):
         self.collect_data = False
 
     def collect_sensor_data(self):
-        """Collect sensor data by polling the API.
+        """
+        Collect sensor data by polling the API.
 
         Loop forever waking periodically to see if it is time to quit or collect more data.
         """
@@ -1563,7 +1675,8 @@ class Gw1000Collector(Collector):
             time.sleep(1)
 
     def get_live_sensor_data(self):
-        """Get all current sensor data.
+        """
+        Get all current sensor data.
 
         Obtain live sensor data from the GW1000/GW1100 API then parse the API response to create a timestamped data dict keyed by internal
         GW1000/GW1100 field name. Add current sensor battery state and signal level data to the data dict. If no data was obtained from the API the
@@ -1590,7 +1703,9 @@ class Gw1000Collector(Collector):
         return parsed_data
 
     def update_sensor_id_data(self):
-        """Update the Sensors object with current sensor ID data."""
+        """
+        Update the Sensors object with current sensor ID data.
+        """
 
         # get the current sensor ID data
         sensor_id_data = self.station.get_sensor_id()
@@ -1599,7 +1714,9 @@ class Gw1000Collector(Collector):
 
     @property
     def rain_data(self):
-        """Obtain GW1000/GW1100 rain data."""
+        """
+        Obtain GW1000/GW1100 rain data.
+        """
 
         # obtain the rain data data via the API
         response = self.station.get_raindata()
@@ -1618,7 +1735,9 @@ class Gw1000Collector(Collector):
 
     @property
     def mulch_offset(self):
-        """Obtain GW1000/GW1100 multi-channel temperature and humidity offset data."""
+        """
+        Obtain GW1000/GW1100 multi-channel temperature and humidity offset data.
+        """
 
         # obtain the mulch offset data via the API
         response = self.station.get_mulch_offset()
@@ -1650,7 +1769,9 @@ class Gw1000Collector(Collector):
 
     @property
     def pm25_offset(self):
-        """Obtain GW1000/GW1100 PM2.5 offset data."""
+        """
+        Obtain GW1000/GW1100 PM2.5 offset data.
+        """
 
         # obtain the PM2.5 offset data via the API
         response = self.station.get_pm25_offset()
@@ -1674,7 +1795,9 @@ class Gw1000Collector(Collector):
 
     @property
     def co2_offset(self):
-        """Obtain GW1000/GW1100 WH45 CO2, PM10 and PM2.5 offset data."""
+        """
+        Obtain GW1000/GW1100 WH45 CO2, PM10 and PM2.5 offset data.
+        """
 
         # obtain the WH45 offset data via the API
         response = self.station.get_co2_offset()
@@ -1695,7 +1818,9 @@ class Gw1000Collector(Collector):
 
     @property
     def calibration(self):
-        """Obtain GW1000/GW1100 calibration data."""
+        """
+        Obtain GW1000/GW1100 calibration data.
+        """
 
         # obtain the calibration data via the API
         response = self.station.get_calibration_coefficient()
@@ -1734,8 +1859,8 @@ class Gw1000Collector(Collector):
 
     @property
     def soil_calibration(self):
-        """Obtain GW1000/GW1100 soil moisture sensor calibration data.
-
+        """
+        Obtain GW1000/GW1100 soil moisture sensor calibration data.
         """
 
         # obtain the soil moisture calibration data via the API
@@ -1777,7 +1902,9 @@ class Gw1000Collector(Collector):
 
     @property
     def system_parameters(self):
-        """Obtain GW1000/GW1100 system parameters."""
+        """
+        Obtain GW1000/GW1100 system parameters.
+        """
 
         frequency = {0: '433 MHz',
                      1: '866 MHz',
@@ -1806,9 +1933,8 @@ class Gw1000Collector(Collector):
 
     @property
     def ecowitt_net(self):
-        """Obtain GW1000/GW1100 Ecowitt.net service parameters.
-
-        Obtain the GW1000/GW1100 Ecowitt.net service settings.
+        """
+        Obtain GW1000/GW1100 Ecowitt.net service parameters.
 
         Returns a dictionary of settings.
         """
@@ -1828,9 +1954,8 @@ class Gw1000Collector(Collector):
 
     @property
     def wunderground(self):
-        """Obtain GW1000/GW1100 Weather Underground service parameters.
-
-        Obtain the GW1000/GW1100 Weather Underground service settings.
+        """
+        Obtain GW1000/GW1100 Weather Underground service parameters.
 
         Returns a dictionary of settings with string data in unicode format.
         """
@@ -1853,9 +1978,8 @@ class Gw1000Collector(Collector):
 
     @property
     def weathercloud(self):
-        """Obtain GW1000/GW1100 Weathercloud service parameters.
-
-        Obtain the GW1000/GW1100 Weathercloud service settings.
+        """
+        Obtain GW1000/GW1100 Weathercloud service parameters.
 
         Returns a dictionary of settings with string data in unicode format.
         """
@@ -1877,9 +2001,8 @@ class Gw1000Collector(Collector):
 
     @property
     def wow(self):
-        """Obtain GW1000/GW1100 Weather Observations Website service parameters.
-
-        Obtain the GW1000/GW1100 Weather Observations Website service settings.
+        """
+        Obtain GW1000/GW1100 Weather Observations Website service parameters.
 
         Returns a dictionary of settings with string data in unicode format.
         """
@@ -1903,9 +2026,8 @@ class Gw1000Collector(Collector):
 
     @property
     def custom(self):
-        """Obtain GW1000/GW1100 custom server parameters.
-
-        Obtain the GW1000/GW1100 settings used for uploading data to a remote server.
+        """
+        Obtain GW1000/GW1100 custom server parameters.
 
         Returns a dictionary of settings with string data in unicode format.
         """
@@ -1945,7 +2067,8 @@ class Gw1000Collector(Collector):
 
     @property
     def usr_path(self):
-        """Obtain the GW1000/GW1100 user defined custom paths.
+        """
+        Obtain the GW1000/GW1100 user defined custom paths.
 
         The GW1000/GW1100 allows definition of remote server customs paths for  use when uploading to a custom service using Ecowitt or Weather
         Underground format. Different paths may be specified for each protocol.
@@ -1973,7 +2096,8 @@ class Gw1000Collector(Collector):
 
     @property
     def mac_address(self):
-        """Obtain the MAC address of the GW1000/GW1100.
+        """
+        Obtain the MAC address of the GW1000/GW1100.
 
         Returns the GW1000/GW1100 MAC address as a string of colon separated hex bytes.
         """
@@ -1988,7 +2112,8 @@ class Gw1000Collector(Collector):
 
     @property
     def firmware_version(self):
-        """Obtain the GW1000/GW1100 firmware version string.
+        """
+        Obtain the GW1000/GW1100 firmware version string.
 
         The firmware version can be obtained from the GW1000/GW1100 via an API call made by a Station object. The Station object takes care of making
         the API call and validating the response. What is returned is the raw response as a bytestring. The raw response is unpacked into a sequence
@@ -2010,7 +2135,8 @@ class Gw1000Collector(Collector):
 
     @property
     def sensors(self):
-        """Get the current Sensors object.
+        """
+        Get the current Sensors object.
 
         A Sensors object holds the address, id, battery state and signal level data sensors known to the GW1000/GW1100. The sensor id value can be
         used to discriminate between connected sensors, connecting sensors and disabled sensor addresses.
@@ -2061,7 +2187,8 @@ class Gw1000Collector(Collector):
         return result
 
     def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled):
-        """Set the customized parameters.
+        """
+        Set the customized parameters.
 
         current configuration is read to dertermine, wether writing new configuration is needed
         """
@@ -2108,7 +2235,8 @@ class Gw1000Collector(Collector):
             self.thread = None
 
     def shutdown(self):
-        """Shut down the thread that collects data from the GW1000/GW1100 API.
+        """
+        Shut down the thread that collects data from the GW1000/GW1100 API.
 
         Tell the thread to stop, then wait for it to finish.
         """
@@ -2152,7 +2280,8 @@ class Gw1000Collector(Collector):
                 pass
 
     class Station(object):
-        """Class to interact directly with the GW1000/GW1100 API.
+        """
+        Class to interact directly with the GW1000/GW1100 API.
 
         A Station object knows how to:
         1.  discover a GW1000/GW1100 via UDP broadcast
@@ -2294,7 +2423,8 @@ class Gw1000Collector(Collector):
                 self.model = self.get_model_from_firmware(_firmware_str)
 
         def discover(self):
-            """Discover any GW1000/GW1100 devices on the local network.
+            """
+            Discover any GW1000/GW1100 devices on the local network.
 
             Send a UDP broadcast and check for replies. Decode each reply to obtain details of any devices on the local network. Create a dict
             of details for each device including a derived model name. Construct a list of dicts with details of unique (MAC address)
@@ -2363,7 +2493,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_broadcast_response(raw_data):
-            """Decode a broadcast response and return the results as a dict.
+            """
+            Decode a broadcast response and return the results as a dict.
 
             A GW1000/GW1100 response to a CMD_BROADCAST API command consists of a number of control structures around a payload of a data. The API
             response is structured as follows:
@@ -2418,7 +2549,8 @@ class Gw1000Collector(Collector):
             return data_dict
 
         def get_model_from_firmware(self, firmware_string):
-            """Determine the device model from the firmware version.
+            """
+            Determine the device model from the firmware version.
 
             To date GW1000 and GW1100 firmware versions have included the device model in the firmware version string returned via the device
             API. Whilst this is not guaranteed to be the case for future firmware releases, in the absence of any other direct means of
@@ -2439,7 +2571,8 @@ class Gw1000Collector(Collector):
                 return None
 
         def get_model_from_ssid(self, ssid_string):
-            """Determine the device model from the device SSID.
+            """
+            Determine the device model from the device SSID.
 
             To date the GW1000 and GW1100 device SSID has included the device
             model in the SSID returned via the device API. Whilst this is not
@@ -2468,7 +2601,8 @@ class Gw1000Collector(Collector):
             return self.get_model(ssid_string)
 
         def get_model(self, t):
-            """Determine the device model from a string.
+            """
+            Determine the device model from a string.
 
             To date GW1000 and GW1100 firmware versions have included the
             device model in the firmware version string or the device SSID.
@@ -2499,7 +2633,8 @@ class Gw1000Collector(Collector):
                 return None
 
         def get_livedata(self):
-            """Get GW1000/GW1100 live data.
+            """
+            Get GW1000/GW1100 live data.
 
             Sends the command to obtain live data from the GW1000/GW1100 to the
             API with retries. If the GW1000/GW1100 cannot be contacted
@@ -2522,7 +2657,8 @@ class Gw1000Collector(Collector):
                     return self.send_cmd_with_retries('CMD_GW1000_LIVEDATA')
 
         def get_raindata(self):
-            """Get GW1000/GW1100 rain data.
+            """
+            Get GW1000/GW1100 rain data.
 
             Sends the command to obtain rain data from the GW10GW1000/GW110000
             to the API with retries. If the GW1000/GW1100 cannot be contacted a
@@ -2534,7 +2670,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_RAINDATA')
 
         def get_system_params(self):
-            """Read GW1000/GW1100 system parameters.
+            """
+            Read GW1000/GW1100 system parameters.
 
             Sends the command to obtain system parameters from the GW1000/GW1100 to the API with retries. If the GW1000/GW1100 cannot
             be contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
@@ -2544,7 +2681,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_SSSS')
 
         def get_ecowitt_net_params(self):
-            """Get GW1000/GW1100 Ecowitt.net parameters.
+            """
+            Get GW1000/GW1100 Ecowitt.net parameters.
 
             Sends the command to obtain the GW1000/GW1100 Ecowitt.net
             parameters to the API with retries. If the GW1000/GW1100 cannot be
@@ -2557,7 +2695,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_ECOWITT')
 
         def get_wunderground_params(self):
-            """Get GW1000 Weather Underground parameters.
+            """
+            Get GW1000 Weather Underground parameters.
 
             Sends the command to obtain the GW1000/GW1100 Weather Underground
             parameters to the API with retries. If the GW1000/GW1100 cannot be
@@ -2571,7 +2710,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_WUNDERGROUND')
 
         def get_weathercloud_params(self):
-            """Get GW1000/GW1100 Weathercloud parameters.
+            """
+            Get GW1000/GW1100 Weathercloud parameters.
 
             Sends the command to obtain the GW1000/GW1100 Weathercloud
             parameters to the API with retries. If the GW1000/GW1100 cannot be
@@ -2585,7 +2725,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_WEATHERCLOUD')
 
         def get_wow_params(self):
-            """Get GW1000/GW1100 Weather Observations Website parameters.
+            """
+            Get GW1000/GW1100 Weather Observations Website parameters.
 
             Sends the command to obtain the GW1000/GW1100 Weather Observations
             Website parameters to the API with retries. If the GW1000/GW1100
@@ -2598,7 +2739,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_WOW')
 
         def get_custom_params(self):
-            """Get GW1000/GW1100 custom server parameters.
+            """
+            Get GW1000/GW1100 custom server parameters.
 
             Sends the command to obtain the GW1000/GW1100 custom server parameters to the API with retries. If the GW1000/GW1100 cannot be
             contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
@@ -2608,7 +2750,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_CUSTOMIZED')
 
         def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled):
-            """Set GW1000/GW1100 custom server parameters.
+            """
+            Set GW1000/GW1100 custom server parameters.
 
             Sends the command to obtain the GW1000/GW1100 custom server parameters to the API with retries. If the GW1000/GW1100 cannot be
             contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
@@ -2620,7 +2763,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_WRITE_CUSTOMIZED', payload)
 
         def get_usr_path(self):
-            """Get GW1000/GW1100 user defined custom path.
+            """
+            Get GW1000/GW1100 user defined custom path.
 
             Sends the command to obtain the GW1000/GW1100 user defined custom path to the API with retries. If the GW1000/GW1100 cannot be
             contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
@@ -2630,7 +2774,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_USR_PATH')
 
         def set_usr_path(self, custom_ecowitt_pathpath, custom_wu_path):
-            """Get GW1000/GW1100 user defined custom path.
+            """
+            Get GW1000/GW1100 user defined custom path.
 
             Sends the command to set the GW1000/GW1100 user defined custom path to the API with retries. If the GW1000/GW1100 cannot be
             contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
@@ -2647,7 +2792,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_WRITE_USR_PATH', payload)
 
         def get_mac_address(self):
-            """Get GW1000/GW1100 MAC address.
+            """
+            Get GW1000/GW1100 MAC address.
 
             Sends the command to obtain the GW1000/GW1100 MAC address to the
             API with retries. If the GW1000/GW1100 cannot be contacted a
@@ -2659,7 +2805,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_STATION_MAC')
 
         def get_firmware_version(self):
-            """Get GW1000/GW1100 firmware version.
+            """
+            Get GW1000/GW1100 firmware version.
 
             Sends the command to obtain GW1000/GW1100 firmware version to the API with retries. If the GW1000/GW1100 cannot be contacted a
             GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by get_firmware_version(). Any code
@@ -2669,7 +2816,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_FIRMWARE_VERSION')
 
         def set_firmware_upgrade(self):
-            """Set GW1000/GW1100 firmware upgrade.
+            """
+            Set GW1000/GW1100 firmware upgrade.
 
             Sends the command to upgrade GW1000/GW1100 firmware version to the API with retries. If the GW1000/GW1100 cannot be contacted a
             GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by get_firmware_version(). Any code
@@ -2684,7 +2832,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_WRITE_UPDATE', payload)
 
         def get_sensor_id(self):
-            """Get GW1000/GW1100 sensor ID data.
+            """
+            Get GW1000/GW1100 sensor ID data.
 
             Sends the command to obtain sensor ID data from the GW1000/GW1100
             to the API with retries. If the GW1000/GW1100 cannot be contacted
@@ -2707,7 +2856,8 @@ class Gw1000Collector(Collector):
                     return self.send_cmd_with_retries('CMD_READ_SENSOR_ID_NEW')
 
         def get_mulch_offset(self):
-            """Get multi-channel temperature and humidity offset data.
+            """
+            Get multi-channel temperature and humidity offset data.
 
             Sends the command to obtain the multi-channel temperature and
             humidity offset data to the API with retries. If the GW1000/GW1100
@@ -2720,7 +2870,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_GET_MulCH_OFFSET')
 
         def get_pm25_offset(self):
-            """Get PM2.5 offset data.
+            """
+            Get PM2.5 offset data.
 
             Sends the command to obtain the PM2.5 sensor offset data to the API
             with retries. If the GW1000/GW1100 cannot be contacted a
@@ -2733,7 +2884,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_GET_PM25_OFFSET')
 
         def get_calibration_coefficient(self):
-            """Get calibration coefficient data.
+            """
+            Get calibration coefficient data.
 
             Sends the command to obtain the calibration coefficient data to the API with retries. If the GW1000/GW1100 cannot be contacted a
             GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by get_calibration_coefficient(). Any
@@ -2743,7 +2895,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_GAIN')
 
         def get_soil_calibration(self):
-            """Get soil moisture sensor calibration data.
+            """
+            Get soil moisture sensor calibration data.
 
             Sends the command to obtain the soil moisture sensor calibration data to the API with retries. If the GW1000/GW1100 cannot be
             contacted a GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by
@@ -2753,7 +2906,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_GET_SOILHUMIAD')
 
         def get_offset_calibration(self):
-            """Get offset calibration data.
+            """
+            Get offset calibration data.
 
             Sends the command to obtain the offset calibration data to the API
             with retries. If the GW1000/GW1100 cannot be contacted a
@@ -2766,7 +2920,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_READ_CALIBRATION')
 
         def get_co2_offset(self):
-            """Get WH45 CO2, PM10 and PM2.5 offset data.
+            """
+            Get WH45 CO2, PM10 and PM2.5 offset data.
 
             Sends the command to obtain the WH45 CO2, PM10 and PM2.5 sensor
             offset data to the API with retries. If the GW1000/GW1100 cannot be
@@ -2779,7 +2934,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_GET_CO2_OFFSET')
 
         def set_reboot(self):
-            """Reboot GW1000/GW1100 .
+            """
+            Reboot GW1000/GW1100 .
 
             Sends the command to reboot GW1000/GW1100 to the API with retries. If the GW1000/GW1100 cannot be contacted a
             GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by set_reboot(). Any code
@@ -2790,7 +2946,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_WRITE_REBOOT')
 
         def set_reset(self):
-            """Reset GW1000/GW1100 .
+            """
+            Reset GW1000/GW1100 .
 
             Sends the command to reboot GW1000/GW1100 to the API with retries. If the GW1000/GW1100 cannot be contacted a
             GW1000IOError will have been raised by send_cmd_with_retries() which will be passed through by set_reboot(). Any code
@@ -2801,7 +2958,8 @@ class Gw1000Collector(Collector):
             return self.send_cmd_with_retries('CMD_WRITE_RESET')
 
         def send_cmd_with_retries(self, cmd, payload=b''):
-            """Send a command to the GW1000/GW1100 API with retries and return the response.
+            """
+            Send a command to the GW1000/GW1100 API with retries and return the response.
 
             Send a command to the GW1000/GW1100 and obtain the response. If the the response is valid return the response. If the response is
             invalid an appropriate exception is raised and the command resent up to self.max_tries times after which the value None is returned.
@@ -2855,7 +3013,8 @@ class Gw1000Collector(Collector):
             raise GW1000IOError(_msg)
 
         def build_cmd_packet(self, cmd, payload=b''):
-            """Construct an API command packet.
+            """
+            Construct an API command packet.
 
             A GW1000/GW1100 API command packet looks like:
 
@@ -2900,7 +3059,8 @@ class Gw1000Collector(Collector):
             return cmd_packet
 
         def send_cmd(self, packet):
-            """Send a command to the GW1000/GW1100 API and return the response.
+            """
+            Send a command to the GW1000/GW1100 API and return the response.
 
             Send a command to the GW1000/GW1100 and return the response. Socket
             related errors are trapped and raised, code calling send_cmd should
@@ -2938,7 +3098,8 @@ class Gw1000Collector(Collector):
                 s.close()
 
         def check_response(self, response, cmd_code):
-            """Check the validity of a GW1000/GW1100 API response.
+            """
+            Check the validity of a GW1000/GW1100 API response.
 
             Checks the validity of a GW1000/GW1100 API response. Two checks are performed:
                 1.  the third byte of the response is the same as the command code used in the API call
@@ -2973,7 +3134,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def calc_checksum(data):
-            """Calculate the checksum for a GW1000/GW1100 API call or response.
+            """
+            Calculate the checksum for a GW1000/GW1100 API call or response.
 
             The checksum used on the GW1000/GW1100 responses is simply the LSB of the sum of the bytes.
 
@@ -2986,7 +3148,8 @@ class Gw1000Collector(Collector):
             return checksum - int(checksum / 256) * 256
 
         def rediscover(self):
-            """Attempt to rediscover a lost GW1000/GW1100.
+            """
+            Attempt to rediscover a lost GW1000/GW1100.
 
             Use UDP broadcast to discover a GW1000/GW1100 that may have changed to a new IP. We should not be re-discovering a GW1000/GW1100 for
             which the user specified an IP, only for those for which we discovered the IP address on startup. If a GW1000/GW1100 is
@@ -3211,7 +3374,8 @@ class Gw1000Collector(Collector):
             self.debug_wind = debug_wind
 
         def parse(self, raw_data, timestamp=None):
-            """Parse raw sensor data.
+            """
+            Parse raw sensor data.
 
             Parse the raw sensor data and create a dict of sensor observations/status data. Add a timestamp to the data if one does not already exist.
 
@@ -3262,7 +3426,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_temp(data, field=None):
-            """Decode temperature data.
+            """
+            Decode temperature data.
 
             Data is contained in a two byte big endian signed integer and represents tenths of a degree.
             """
@@ -3278,7 +3443,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_humid(data, field=None):
-            """Decode humidity data.
+            """
+            Decode humidity data.
 
             Data is contained in a single unsigned byte and represents whole
             units.
@@ -3295,7 +3461,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_press(data, field=None):
-            """Decode pressure data.
+            """
+            Decode pressure data.
 
             Data is contained in a two byte big endian integer and represents
             tenths of a unit.
@@ -3312,7 +3479,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_uv(data, field=None):
-            """Decode pressure data.
+            """
+            Decode pressure data.
 
             Data is contained in a two byte big endian integer and represents
             tenths of a unit.
@@ -3329,7 +3497,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_dir(data, field=None):
-            """Decode direction data.
+            """
+            Decode direction data.
 
             Data is contained in a two byte big endian integer and represents
             whole degrees.
@@ -3346,7 +3515,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_big_rain(data, field=None):
-            """Decode 4 byte rain data.
+            """
+            Decode 4 byte rain data.
 
             Data is contained in a four byte big endian integer and represents
             tenths of a unit.
@@ -3363,7 +3533,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_datetime(data, field=None):
-            """Decode date-time data.
+            """
+            Decode date-time data.
 
             Unknown format but length is six bytes.
             """
@@ -3380,7 +3551,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_distance(data, field=None):
-            """Decode lightning distance.
+            """
+            Decode lightning distance.
 
             Data is contained in a single byte integer and represents a value
             from 0 to 40km.
@@ -3398,7 +3570,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_utc(data, field=None):
-            """Decode UTC time.
+            """
+            Decode UTC time.
 
             The GW1000/GW1100 API claims to provide 'UTC time' as a 4 byte big endian integer. The 4 byte integer is a unix epoch timestamp;
             however, the timestamp is offset by the stations timezone. So for a station in the +10 hour timezone, the timestamp returned is the
@@ -3427,7 +3600,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_count(data, field=None):
-            """Decode lightning count.
+            """
+            Decode lightning count.
 
             Count is an integer stored in a 4 byte big endian integer."""
 
@@ -3454,7 +3628,8 @@ class Gw1000Collector(Collector):
         decode_wet = decode_humid
 
         def decode_wh34(self, data, field=None):
-            """Decode WH34 sensor data.
+            """
+            Decode WH34 sensor data.
 
             Data consists of three bytes:
                 Byte    Field               Comments
@@ -3503,7 +3678,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def decode_batt(data, field=None):
-            """Decode battery status data.
+            """
+            Decode battery status data.
 
             GW1000/GW1100 firmware version 1.6.4 and earlier supported 16 bytes of battery state data at response field x4C for the following
             sensors:
@@ -3520,7 +3696,8 @@ class Gw1000Collector(Collector):
             return None
 
     class Sensors(object):
-        """Class to manage GW1000/GW1100 sensor ID data.
+        """
+        Class to manage GW1000/GW1100 sensor ID data.
 
         Class Sensors allows access to various elements of sensor ID data via a number of properties and methods when the class is initialised with the
         GW1000/GW1100 API response to a CMD_READ_SENSOR_ID_NEW or CMD_READ_SENSOR_ID command.
@@ -3593,7 +3770,8 @@ class Gw1000Collector(Collector):
 
         @property
         def addresses(self):
-            """Obtain a list of sensor addresses.
+            """
+            Obtain a list of sensor addresses.
 
             This includes all sensor addresses reported by the GW1000/GW1100, this includes:
             - sensors that are actually connected to the GW1000/GW1100
@@ -3607,7 +3785,8 @@ class Gw1000Collector(Collector):
 
         @property
         def connected_addresses(self):
-            """Obtain a list of sensor addresses for connected sensors only.
+            """
+            Obtain a list of sensor addresses for connected sensors only.
 
             Sometimes we only want a list of addresses for sensors that are actually connected to the GW1000/GW1100. We can filter out those
             addresses that do not have connected sensors by looking at the sensor ID. If the sensor ID is 'fffffffe' either the sensor is
@@ -3626,7 +3805,8 @@ class Gw1000Collector(Collector):
 
         @property
         def connected_sensors(self):
-            """Obtain a list of sensor types for connected sensors only.
+            """
+            Obtain a list of sensor types for connected sensors only.
 
             Sometimes we only want a list of sensors that are actually connected to the GW1000/GW1100.
             """
@@ -3662,7 +3842,8 @@ class Gw1000Collector(Collector):
 
         @property
         def battery_and_signal_data(self):
-            """Obtain a dict of sensor battery state and signal level data.
+            """
+            Obtain a dict of sensor battery state and signal level data.
 
             Iterate over the list of connected sensors and obtain a dict of sensor battery state data for each connected sensor.
             """
@@ -3683,7 +3864,8 @@ class Gw1000Collector(Collector):
 
         @property
         def battery_description_data(self):
-            """Obtain a dict of sensor battery state description data.
+            """
+            Obtain a dict of sensor battery state description data.
 
             Iterate over the list of connected sensors and obtain a dict of sensor battery state description data for each connected sensor.
             """
@@ -3701,7 +3883,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def battery_desc(address, value):
-            """Determine the battery state description for a given sensor.
+            """
+            Determine the battery state description for a given sensor.
 
             Given the address...
             """
@@ -3734,7 +3917,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def batt_binary(batt):
-            """Decode a binary battery state.
+            """
+            Decode a binary battery state.
 
             Battery state is stored in bit 0 as either 0 or 1. If 1 the battery is low, if 0 the battery is normal. We need to mask off bits 1 to 7 as
             they are not guaranteed to be set in any particular way.
@@ -3744,7 +3928,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def batt_int(batt):
-            """Decode a integer battery state.
+            """
+            Decode a integer battery state.
 
             According to the API documentation battery state is stored as an integer from 0 to 5 with <=1 being considered low. Experience with
             WH43 has shown that battery state 6 also exists when the device is run from DC. This does not appear to be documented in the API
@@ -3755,7 +3940,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def batt_volt(batt):
-            """Decode a voltage battery state in 2mV increments.
+            """
+            Decode a voltage battery state in 2mV increments.
 
             Battery state is stored as integer values of battery voltage/0.02 with <=1.2V considered low.
             """
@@ -3764,7 +3950,8 @@ class Gw1000Collector(Collector):
 
         @staticmethod
         def batt_volt_tenth(batt):
-            """Decode a voltage battery state in 100mV increments.
+            """
+            Decode a voltage battery state in 100mV increments.
 
             Battery state is stored as integer values of battery voltage/0.1
             with <=1.2V considered low.
@@ -3943,7 +4130,8 @@ class Consumer(object):
 
 
 class EcowittClient(Consumer):
-    """Use the ecowitt protocol (not WU protocol) to capture data
+    """
+    Use the ecowitt protocol (not WU protocol) to capture data
 
     Capture data from devices that transmit using ecowitt protocol, such as the
     Fine Offset GW1000 bridge.
@@ -4372,6 +4560,7 @@ class EcowittClient(Consumer):
         @staticmethod
         def clean_data(data):
             """Harmonize field names and convert into metric units"""
+
             _ignore_fields = ['passkey', 'firmware', 'frequency', 'model', 'client_ip']
 
             data_dict = {}
@@ -4458,7 +4647,8 @@ class EcowittClient(Consumer):
 
         @staticmethod
         def batt_binary(batt):
-            """Decode a binary battery state.
+            """
+            Decode a binary battery state.
 
             Battery state is stored in bit 0 as either 0 or 1. If 1 the battery is low, if 0 the battery is normal. We need to mask off bits 1 to 7 as
             they are not guaranteed to be set in any particular way.
@@ -4468,7 +4658,8 @@ class EcowittClient(Consumer):
 
         @staticmethod
         def batt_int(batt):
-            """Decode a integer battery state.
+            """
+            Decode a integer battery state.
 
             According to the API documentation battery state is stored as an integer from 0 to 5 with <=1 being considered low. Experience with
             WH43 has shown that battery state 6 also exists when the device is run from DC. This does not appear to be documented in the API
@@ -4479,7 +4670,8 @@ class EcowittClient(Consumer):
 
         @staticmethod
         def batt_volt(batt):
-            """Decode a voltage battery state in 2mV increments.
+            """
+            Decode a voltage battery state in 2mV increments.
 
             Battery state is stored as integer values of battery voltage/0.02 with <=1.2V considered low.
             """
@@ -4488,7 +4680,8 @@ class EcowittClient(Consumer):
 
         @staticmethod
         def batt_volt_tenth(batt):
-            """Decode a voltage battery state in 100mV increments.
+            """
+            Decode a voltage battery state in 100mV increments.
 
             Battery state is stored as integer values of battery voltage/0.1
             with <=1.2V considered low.
@@ -4528,7 +4721,8 @@ def natural_sort_keys(source_dict):
 
 
 def natural_sort_dict(source_dict):
-    """Return a string representation of a dict sorted naturally by key.
+    """
+    Return a string representation of a dict sorted naturally by key.
 
     When represented as a string a dict is displayed in the format:
         {key a:value a, key b: value b ... key z: value z}
@@ -4596,7 +4790,8 @@ def int_to_bytes(value, length=1, signed=False):
 
 
 def obfuscate(plain, obf_char='*'):
-    """Obfuscate all but the last x characters in a string.
+    """
+    Obfuscate all but the last x characters in a string.
 
     Obfuscate all but (at most) the last four characters of a string. Always
     reveal no more than 50% of the characters. The obfuscation character
@@ -4624,7 +4819,8 @@ def obfuscate(plain, obf_char='*'):
 
 
 def timestamp_to_string(ts, format_str="%Y-%m-%d %H:%M:%S %Z"):
-    """Return a string formatted from the timestamp
+    """
+    Return a string formatted from the timestamp
 
     Example:
     >>> import os
