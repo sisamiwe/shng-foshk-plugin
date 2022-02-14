@@ -125,6 +125,7 @@ class Foshk(SmartPlugin):
             if not self._http_server_ip or not self._http_server_port:
                 self.logger.error(f"Receiving ECOWITT data via has been enabled, but not able to define server ip or port with setting {self._http_server_ip}:{self._http_server_port}")
                 self._init_complete = False
+        self.webif_pagelength = self.get_parameter_value('webif_pagelength')
 
         # define properties
         self.items = {}                                                             # dict to hold Items using Plugin attribute

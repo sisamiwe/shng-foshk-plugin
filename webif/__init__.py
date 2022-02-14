@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # vim: set encoding=utf-8 tabstop=4 softtabstop=4 shiftwidth=4 expandtab
 #########################################################################
-#  Copyright 2020-     <AUTHOR>                                   <EMAIL>
+#  Copyright 2022-     Michael Wenzel               wenzel_michael@web.de
 #########################################################################
 #  This file is part of SmartHomeNG.
 #  https://www.smarthomeNG.de
@@ -25,10 +25,7 @@
 #
 #########################################################################
 
-import datetime
-import time
-import os
-
+import json
 from lib.item import Items
 from lib.model.smartplugin import SmartPluginWebIf
 
@@ -57,6 +54,7 @@ class WebInterface(SmartPluginWebIf):
         self.webif_dir = webif_dir
         self.plugin = plugin
         self.items = Items.get_instance()
+        self.plgitems = []
 
         self.tplenv = self.init_template_environment()
 
@@ -69,22 +67,16 @@ class WebInterface(SmartPluginWebIf):
 
         :return: contents of the template after beeing rendered
         """
-        tmpl = self.tplenv.get_template('index.html')
-        # add values to be passed to the Jinja2 template eg: tmpl.render(p=self.plugin, interface=interface, ...)
-        return tmpl.render(p=self.plugin)
 
-        # get list of items with the attribute knx_dpt
-        plgitems = []
         for item in self.items.return_items():
             if 'foshk_attibute' in item.conf:
-                plgitems.append(item)
+                self.plgitems.append(item)
 
-        # additionally hand over the list of items, sorted by item-path
         tmpl = self.tplenv.get_template('index.html')
         return tmpl.render(p=self.plugin,
-                           items=sorted(plgitems, key=lambda k: str.lower(k['_path'])),
-                           )
-
+                           webif_pagelength=self.plugin.webif_pagelength,
+                           items=sorted(self.plgitems, key=lambda k: str.lower(k['_path'])),
+                           item_count=len(self.plgitems))
 
     @cherrypy.expose
     def get_data_html(self, dataSet=None):
@@ -98,16 +90,18 @@ class WebInterface(SmartPluginWebIf):
         """
         if dataSet is None:
             # get the new data
-            data = {}
+            data = dict()
+            data['item_values'] = dict()
+            for item in self.plgitems:
+                data['item_values'][item.id()] = {}
+                data['item_values'][item.id()]['value'] = item()
+                data['item_values'][item.id()]['last_update'] = item.property.last_update.strftime('%d.%m.%Y %H:%M:%S')
+                data['item_values'][item.id()]['last_change'] = item.property.last_change.strftime('%d.%m.%Y %H:%M:%S')
+            data['api_data'] = self.plugin.data_dict
+            data['tcp_data'] = self.plugin.data_dict2
 
-            # data['item'] = {}
-            # for i in self.plugin.items:
-            #     data['item'][i]['value'] = self.plugin.getitemvalue(i)
-            #
-            # return it as json the the web page
-            # try:
-            #     return json.dumps(data)
-            # except Exception as e:
-            #     self.logger.error("get_data_html exception: {}".format(e))
+            try:
+                return json.dumps(data, default=str)
+            except Exception as e:
+                self.logger.error(f"get_data_html exception: {e}")
         return {}
-

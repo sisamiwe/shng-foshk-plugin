@@ -1,57 +1,51 @@
 {% extends "base_plugin.html" %}
-
 {% set logo_frame = false %}
+{% set update_interval = 5000 %}
 
-<!-- set update_interval to a value > 0 (in milliseconds) to enable periodic data updates -->
-{% set update_interval = 0 %}
+{% block pluginstyles %}
+<style>
+  table th.value {
+    width: 100px;
+  }
+  #maintable {
+     display: none;
+  }
+</style>
+{% endblock pluginstyles %}
 
-<!--
-	Additional script tag for plugin specific javascript code go into this block
--->
+
 {% block pluginscripts %}
 <script>
-	function handleUpdatedData(response, dataSet=null) {
-		if (dataSet === 'devices_info' || dataSet === null) {
-			var objResponse = JSON.parse(response);
-			myProto = document.getElementById(dataSet);
-			for (var device in objResponse) {
-				/*
-				shngInsertText (device+'_source', objResponse[device]['source']);
-				shngInsertText (device+'_powerState', objResponse[device]['powerState']);
-				*/
-			}
-		}
-	}
-</script>
-<!--
-	This part is used to implement datatable JS for the tables. It allows resorting tables by column, etc.
-	For each table you have to implement the code part $('#<table_id>').DataTable(..); where the <table_id> matches the id of a table tag
--->
-
-<script>
 	$(document).ready( function () {
-		$(window).trigger('datatables_defaults'); // loading default behaviour
+		$(window).trigger('datatables_defaults');
 		try {
-			$('#maintable').DataTable( {"paging": false, fixedHeader: true} );
-            $('#datatable_api').DataTable( {"paging": false, fixedHeader: true} );
-            $('#datatable_tcp').DataTable( {"paging": false, fixedHeader: true} );
-            $('#sysparams').DataTable( {"paging": false, fixedHeader: true} );
-            $('#serversetting').DataTable( {"paging": false, fixedHeader: true} );
-            $('#pathsetting').DataTable( {"paging": false, fixedHeader: true} );
-            $('#sensors').DataTable( {"paging": false, fixedHeader: true} ); 
-            $('#rain_data').DataTable( {"paging": false, fixedHeader: true} ); 
-            $('#gateway_details').DataTable( {"paging": false, fixedHeader: true} );
-            $('#sensor_calibration').DataTable( {"paging": false, fixedHeader: true} ); 
-            $('#soil_calibration').DataTable( {"paging": false,	fixedHeader: true} ); 
-            $('#1').DataTable( {"paging": false, fixedHeader: true} ); 
-            $('#2').DataTable( {"paging": false, fixedHeader: true} ); 
+      webif_pagelength = document.getElementById('webif_pagelength').innerHTML;
+			table = $('#maintable').DataTable( { "pageLength": webif_pagelength } );
+            table_2 = $('#datatable').DataTable( {} );
 			}
 		catch (e) {
 			console.log("Datatable JS not loaded, showing standard table without reorder option " + e)
 			}
 		});
 </script>
-
+<script>
+	function handleUpdatedData(response, dataSet=null) {
+		if (dataSet === 'devices_info' || dataSet === null) {
+			var objResponse = JSON.parse(response);
+			myProto = document.getElementById(dataSet);
+            
+            for (var item in objResponse['item_values']) {
+				shngInsertText (item+'_value', objResponse['item_values'][item]['value'], 'maintable');
+				shngInsertText (item+'_last_update', objResponse['item_values'][item]['last_update'], 'maintable');
+				shngInsertText (item+'_last_change', objResponse['item_values'][item]['last_change'], 'maintable');
+            }
+            for (var entry in objResponse['api_data']) {
+				shngInsertText (entry+'_api_data_value', objResponse['api_data'][entry], 'datatable');
+                shngInsertText (entry+'_tcp_data_value', objResponse['tcp_data'][entry], 'datatable');
+			}
+		}
+	}
+</script>
 {% endblock pluginscripts %}
 
 
@@ -101,7 +95,7 @@
 <!--
 	Define the number of tabs for the body of the web interface (1 - 6)
 -->
-{% set tabcount = 5 %}
+{% set tabcount = 4 %}
 
 
 <!--
@@ -118,6 +112,9 @@
 {% set tab1title = "<strong>" ~ p.get_shortname() ~ " Items</strong>" %}
 {% block bodytab1 %}
 <div class="table-responsive" style="margin-left: 3px; margin-right: 3px;" class="row">
+    <div class="mb-2">
+        <span id='webif_pagelength' style="display:none">{{ webif_pagelength }}</span>
+    </div>
     <div class="col-sm-12">
 		<table id="maintable" class="table table-striped table-hover pluginList display">
 			<thead>
@@ -133,14 +130,15 @@
 			</thead>
 			<tbody>
 				{% for attribute in p.items %}
+                    {% set item_id = p.items[attribute][0]._path %}
 					<tr>
-						<td class="py-1">{{ p.items[attribute][0]._path }}</td>
+						<td class="py-1">{{ item_id }}</td>
 						<td class="py-1">{{ p.items[attribute][0]._type }}</td>
 						<td class="py-1">{{ attribute }}</td>
 						<td class="py-1">{{ p.items[attribute][1] }}</td>
-						<td class="py-1">{{ p.items[attribute][0]._value }}</td>
-						<td class="py-1">{{ p.items[attribute][0].property.last_update.strftime('%d.%m.%Y %H:%M:%S') }}</td>
-						<td class="py-1">{{ p.items[attribute][0].property.last_change.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+						<td class="py-1" id="{{ item_id }}_value">{{ p.items[attribute][0]._value }}</td>
+						<td class="py-1" id="{{ item_id }}_last_update">{{ p.items[attribute][0].property.last_update.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+						<td class="py-1" id="{{ item_id }}_last_change">{{ p.items[attribute][0].property.last_change.strftime('%d.%m.%Y %H:%M:%S') }}{{_('.')}}</td>
 					</tr>
 				{% endfor %}
 			</tbody>
@@ -150,27 +148,27 @@
 {% endblock bodytab1 %}
 
 
-<!--
-	Content block for the second tab of the Webinterface
--->
-{% set tab2title = "<strong>" ~ p.get_shortname() ~ " API Data</strong> " %}
+{% set tab2title = "<strong>" ~ p.get_shortname() ~ "Data</strong> " %}
 {% block bodytab2 %}
 <div class="table-responsive" style="margin-left: 3px; margin-right: 3px;" class="row">
+    <div class="mb-2">
+        <span id='webif_pagelength' style="display:none">{{ webif_pagelength }}</span>
+    </div>
     <div class="col-sm-12">
-		<table id="datatable_api" class="table table-striped table-hover pluginList display">
+		<table id="datatable" class="table_2 table-striped table-hover pluginList display">
 			<thead>
 				<tr>
 					<th>{{ _('Key') }}</th>
-					<th>{{ _('Value') }}</th>
-					<th></th>
+					<th style="text-align: right">{{ _('TCP Value') }}</th>
+					<th style="text-align: right">{{ _('API Value') }}</th>
 				</tr>
 			</thead>
 			<tbody>
-				{% for entry in p.data_dict %}
+				{% for entry in p.data_dict2 %}
 					<tr>
 						<td class="py-1">{{ entry }}</td>
-						<td class="py-1">{{ p.data_dict[entry] }}</td>
-						<td></td>
+						<td class="py-1" id="{{ entry }}_tcp_data_value" style="text-align: right">{{ p.data_dict2[entry] }}</td>
+						<td class="py-1" id="{{ entry }}_api_data_value" style="text-align: right">{{ p.data_dict[entry] }}{{_('.')}}</td>
 					</tr>
 				{% endfor %}
 			</tbody>
@@ -180,35 +178,8 @@
 {% endblock bodytab2 %}
 
 
-{% set tab3title = "<strong>" ~ p.get_shortname() ~ " TCP Data</strong> " %}
+{% set tab3title = "<strong>" ~ p.get_shortname() ~ " Settings</strong> " %}
 {% block bodytab3 %}
-<div class="table-responsive" style="margin-left: 3px; margin-right: 3px;" class="row">
-    <div class="col-sm-12">
-		<table id="datatable_tcp" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-					<th>{{ _('Key') }}</th>
-					<th>{{ _('TCP Value') }}</th>
-					<th>{{ _('Live Value') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				{% for entry in p.data_dict2 %}
-					<tr>
-						<td class="py-1">{{ entry }}</td>
-						<td class="py-1">{{ p.data_dict2[entry] }}</td>
-						<td class="py-1">{{ p.data_dict[entry] }}</td>
-					</tr>
-				{% endfor %}
-			</tbody>
-		</table>
-	</div>
-</div>
-{% endblock bodytab3 %}
-
-
-{% set tab4title = "<strong>" ~ p.get_shortname() ~ " Settings</strong> " %}
-{% block bodytab4 %}
 <div class="table-responsive" style="margin-left: 3px; margin-right: 3px;" class="row">
     <div class="col-sm-12">
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -356,7 +327,7 @@
 			</tbody>
 		</table>
 		
-		<table id="sensor_calibration2" class="table table-striped table-hover pluginList display">
+		<table id="" class="table table-striped table-hover pluginList display">
 			<caption>SENSOR CALIBRATION</caption>
 			<thead>
 				<tr>
@@ -388,7 +359,7 @@
 			</tbody>
 		</table>
 		
-		<table id="sensor_calibration2" class="table table-striped table-hover pluginList display">
+		<table id="" class="table table-striped table-hover pluginList display">
 			<caption>MULTI CHANNEL SENSOR CALIBRATION</caption>
 			<thead>
 				<tr>
@@ -417,8 +388,7 @@
 			</tbody>
 		</table>
 		
-		
-		<table id="soil_calibration2" class="table table-striped table-hover pluginList display">
+		<table id="" class="table table-striped table-hover pluginList display">
 			<caption>SOIL CALIBRATION</caption>
 			<thead>
 				<tr>
@@ -527,11 +497,11 @@
 		</table>
 	</div>
 </div>
-{% endblock bodytab4 %}
+{% endblock bodytab3 %}
 
 
-{% set tab5title = "<strong>" ~ p.get_shortname() ~ " Maintenance</strong> " %}
-{% block bodytab5 %}
+{% set tab4title = "<strong>" ~ p.get_shortname() ~ " Maintenance</strong> " %}
+{% block bodytab4 %}
 <div class="table-responsive" style="margin-left: 3px; margin-right: 3px;" class="row">
     <div class="col-sm-12">
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -619,10 +589,10 @@
 					<td>{{ _('debug_sensors') }}</td>
 					<td class="py-1">{{ p.tcp_driver.debug_sensors}}</td>
 				</tr>
-				<tr>
-					<td>{{ _('IP') }}</td>
-					<td class="py-1">{{ p.tcp_driver.client.gateway_ip }}</td>
-				</tr>
+				<!-- <tr> -->
+					<!-- <td>{{ _('IP') }}</td> -->
+					<!-- <td class="py-1">{{ p.tcp_driver.client.gateway_ip }}</td> -->
+				<!-- </tr> -->
 				
 			</tbody>
 		</table>
@@ -771,4 +741,4 @@
 		</table>
 	</div>
 </div>
-{% endblock bodytab5 %}
+{% endblock bodytab4 %}

@@ -85,6 +85,18 @@ parameters:
             de: 'Intervall, in dem das Gateway die Daten bereitstellt, bzw. hochläd; (Wert 0: Aus, ECOWITT Daten werden nicht geladen; Wert 1-16: Datenzyklus 16s;  Wert >16 :  Datenzyklus s)'
             en: 'Interval the gateway provides the data'
 
+    webif_pagelength:
+        type: int
+        default: 100
+        valid_list:
+            - -1
+            - 25
+            - 50
+            - 100
+        description:
+            de: 'Anzahl an Items, die standardmäßig in einer Web Interface Tabelle pro Seite angezeigt werden'
+            en: 'Amount of items being listed in a web interface table per page by default'
+
 item_attributes:
     foshk_attibute:
         type: str
