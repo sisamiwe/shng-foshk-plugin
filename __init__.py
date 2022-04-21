@@ -128,7 +128,7 @@ class Foshk(SmartPlugin):
         self.webif_pagelength = self.get_parameter_value('webif_pagelength')
 
         # define properties
-        self.items = {}                                                             # dict to hold Items using Plugin attribute
+        self.items = {}                                                             # dict to hold Items using Plugin attribute [_foshk_attribute] = (item, _foshk_datasource)
         self.data_dict = {}                                                         # dict to hold all live data gotten from weather station gateway
         self.data_dict2 = {}                                                        # dict to hold all data gotten from weather station gateway via tcp
         self.gateway_connected = False                                              # is gateway connected; driver established
@@ -443,6 +443,7 @@ class Foshk(SmartPlugin):
 
             if ver_str_to_num(remote_firmware) and ver_str_to_num(current_firmware) and (ver_str_to_num(remote_firmware) > ver_str_to_num(current_firmware)):
                 self.logger.warning(f"Firmware update for {model} available. Installed version is: {current_firmware}, available version is: {remote_firmware}. Use the app {use_app} to update!")
+                self.logger.debug(f"remote_firmware_notes={remote_firmware_notes}")
                 for i in range(len(remote_firmware_notes)):
                     self.logger.warning(remote_firmware_notes[i].strip())
                 self.update_available = True
@@ -546,6 +547,16 @@ class Foshk(SmartPlugin):
     def get_gateway_poll_cycle(self):
         return self._gateway_poll_cycle
 
+    @property
+    def get_item_list(self):
+        item_list = []
+        for entry in self.items:
+            item_list.append(self.items[entry][0])
+        return item_list
+
+    @property
+    def get_log_level(self):
+        return self.logger.getEffectiveLevel()
 
 # ============================================================================
 #                               GW1000 API Error classes
@@ -2453,7 +2464,7 @@ class Gw1000Collector(Collector):
                 try:
                     response = s.recv(1024)
                     # log the response if debug is high enough
-                    # self.logger.debug(f"Received broadcast response in HEX '{bytes_to_hex(response)}' and in Bytes {response}")
+                    self.logger.debug(f"Received broadcast response in HEX '{bytes_to_hex(response)}' and in Bytes {response}")
                 except socket.timeout:
                     # if we timeout then we are done
                     break

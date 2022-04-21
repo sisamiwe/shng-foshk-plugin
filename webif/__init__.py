@@ -28,6 +28,7 @@
 import json
 from lib.item import Items
 from lib.model.smartplugin import SmartPluginWebIf
+import logging
 
 
 # ------------------------------------------
@@ -68,15 +69,26 @@ class WebInterface(SmartPluginWebIf):
         :return: contents of the template after beeing rendered
         """
 
-        for item in self.items.return_items():
-            if 'foshk_attibute' in item.conf:
-                self.plgitems.append(item)
+        items = sorted(self.plugin.get_item_list, key=lambda k: str.lower(k['_path']))
+
+        try:
+            pagelength = self.plugin.webif_pagelength
+        except Exception:
+            pagelength = 100
+
+        maintenance = True if self.plugin.get_log_level <= 20 else False
 
         tmpl = self.tplenv.get_template('index.html')
+
         return tmpl.render(p=self.plugin,
-                           webif_pagelength=self.plugin.webif_pagelength,
-                           items=sorted(self.plgitems, key=lambda k: str.lower(k['_path'])),
-                           item_count=len(self.plgitems))
+                           plugin_shortname=self.plugin.get_shortname(),
+                           plugin_version=self.plugin.get_version(),
+                           plugin_info=self.plugin.get_info(),
+                           webif_pagelength=pagelength,
+                           items=items,
+                           item_count=len(items),
+                           maintenance=maintenance,
+                           )
 
     @cherrypy.expose
     def get_data_html(self, dataSet=None):
@@ -92,7 +104,7 @@ class WebInterface(SmartPluginWebIf):
             # get the new data
             data = dict()
             data['item_values'] = dict()
-            for item in self.plgitems:
+            for item in self.plugin.get_item_list():
                 data['item_values'][item.id()] = {}
                 data['item_values'][item.id()]['value'] = item()
                 data['item_values'][item.id()]['last_update'] = item.property.last_update.strftime('%d.%m.%Y %H:%M:%S')
@@ -105,3 +117,11 @@ class WebInterface(SmartPluginWebIf):
             except Exception as e:
                 self.logger.error(f"get_data_html exception: {e}")
         return {}
+
+    @cherrypy.expose
+    def reboot(self):
+        self.plugin.reboot()
+
+    @cherrypy.expose
+    def reset(self):
+        self.plugin.reset()
