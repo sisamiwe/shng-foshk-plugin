@@ -445,7 +445,9 @@ class Foshk(SmartPlugin):
                 self.logger.warning(f"Firmware update for {model} available. Installed version is: {current_firmware}, available version is: {remote_firmware}. Use the app {use_app} to update!")
                 self.logger.debug(f"remote_firmware_notes={remote_firmware_notes}")
                 for i in range(len(remote_firmware_notes)):
-                    self.logger.warning(remote_firmware_notes[i].strip())
+                    note = remote_firmware_notes[i].strip()
+                    if note != '':
+                        self.logger.warning(note)
                 self.update_available = True
             else:
                 self.logger.info(f"No newer firmware found for {model}. Installed version is: {current_firmware}, available version is: {remote_firmware}.")

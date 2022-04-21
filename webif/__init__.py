@@ -104,7 +104,7 @@ class WebInterface(SmartPluginWebIf):
             # get the new data
             data = dict()
             data['item_values'] = dict()
-            for item in self.plugin.get_item_list():
+            for item in self.plugin.get_item_list:
                 data['item_values'][item.id()] = {}
                 data['item_values'][item.id()]['value'] = item()
                 data['item_values'][item.id()]['last_update'] = item.property.last_update.strftime('%d.%m.%Y %H:%M:%S')
@@ -125,3 +125,11 @@ class WebInterface(SmartPluginWebIf):
     @cherrypy.expose
     def reset(self):
         self.plugin.reset()
+
+    @cherrypy.expose
+    def check_firmware_update(self):
+        self.plugin.check_firmware_update()
+
+    @cherrypy.expose
+    def run_firmware_update(self):
+        self.plugin.firmware_update()
