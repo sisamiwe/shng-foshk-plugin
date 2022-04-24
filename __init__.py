@@ -396,7 +396,7 @@ class Foshk(SmartPlugin):
         for foshk_attribute in self.items:
             item = self.items[foshk_attribute][0]
             datasource = self.items[foshk_attribute][1]
-            # self.logger.debug(f"update_item_values: foshk_attribute={foshk_attribute}; item={item.id()}, datasource={datasource}")
+            self.logger.debug(f"update_item_values: foshk_attribute={foshk_attribute}; item={item.id()}, datasource={datasource}")
             if foshk_attribute in data and datasource == source:
                 value = data.get(foshk_attribute)
                 self.logger.debug(f"update_item_values: Value {value} set for item={item.id()} with foshk_attribute={foshk_attribute}, datasource={datasource}")
@@ -4023,9 +4023,9 @@ class Gw1000TcpDriver(Gw1000):
                 # there was nothing in the queue so continue
                 pass
             else:
-                # self._plugin_instance.logger.debug(f"genLoopPackets TCP: queue_data={queue_data}")
+                self._plugin_instance.logger.debug(f"genLoopPackets TCP: queue_data={queue_data}")
                 parsed_data = self.client.parser.parse(queue_data)
-                # self._plugin_instance.logger.debug(f"TCP: parsed_data={parsed_data}")
+                self._plugin_instance.logger.debug(f"TCP: parsed_data={parsed_data}")
 
                 client_ip = parsed_data['client_ip']
                 # self._plugin_instance.logger.debug(f"TCP: client_ip={client_ip}, gateway_ip={self.ip_selected_gateway}")
@@ -4445,13 +4445,14 @@ class EcowittClient(Consumer):
             """Harmonize field names and convert into metric units"""
 
             response_struct = {
-                # GW1000
+                # Generic
                 'client_ip':            (None,      'client_ip'),
                 'PASSKEY':              (None,      'passkey'),
                 'stationtype':          (None,      'firmware'),
                 'freq':                 (None,      'frequency'),
                 'model':                (None,      'model'),
                 'dateutc':              (dateutc,   'datetime'),
+                'runtime':              (None,      'runtime'),
                 # Indoor
                 'tempinf':              (f_to_c,    'intemp'),
                 'humidityin':           (None,      'inhumid'),
@@ -4541,6 +4542,8 @@ class EcowittClient(Consumer):
                 'leak2':                (None,       'leak_ch2'),
                 'leak3':                (None,       'leak_ch3'),
                 'leak4':                (None,       'leak_ch4'),
+                # WH25
+                'wh25batt': (None, 'wh25_batt'),
                 # others
                 'lightning_day':        (None,       'lightning_num'),
                 'lightning_distance':   (None,       'lightning'),
@@ -4553,8 +4556,6 @@ class EcowittClient(Consumer):
                 # 'heatindexf':           (f_to_m,     'heatindex'),
                 'baromin':              (in_to_hpa,  'baromin'),
                 'absbaro':              (in_to_hpa,  'baromin'),
-                # WH25
-                'wh25batt':             (None,      'wh25_batt')
                 }
 
             data_dict = {}
@@ -4562,7 +4563,7 @@ class EcowittClient(Consumer):
                 try:
                     decoder, field = response_struct[key]
                 except KeyError:
-                    self._plugin_instance.logger.error(f"Unknown key {key} detected. Try do decode remaining sensor data.")
+                    self._plugin_instance.logger.error(f"Unknown key '{key}' detected. Try do decode remaining sensor data.")
                     pass
                 else:
                     if decoder:

@@ -127,6 +127,7 @@ item_attributes:
             - uv
             - uvi
             - datetime_utc
+            - runtime
             - temp1
             - temp2
             - temp3
