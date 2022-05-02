@@ -35,6 +35,7 @@
 #  - sunhours
 #  - ptrend
 #  - correct datetime of packets to timezone
+#  - check solar radiation / UV between API and ECOWITT
 ########################################
 
 
@@ -3206,7 +3207,7 @@ class Gw1000Collector(Collector):
                     self.logger.info(f"Attempting to re-discover {self.model}...")
                 # attempt to discover up to self.max_tries times
                 for attempt in range(self.max_tries):
-                    # sleep before our attempt, but not if its the first one
+                    # sleep before our attempt, but not if it's the first one
                     if attempt > 0:
                         time.sleep(self.retry_wait)
                     try:
