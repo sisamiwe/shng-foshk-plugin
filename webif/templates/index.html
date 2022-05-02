@@ -109,7 +109,7 @@
         <button type="button" class="btn btn-shng btn-sm" onclick="if (confirm('{{ _('Wollen Sie das Gerät wirklich neu starten?') }}')) { jQuery.get('reboot'); }">{{ _('Reboot') }}</button>
         <button type="button" class="btn btn-shng btn-sm" onclick="if (confirm('{{ _('Wollen Sie das Gerät wirklich resetten?') }}')) { jQuery.get('reset'); }">{{ _('Reset') }}</button>
 		<button type="button" class="btn btn-shng btn-sm" onclick="if (confirm('{{ _('Wollen Sie die Firmware auf Aktualisierungen prüfen?') }}')) { jQuery.get('check_firmware_update'); }">{{ _('CHK Firmware Update') }}</button>
-        <button type="button" class="btn btn-shng btn-sm" onclick="if (confirm('{{ _('Wollen Sie die Firmware aktualisieren?') }}')) { jQuery.get('run_firmware_update'); }">{{ _('Run Firmware Update') }}</button>
+        <!-- <button type="button" class="btn btn-shng btn-sm" onclick="if (confirm('{{ _('Wollen Sie die Firmware aktualisieren?') }}')) { jQuery.get('run_firmware_update'); }">{{ _('Run Firmware Update') }}</button> -->
 	</div>
 {% endblock %}
 
@@ -148,17 +148,16 @@
             </tr>
         </thead>
         <tbody>
-            {% for attribute in p.items %}
-                {% set item_id = p.items[attribute][0]._path %}
+            {% for item in p.items %}
+                {% set item_id = item._path %}
                 <tr>
                     <td class="py-1">{{ item_id }}</td>
-                    <td class="py-1">{{ p.items[attribute][0]._type }}</td>
-                    <td class="py-1">{{ attribute }}</td>
-                    <td class="py-1">{{ p.items[attribute][1] }}</td>
-                    <td class="py-1" id="{{ item_id }}_value">{{_('.')}}{{ p.items[attribute][0]._value }}</td>
-                    <!-- <td class="py-1" id="{{ item_id }}_value">{{ p.items[attribute][0]._value }}</td> -->
-                    <td class="py-1" id="{{ item_id }}_last_update">{{_('.')}}{{ p.items[attribute][0].property.last_update.strftime('%d.%m.%Y %H:%M:%S') }}</td>
-                    <td class="py-1" id="{{ item_id }}_last_change">{{_('.')}}{{ p.items[attribute][0].property.last_change.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                    <td class="py-1">{{ item._type }}</td>
+                    <td class="py-1">{{ p.items[item][0] }}</td>
+                    <td class="py-1">{{ p.items[item][1] }}</td>
+                    <td class="py-1" id="{{ item_id }}_value">{{_('.')}}{{ item._value }}</td>
+                    <td class="py-1" id="{{ item_id }}_last_update">{{_('.')}}{{ item.property.last_update.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                    <td class="py-1" id="{{ item_id }}_last_change">{{_('.')}}{{ item.property.last_change.strftime('%d.%m.%Y %H:%M:%S') }}</td>
                 </tr>
             {% endfor %}
         </tbody>

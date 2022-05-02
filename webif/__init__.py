@@ -69,14 +69,14 @@ class WebInterface(SmartPluginWebIf):
         :return: contents of the template after beeing rendered
         """
 
-        items = sorted(self.plugin.get_item_list, key=lambda k: str.lower(k['_path']))
+        items = sorted(self.plugin.item_list, key=lambda k: str.lower(k['_path']))
 
         try:
             pagelength = self.plugin.webif_pagelength
         except Exception:
             pagelength = 100
 
-        maintenance = True if self.plugin.get_log_level <= 20 else False
+        maintenance = True if self.plugin.log_level <= 20 else False
 
         tmpl = self.tplenv.get_template('index.html')
 
@@ -104,7 +104,7 @@ class WebInterface(SmartPluginWebIf):
             # get the new data
             data = dict()
             data['item_values'] = dict()
-            for item in self.plugin.get_item_list:
+            for item in self.plugin.item_list:
                 data['item_values'][item.id()] = {}
                 data['item_values'][item.id()]['value'] = item()
                 data['item_values'][item.id()]['last_update'] = item.property.last_update.strftime('%d.%m.%Y %H:%M:%S')
