@@ -695,7 +695,7 @@ class Gw1000(object):
         if "outtemp" in data:
 
             if "windspeed" in data:
-                data['weather_text'] = round(self.get_windchill_index_metric(data["outtemp"], data["windspeed"]), 1)
+                data['feels_like'] = round(self.get_windchill_index_metric(data["outtemp"], data["windspeed"]), 1)
                 if data.keys() >= {"outhumid"}:
                     data['feels_like'] = round(self.calculate_feels_like(data["outtemp"], data["windspeed"], data["outhumid"]), 1)
 
@@ -1307,6 +1307,9 @@ class Gw1000Driver(Gw1000):
         # log all found sensors since beginning of plugin as a set
         self.sensors = []
 
+        # log sensors, that were missed with count of cycles
+        self.sensors_missed = {}
+
         # create an Gw1000Collector object to interact with the GW1000/GW1100 API
         self.collector = Gw1000Collector(ip_address=self.ip_address,
                                          port=self.port,
@@ -1463,7 +1466,7 @@ class Gw1000Driver(Gw1000):
             self.battery_warning = False
             data['battery_warning'] = 0
 
-    def check_sensors(self, data):
+    def check_sensors(self, data: dict, missing_count: int = 2):
         """
         Check if all know sensors are still connected, create log entry and add a separate field for sensor warning.
         """
@@ -1480,9 +1483,33 @@ class Gw1000Driver(Gw1000):
             data['sensor_warning'] = 0
         else:
             missing_sensors = list(set(self.sensors).difference(set(connected_sensors)))
-            self._plugin_instance.logger.error(f"check_sensors: The following sensors where lost: {missing_sensors}")
-            self.sensor_warning = True
-            data['sensor_warning'] = 1
+            self.update_missing_sensor_dict(missing_sensors)
+
+            blacklist = set()
+            for sensor in self.sensors_missed:
+                if self.sensors_missed[sensor] >= missing_count:
+                    blacklist.add(sensor)
+
+            if blacklist:
+                self._plugin_instance.logger.error(f"API: check_sensors: The following sensors where lost (more than {missing_count} data cycles): {list(blacklist)}")
+                self.sensor_warning = True
+                data['sensor_warning'] = 1
+            else:
+                self.sensor_warning = False
+                data['sensor_warning'] = 0
+
+    def update_missing_sensor_dict(self, missing_sensors: list):
+        """
+        Get list of sensors, which were lost/missed in last data cycle and udpate missing_sensor_dict with count of missing cycles.
+        """
+
+        for sensor in missing_sensors:
+            if sensor not in self.sensors_missed:
+                self.sensors_missed[sensor] = 1
+            else:
+                self.sensors_missed[sensor] += 1
+
+        self._plugin_instance.logger.debug(f"sensors_missed={self.sensors_missed}")
 
     @property
     def hardware_name(self):
@@ -4030,6 +4057,9 @@ class Gw1000TcpDriver(Gw1000):
         # log all found sensors since beginning of plugin as a set
         self.sensors = []
 
+        # log sensors, that were missed with count of cycles
+        self.sensors_missed = {}
+
         # get ECOWITT client
         self.client = EcowittClient(tcp_server_address, tcp_server_port, debug_rain=False, debug_wind=False, plugin_instance=plugin_instance)
 
@@ -4139,7 +4169,7 @@ class Gw1000TcpDriver(Gw1000):
             self.battery_warning = False
             data['battery_warning'] = 0
 
-    def check_sensors(self, data):
+    def check_sensors(self, data: dict, missing_count: int = 2):
         """Check if all know sensors are still connected, create log entry and add a separate field for sensor warning."""
 
         # get currently connected sensors
@@ -4152,12 +4182,36 @@ class Gw1000TcpDriver(Gw1000):
             # self._plugin_instance.logger.debug(f"check_sensors: All sensors are still connected!")
             self.sensor_warning = False
             data['sensor_warning'] = 0
+            self.sensors_missed.clear()
         else:
             missing_sensors = list(set(self.sensors).difference(set(connected_sensors)))
-            self._plugin_instance.logger.error(f"TCP: check_sensors: The following sensors where lost: {missing_sensors}")
-            self.sensor_warning = True
-            data['sensor_warning'] = 1
+            self.update_missing_sensor_dict(missing_sensors)
 
+            blacklist = set()
+            for sensor in self.sensors_missed:
+                if self.sensors_missed[sensor] >= missing_count:
+                    blacklist.add(sensor)
+
+            if blacklist:
+                self._plugin_instance.logger.error(f"TCP: check_sensors: The following sensors where lost (more than {missing_count} data cycles): {list(blacklist)}")
+                self.sensor_warning = True
+                data['sensor_warning'] = 1
+            else:
+                self.sensor_warning = False
+                data['sensor_warning'] = 0
+
+    def update_missing_sensor_dict(self, missing_sensors: list):
+        """
+        Get list of sensors, which were lost/missed in last data cycle and udpate missing_sensor_dict with count of missing cycles.
+        """
+
+        for sensor in missing_sensors:
+            if sensor not in self.sensors_missed:
+                self.sensors_missed[sensor] = 1
+            else:
+                self.sensors_missed[sensor] += 1
+
+        self._plugin_instance.logger.debug(f"sensors_missed={self.sensors_missed}")
 
 class Consumer(object):
     """The Consumer contains primarely the queue to put the received data to"""

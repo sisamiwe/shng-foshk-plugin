@@ -334,6 +334,7 @@ item_attributes:
             # self calculated keys
             - weather_text
 
+
     foshk_datasource:
         type: str
         description:
