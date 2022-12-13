@@ -107,7 +107,7 @@ class Foshk(SmartPlugin):
 
     tcp_attributes = ['runtime']
 
-    PLUGIN_VERSION = '1.0.0'
+    PLUGIN_VERSION = '1.0.1'
 
     def __init__(self, sh):
         """
@@ -4213,8 +4213,9 @@ class Gw1000TcpDriver(Gw1000):
 
         self._plugin_instance.logger.debug(f"sensors_missed={self.sensors_missed}")
 
+
 class Consumer(object):
-    """The Consumer contains primarely the queue to put the received data to"""
+    """The Consumer contains primarily the queue to put the received data to"""
 
     queue = queue.Queue()
 

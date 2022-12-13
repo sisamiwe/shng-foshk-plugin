@@ -28,7 +28,6 @@
 import json
 from lib.item import Items
 from lib.model.smartplugin import SmartPluginWebIf
-import logging
 
 
 # ------------------------------------------
@@ -69,8 +68,6 @@ class WebInterface(SmartPluginWebIf):
         :return: contents of the template after beeing rendered
         """
 
-        items = sorted(self.plugin.item_list, key=lambda k: str.lower(k['_path']))
-
         try:
             pagelength = self.plugin.webif_pagelength
         except Exception:
@@ -85,8 +82,8 @@ class WebInterface(SmartPluginWebIf):
                            plugin_version=self.plugin.get_version(),
                            plugin_info=self.plugin.get_info(),
                            webif_pagelength=pagelength,
-                           items=items,
-                           item_count=len(items),
+                           items=self.plugin.item_list,
+                           item_count=len(self.plugin.item_list),
                            maintenance=maintenance,
                            )
 

@@ -9,13 +9,12 @@ plugin:
 #    tester:                         # Who tests this plugin?
     state: develop                   # change to ready when done with development
 #    keywords: iot xyz
-#    documentation: https://github.com/smarthomeNG/smarthome/wiki/CLI-Plugin        # url of documentation (wiki) page
 #    support: https://knx-user-forum.de/forum/supportforen/smarthome-py
 
-    version: 1.0.0                  # Plugin version (must match the version specified in __init__.py)
+    version: 1.0.1                  # Plugin version (must match the version specified in __init__.py)
     sh_minversion: 1.8              # minimum shNG version to use this plugin
 #    sh_maxversion:                 # maximum shNG version to use this plugin (leave empty if latest)
-    py_minversion: 3.8              # minimum Python version to use for this plugin
+#    py_minversion:                 # minimum Python version to use for this plugin
 #    py_maxversion:                 # maximum Python version to use for this plugin (leave empty if latest)
     multi_instance: false           # plugin supports multi instance
     restartable: unknown
@@ -56,7 +55,7 @@ parameters:
         valid_min: 0
         valid_max: 90
         description:
-            de: 'Interval in Tagen, in dem nach neuer Firmware gesucht wird. 0 bedeuted aus.'
+            de: 'Interval in Tagen, in dem nach neuer Firmware gesucht wird. 0 bedeutet aus.'
             en: 'Cycle in days in which a check for newer firmware will be performed. 0 means no periodical check'
 
     Battery_Warning:
@@ -65,7 +64,7 @@ parameters:
         default: true
         description:
             de: 'Erzeugt ein separates Datenfeld für eine Batteriewarnung.'
-            en: 'Creates a separate Datafield für battery warning'
+            en: 'Creates a separate Data field für battery warning'
 
     Sensor_Warning:
         type: bool
@@ -73,7 +72,7 @@ parameters:
         default: true
         description:
             de: 'Erzeugt ein separates Datenfeld für eine Sensorwarnung.'
-            en: 'Creates a separate Datafield für sensor warning'
+            en: 'Creates a separate Data field für sensor warning'
             
     Ecowitt_Data_Cycle:
         type: int
@@ -82,7 +81,7 @@ parameters:
         valid_min: 0
         valid_max: 600
         description:
-            de: 'Intervall, in dem das Gateway die Daten bereitstellt, bzw. hochläd; (Wert 0: Aus, ECOWITT Daten werden nicht geladen; Wert 1-16: Datenzyklus 16s;  Wert >16 :  Datenzyklus s)'
+            de: 'Intervall, in dem das Gateway die Daten bereitstellt, bzw. hochlädt; (Wert 0: Aus, ECOWITT Daten werden nicht geladen; Wert 1-16: Datenzyklus 16s;  Wert >16 :  Datenzyklus s)'
             en: 'Interval the gateway provides the data'
 
     webif_pagelength:

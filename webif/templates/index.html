@@ -1,11 +1,14 @@
 {% extends "base_plugin.html" %}
 {% set logo_frame = false %}
-{% set update_interval = 5000 %}
+{% set update_interval = ((50 * item_count / 1000) | round | int) * 1000 %}
 
 {% block pluginstyles %}
 <style>
   table th.value {
     width: 100px;
+  }
+  table th.item {
+    width: 450px;
   }
   table th.type {
     width: 50px;
@@ -16,38 +19,35 @@
 
 {% block pluginscripts %}
 <script>
-  $(document).ready( function () {
-    $(window).trigger('datatables_defaults');
-    
-    try {
-      webif_pagelength = parseInt(document.getElementById('webif_pagelength').innerHTML);
-      if (webif_pagelength == 0) {
-        resize = true;
-        webif_pagelength = -1;
+     $(document).ready( function () {
+	  $(window).trigger('datatables_defaults');
+      try {
+        webif_pagelength = parseInt(document.getElementById('webif_pagelength').innerHTML);
+        if (isNaN(parseFloat(webif_pagelength)) || webif_pagelength == 0) {
+          resize = true;
+          webif_pagelength = -1;
+  				console.log('Activating automatic table resize');
+        }
+        else {
+          resize = false;
+        }
       }
-      else {
+      catch (e) {
+        webif_pagelength = 100;
         resize = false;
+        console.log("Using default values for page length " + webif_pagelength + ", pageResize: " + resize);
       }
-    }
-    catch (e) {
-      webif_pagelength = 100;
-      resize = false;
-      console.log("Using default values for page length " + webif_pagelength + ", pageResize: " + resize);
-      console.log("Error was " + e);
-    }
-    
     try {
       table = $('#maintable').DataTable( {
         pageLength: webif_pagelength,
         pageResize: resize});
-      table1 = $('#datatable').DataTable( {
+      table = $('#datatable').DataTable( {
         pageLength: webif_pagelength,
         pageResize: resize});
     }
     catch (e) {
         console.log("Datatable JS not loaded, showing standard table without reorder option " +e);
     }
-
   });
 </script>
 <script>
@@ -125,12 +125,7 @@
 {% set tab1title = "<strong>" ~ p.get_shortname() ~ " Items</strong>" %}
 {% set tab2title = "<strong>" ~ p.get_shortname() ~ "Data</strong> " %}
 {% set tab3title = "<strong>" ~ p.get_shortname() ~ " Settings</strong> " %}
-
-{% if maintenance %}
-    {% set tab4title = "<strong>" ~ p.get_shortname() ~ " Maintenance</strong> " %}
-{% else %}
-    {% set tab4title = "hidden" %}
-{% endif %}
+{% if maintenance %}{% set tab4title = "<strong>" ~ p.get_shortname() ~ " Maintenance</strong> " %}{% else %}{% set tab4title = "hidden" %}{% endif %}
 
 
 {% block bodytab1 %}
@@ -138,7 +133,8 @@
     <table id="maintable" class="table table-striped table-hover pluginList dataTableAdditional">
         <thead>
             <tr>
-                <th>{{_('Item')}}</th>
+				<th></th>
+                <th class="item">{{_('Item')}}</th>
                 <th class="type">{{_('Typ')}}</th>
                 <th>{{_('Foshk Attribute')}}</th>
                 <th>{{_('Foshk datasource')}}</th>
@@ -151,6 +147,7 @@
             {% for item in p.items %}
                 {% set item_id = item._path %}
                 <tr>
+					<td></td>
                     <td class="py-1">{{ item_id }}</td>
                     <td class="py-1">{{ item._type }}</td>
                     <td class="py-1">{{ p.items[item][0] }}</td>
@@ -171,6 +168,7 @@
     <table id="datatable" class="table table-striped table-hover pluginList dataTableAdditional">
         <thead>
             <tr>
+				<th></th>
                 <th>{{ _('Key') }}</th>
                 <th style="text-align: right">{{ _('TCP Value') }}</th>
                 <th style="text-align: right">{{ _('API Value') }}</th>
@@ -179,6 +177,7 @@
         <tbody>
             {% for entry in p.data_dict %}
                 <tr>
+					<td></td>
                     <td class="py-1">{{ entry }}</td>
                     <td class="py-1" id="{{ entry }}_tcp_data_value" style="text-align: right">.{{ p.data_dict2[entry] }}</td>
                     <td class="py-1" id="{{ entry }}_api_data_value" style="text-align: right">.{{ p.data_dict[entry] }}</td>
