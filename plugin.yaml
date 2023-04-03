@@ -113,6 +113,8 @@ item_attributes:
             - inhumid                       # Innenluftfeuchtigkeit
             - absbarometer                  # absoluter Luftdruck
             - relbarometer                  # relativer Luftdruck
+            - indewpt                       # Taupunkt
+            - inabshum                      # absolute Luftfeuchte
             # WH65 / WH24
             - outtemp                       # Außentemperatur
             - outhumid                      # Außenluftfeuchtigkeit
@@ -123,6 +125,7 @@ item_attributes:
             - heatindex                     # to be implemented
             - outdewpt                      # Taupunkt außen
             - outfrostpt                    # Frostpunkt außen
+            - outabshum                     # absolute Luftfeuchte
             - feels_like                    # gefühlte Außentemperatur
             - wh24_batt                     # Batteriewarnung Wetterstation WH24
             - wh65_batt                     # Batteriewarnung Wetterstation WH65
@@ -175,6 +178,14 @@ item_attributes:
             - dewpt6
             - dewpt7
             - dewpt8
+            - abshum1
+            - abshum2
+            - abshum3
+            - abshum4
+            - abshum5
+            - abshum6
+            - abshum7
+            - abshum8
             - wh31_ch1_batt
             - wh31_ch2_batt
             - wh31_ch3_batt
