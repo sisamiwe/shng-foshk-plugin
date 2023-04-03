@@ -85,7 +85,7 @@ FW_UPDATE_URL = 'http://download.ecowitt.net/down/filewave?v=FirwaveReadme.txt'.
 # default port for tcp server
 DEFAULT_TCP_PORT = 8080
 # known device models
-KNOWN_MODELS = ('GW1000', 'GW1100', 'WH2650', 'GW2000', 'GW2000A')
+KNOWN_MODELS = ('GW1000', 'GW1100', 'GW2000', 'WH2650', 'WH2680', 'WN1900')
 
 
 class Foshk(SmartPlugin):
@@ -107,7 +107,7 @@ class Foshk(SmartPlugin):
 
     TCP_ATTRIBUTES = ['runtime']
 
-    PLUGIN_VERSION = '1.1.0'
+    PLUGIN_VERSION = '1.1.1'
 
     def __init__(self, sh):
         """
@@ -173,7 +173,11 @@ class Foshk(SmartPlugin):
         if self._use_customer_server:
             # initialize tcp server
             try:
-                self.tcp_driver = Gw1000TcpDriver(self._http_server_ip, self._http_server_port, self._data_cycle, self)
+                self.tcp_driver = Gw1000TcpDriver(tcp_server_address=self._http_server_ip,
+                                                  tcp_server_port=self._http_server_port,
+                                                  data_cycle=self._data_cycle,
+                                                  gateway_address=self._gateway_address,
+                                                  plugin_instance=self)
             except Exception as e:
                 self.logger.error(f"Unable to start 'tcp_driver' thread: {e}")
                 self._init_complete = False
@@ -694,31 +698,25 @@ class Gw1000(object):
         if "outtemp" in data:
 
             if "windspeed" in data:
-                data['feels_like'] = round(self.get_windchill_index_metric(data["outtemp"], data["windspeed"]), 1)
+                data['feels_like'] = self.get_windchill_index_metric(data["outtemp"], data["windspeed"])
                 if data.keys() >= {"outhumid"}:
-                    data['feels_like'] = round(self.calculate_feels_like(data["outtemp"], data["windspeed"]), 1)
+                    data['feels_like'] = self.calculate_feels_like(data["outtemp"], data["windspeed"])
 
             if "outhumid" in data:
                 dewpt_c = self.get_dew_point_c(data["outtemp"], data["outhumid"])
-                frostpt_c = self.get_frost_point_c(data["outtemp"], dewpt_c)
-                abshum_c = self.get_abs_hum_c(data["outtemp"], data["outhumid"])
-                data['outdewpt'] = round(dewpt_c, 1)
-                data['outfrostpt'] = round(frostpt_c, 1)
-                data['cloud_ceiling'] = int(round(self.cloud_ceiling(data["outtemp"], dewpt_c), 1))
-                data['outabshum'] = round(abshum_c, 1)
+                data['outdewpt'] = dewpt_c
+                data['outfrostpt'] = self.get_frost_point_c(data["outtemp"], dewpt_c)
+                data['cloud_ceiling'] = self.cloud_ceiling(data["outtemp"], dewpt_c)
+                data['outabshum'] = self.get_abs_hum_c(data["outtemp"], data["outhumid"])
 
         if "intemp" in data and 'intemp' in data:
-            dewpt_c = self.get_dew_point_c(data["intemp"], data["intemp"])
-            data['indewpt'] = round(dewpt_c, 1)
-            abshum_c = self.get_abs_hum_c(data["intemp"], data["intemp"])
-            data['inabshum'] = round(abshum_c, 1)
+            data['indewpt'] = self.get_dew_point_c(data["intemp"], data["intemp"])
+            data['inabshum'] = self.get_abs_hum_c(data["intemp"], data["intemp"])
 
         for i in range(1, 9):
             if f'temp{i}' in data and f'humid{i}' in data:
-                dewpt_c = self.get_dew_point_c(data[f'temp{i}'], data[f'humid{i}'])
-                data[f'dewpt{i}'] = round(dewpt_c, 1)
-                abshum_c = self.get_abs_hum_c(data[f'temp{i}'], data[f'humid{i}'])
-                data[f'abshum{i}'] = round(abshum_c, 1)
+                data[f'dewpt{i}'] = self.get_dew_point_c(data[f'temp{i}'], data[f'humid{i}'])
+                data[f'abshum{i}'] = self.get_abs_hum_c(data[f'temp{i}'], data[f'humid{i}'])
 
         if "winddir" in data:
             data['winddir_text'] = self.get_wind_dir_text(data["winddir"], self.language)
@@ -922,7 +920,7 @@ class Gw1000(object):
 
         try:
             pa = rel_humidity / 100. * math.exp(const['b'] * t_air_c / (const['c'] + t_air_c))
-            dew_point_c = const['c'] * math.log(pa) / (const['b'] - math.log(pa))
+            dew_point_c = round(const['c'] * math.log(pa) / (const['b'] - math.log(pa)), 1)
         except ValueError:
             dew_point_c = -9999
         return dew_point_c
@@ -941,7 +939,7 @@ class Gw1000(object):
             dew_point_k = 273.15 + dew_point_c
             t_air_k = 273.15 + t_air_c
             frost_point_k = dew_point_k - t_air_k + 2671.02 / ((2954.61 / t_air_k) + 2.193665 * math.log(t_air_k) - 13.3448)
-            frost_point_c = frost_point_k - 273.15
+            frost_point_c = round(frost_point_k - 273.15, 1)
         except ValueError:
             frost_point_c = -9999
         return frost_point_c
@@ -968,7 +966,7 @@ class Gw1000(object):
             """Compute actual water vapor pressure (Dampfdruck) in hPa"""
             return rel_humidity / 100 * svp()
 
-        return 10 ** 5 * mw / rs * vp() / (t_air_c + 273.15)
+        return round(10 ** 5 * mw / rs * vp() / (t_air_c + 273.15), 1)
 
     @staticmethod
     def get_windchill_index_metric(t_air_c: float, wind_speed: float) -> float:
@@ -980,7 +978,7 @@ class Gw1000(object):
         :return: the wind chill index
         """
 
-        return 13.12 + 0.6215*t_air_c - 11.37*math.pow(wind_speed, 0.16) + 0.3965*t_air_c*math.pow(wind_speed, 0.16)
+        return round(13.12 + 0.6215*t_air_c - 11.37*math.pow(wind_speed, 0.16) + 0.3965*t_air_c*math.pow(wind_speed, 0.16), 1)
 
     @staticmethod
     def get_windchill_index_imperial(air_temp_f: float, wind_speed_mph: float) -> float:
@@ -997,7 +995,7 @@ class Gw1000(object):
         else:
             windchill = air_temp_f
 
-        return windchill
+        return round(windchill, 1)
 
     @staticmethod
     def get_heat_index(temperature_f: float, rel_hum: float):
@@ -1020,7 +1018,7 @@ class Gw1000(object):
                 heat_index = heat_index - ((13-rel_hum)/4)*math.sqrt((17-math.fabs(temperature_f-95.))/17)
                 if rel_hum > 85 and 80 <= temperature_f <= 87:
                     heat_index = heat_index + ((rel_hum-85)/10) * ((87-temperature_f)/5)
-        return heat_index
+        return round(heat_index, 1)
 
     @staticmethod
     def get_weather_now(hpa: float, lang: str = 'de') -> str:
@@ -1094,18 +1092,10 @@ class Gw1000(object):
         :return: the wind chill index
         """
 
-        # diff = CurDiff3h = round(baromrelhpa - ago3h_baromrelhpa,1)
-        # CurDiff1h = round(baromrelhpa - ago1h_baromrelhpa,1)
-        # d_m.update({"pchange3" : str(CurDiff3h)})
-        # d_m.update({"pchange1" : str(CurDiff1h)})
-
         _weather_forecast_de = ["Sturm mit Hagel", "Regen/Unwetter", "regnerisch", "baldiger Regen", "gleichbleibend", "lange schön", "schön & labil", "Sturmwarnung"]
         _weather_forecast_en = ["storm with hail", "rain/storm", "rainy", "soon rain", "constant", "nice for a long time", "nice & unstable", "storm warning"]
 
-        if lang == "de":
-            _weather_forecast = _weather_forecast_de
-        else:
-            _weather_forecast = _weather_forecast_en                                             # defaults to english
+        _weather_forecast = _weather_forecast_de if lang == "de" else _weather_forecast_en
 
         if diff <= -8:
             wproglvl = 0               # Sturm mit Hagel
@@ -1132,7 +1122,7 @@ class Gw1000(object):
     @staticmethod
     def cloud_ceiling(temp: float, dewpt: float) -> float:
         """
-        Computes cloud ceiling (Wolkenuntergrenze)
+        Computes cloud ceiling (Wolkenuntergrenze/Konvektionskondensationsniveau)
 
         :param temp: outside temperatur in celsius
         :param dewpt: outside dew point in celsius
@@ -1140,7 +1130,7 @@ class Gw1000(object):
         """
 
         # Faustformel für die Berechnung der Höhe der Wolkenuntergrenze von Quellwolken: Höhe in Meter = 122 mal Spread (Taupunktdifferenz)
-        return (temp - dewpt) * 122
+        return int(round((temp - dewpt) * 122, 1))
 
     @staticmethod
     def get_avg_wind(d, w):
@@ -1151,8 +1141,7 @@ class Gw1000(object):
         s = 0
         for i in range(len(d)):
             s = s + d[i][w]
-        a = round(s/len(d), 1)
-        return a
+        return round(s/len(d), 1)
 
     @staticmethod
     def get_max_wind(d, w):
@@ -1164,8 +1153,7 @@ class Gw1000(object):
         for i in range(len(d)):
             if d[i][w] > s:
                 s = d[i][w]
-        a = round(s, 1)
-        return a
+        return round(s, 1)
 
     @staticmethod
     def get_beaufort_number(speed_in_mps: float) -> Union[None, int]:
@@ -1590,6 +1578,10 @@ class Collector(object):
 
     def shutdown(self):
         pass
+
+    @staticmethod
+    def get_queue():
+        return Collector.my_queue
 
 
 class Gw1000Collector(Collector):
@@ -4067,7 +4059,7 @@ class Gw1000Collector(Collector):
 
 class Gw1000TcpDriver(Gw1000):
 
-    def __init__(self, tcp_server_address, tcp_server_port, data_cycle, plugin_instance):
+    def __init__(self, tcp_server_address, tcp_server_port, data_cycle, gateway_address, plugin_instance):
         """Initialise a GW1000/GW1100 API driver object."""
 
         # now initialize my superclasses
@@ -4087,13 +4079,17 @@ class Gw1000TcpDriver(Gw1000):
         self.sensors_missed = {}
 
         # get ECOWITT client
-        self.client = EcowittClient(tcp_server_address, tcp_server_port, debug_rain=False, debug_wind=False, plugin_instance=plugin_instance)
+        self.client = EcowittClient(tcp_server_address=tcp_server_address,
+                                    tcp_server_port=tcp_server_port,
+                                    debug_rain=False,
+                                    debug_wind=False,
+                                    plugin_instance=plugin_instance)
 
         # start the ECOWITT client in its own thread
         self.client.startup()
         self.driver_alive = True
 
-        self.ip_selected_gateway = self._plugin_instance.gateway_address
+        self.ip_selected_gateway = gateway_address
 
     def closePort(self):
         self.logger.info('Stop and Shutdown of FoshkPlugin TCP Server called')
@@ -4675,6 +4671,10 @@ class EcowittClient(Consumer):
                 'leak2':                (None, 'leak_ch2'),
                 'leak3':                (None, 'leak_ch3'),
                 'leak4':                (None, 'leak_ch4'),
+                'leakbatt1':            (None, 'leak_ch1_batt'),
+                'leakbatt2':            (None, 'leak_ch2_batt'),
+                'leakbatt3':            (None, 'leak_ch3_batt'),
+                'leakbatt4':            (None, 'leak_ch4_batt'),
                 # WH25
                 'wh25batt':             (None, 'wh25_batt'),
                 # WH57
@@ -4697,7 +4697,7 @@ class EcowittClient(Consumer):
                 try:
                     decoder, field = response_struct[key]
                 except KeyError:
-                    self.logger.error(f"Unknown key '{key}' detected. Try do decode remaining sensor data.")
+                    self.logger.error(f"Unknown key '{key}' with value '{data[key]}'detected. Try do decode remaining sensor data.")
                     pass
                 else:
                     if decoder:
