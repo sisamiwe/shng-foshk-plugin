@@ -143,13 +143,13 @@
 		</tr>
 	</thead>
 	<tbody>
-		{% for item in p.items %}
+		{% for item in items %}
 			<tr>
 				<td></td>
 				<td class="py-1">{{ item._path }}</td>
 				<td class="py-1">{{ item._type }}</td>
-				<td class="py-1">{{ p.items[item][0] }}</td>
-				<td class="py-1">{{ p.items[item][1] }}</td>
+				<td class="py-1">{{ p.get_item_config(item)['foshk_attribute']|string }}</td>
+				<td class="py-1">{{ p.get_item_config(item)['source']|string }}</td>
 				<td class="py-1" id="{{ item._path }}_value">{{_('.')}}{{ item._value }}</td>
 				<td class="py-1" id="{{ item._path }}_last_update">{{_('.')}}{{ item.property.last_update.strftime('%d.%m.%Y %H:%M:%S') }}</td>
 				<td class="py-1" id="{{ item._path }}_last_change">{{_('.')}}{{ item.property.last_change.strftime('%d.%m.%Y %H:%M:%S') }}</td>
