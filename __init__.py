@@ -85,7 +85,7 @@ FW_UPDATE_URL = 'http://download.ecowitt.net/down/filewave?v=FirwaveReadme.txt'.
 # default port for tcp server
 DEFAULT_TCP_PORT = 8080
 # known device models
-KNOWN_MODELS = ('GW1000', 'GW1100', 'WH2650', 'GW2000A', 'DP2000')
+KNOWN_MODELS = ('GW1000', 'GW1100', 'WH2650', 'GW2000', 'GW2000A')
 
 
 class Foshk(SmartPlugin):
@@ -427,7 +427,7 @@ class Foshk(SmartPlugin):
 
             item = item_list[0]
             value = data[foshk_attribute]
-            self.logger.debug(f"Value {value} set for item={item.path()} with foshk_attribute={foshk_attribute}, datasource={source}")
+            self.logger.debug(f"Value {value} will be set to item={item.path()} with foshk_attribute={foshk_attribute}, datasource={source}")
             item(value, self.get_shortname(), source)
 
     def firmware_update(self):
@@ -478,7 +478,7 @@ class Foshk(SmartPlugin):
             else:
                 self.logger.info(f"No newer firmware found for {model}. Installed version is: {current_firmware}, available version is: {remote_firmware}.")
                 self.update_available = False
-                packet = {'firmware_update_available': False, 'firmware_update_text': ['None']}
+                packet = {'firmware_update_available': False, 'firmware_update_text': []}
 
             self.update_item_values(packet, 'meta')
 
@@ -662,7 +662,7 @@ class Gw1000(object):
         # set specific debug settings wind
         self.debug_wind = False
         # set specific debug settings loop data
-        self.debug_loop = True
+        self.debug_loop = False
         # set specific debug settings sensors
         self.debug_sensors = False
 
@@ -696,23 +696,29 @@ class Gw1000(object):
             if "windspeed" in data:
                 data['feels_like'] = round(self.get_windchill_index_metric(data["outtemp"], data["windspeed"]), 1)
                 if data.keys() >= {"outhumid"}:
-                    data['feels_like'] = round(self.calculate_feels_like(data["outtemp"], data["windspeed"], data["outhumid"]), 1)
+                    data['feels_like'] = round(self.calculate_feels_like(data["outtemp"], data["windspeed"]), 1)
 
             if "outhumid" in data:
                 dewpt_c = self.get_dew_point_c(data["outtemp"], data["outhumid"])
                 frostpt_c = self.get_frost_point_c(data["outtemp"], dewpt_c)
+                abshum_c = self.get_abs_hum_c(data["outtemp"], data["outhumid"])
                 data['outdewpt'] = round(dewpt_c, 1)
                 data['outfrostpt'] = round(frostpt_c, 1)
                 data['cloud_ceiling'] = int(round(self.cloud_ceiling(data["outtemp"], dewpt_c), 1))
+                data['outabshum'] = round(abshum_c, 1)
 
-        if "intemp" in data and 'intemp' in data :
+        if "intemp" in data and 'intemp' in data:
             dewpt_c = self.get_dew_point_c(data["intemp"], data["intemp"])
             data['indewpt'] = round(dewpt_c, 1)
+            abshum_c = self.get_abs_hum_c(data["intemp"], data["intemp"])
+            data['inabshum'] = round(abshum_c, 1)
 
         for i in range(1, 9):
             if f'temp{i}' in data and f'humid{i}' in data:
                 dewpt_c = self.get_dew_point_c(data[f'temp{i}'], data[f'humid{i}'])
                 data[f'dewpt{i}'] = round(dewpt_c, 1)
+                abshum_c = self.get_abs_hum_c(data[f'temp{i}'], data[f'humid{i}'])
+                data[f'abshum{i}'] = round(abshum_c, 1)
 
         if "winddir" in data:
             data['winddir_text'] = self.get_wind_dir_text(data["winddir"], self.language)
@@ -807,24 +813,18 @@ class Gw1000(object):
             # save the new total as the old total for next time
             self.last_lightning = new_total
 
-    def calculate_feels_like(self, temperature_c, windspeed_kmh, rel_hum):
+    def calculate_feels_like(self, temperature_c: float, windspeed_kmh: float) -> float:
         """
         Computes the feels-like temperature
 
         :param temperature_c: ambient temperature in celsius
-        :type temperature_c: float
         :param windspeed_kmh: wind speed in km/h
-        :type windspeed_kmh: float
-        :param rel_hum: relative humidity
-        :type rel_hum: float
-
         :return: feels like temperature in celsius
-        :rtype: float
         """
 
         # convert to fahrenheit and mph
-        temperature_f = (temperature_c * 9/5) + 32
-        windspeed_mph = windspeed_kmh * 0.621371192
+        temperature_f = c_to_f(temperature_c, 2)
+        windspeed_mph = kmh_to_mph(windspeed_kmh, 2)
 
         # Try Wind Chill first
         feels_like = self.get_windchill_index_imperial(temperature_f, windspeed_mph)
@@ -834,10 +834,10 @@ class Gw1000(object):
             feels_like = self.get_heat_index(temperature_f, windspeed_mph)
 
         # convert back to celsius and return
-        return (feels_like - 32) * 5/9
+        return f_to_c(feels_like, 1)
 
     @staticmethod
-    def delta_rain(rain, last_rain):
+    def delta_rain(rain: float, last_rain: float) -> Union[None, float]:
         """
         Calculate rainfall from successive cumulative values.
 
@@ -874,7 +874,7 @@ class Gw1000(object):
         return rain - last_rain
 
     @staticmethod
-    def delta_lightning(count, last_count):
+    def delta_lightning(count: int, last_count: int) -> Union[None, int]:
         """
         Calculate lightning strike count from successive cumulative values.
 
@@ -909,39 +909,32 @@ class Gw1000(object):
         return count - last_count
 
     @staticmethod
-    def get_dew_point_c(t_air_c, rel_humidity):
+    def get_dew_point_c(t_air_c: float, rel_humidity: float) -> float:
         """
         Compute the dew point in degrees Celsius
 
         :param t_air_c: current ambient temperature in degrees Celsius
-        :type t_air_c: float
         :param rel_humidity: relative humidity in %
-        :type rel_humidity: float
         :return: the dew point in degrees Celsius
-        :rtype: float
         """
 
-        val_a = 17.27
-        val_b = 237.7
+        const = MAGNUS_COEFFICIENTS['positive'] if t_air_c > 0 else MAGNUS_COEFFICIENTS['negative']
+
         try:
-            alpha = ((val_a * t_air_c) / (val_b + t_air_c)) + math.log(rel_humidity/100.0)
-            dew_point = (val_b * alpha) / (val_a - alpha)
+            pa = rel_humidity / 100. * math.exp(const['b'] * t_air_c / (const['c'] + t_air_c))
+            dew_point_c = const['c'] * math.log(pa) / (const['b'] - math.log(pa))
         except ValueError:
-            dew_point = -9999
-        return dew_point
+            dew_point_c = -9999
+        return dew_point_c
 
     @staticmethod
-    def get_frost_point_c(t_air_c, dew_point_c):
+    def get_frost_point_c(t_air_c: float, dew_point_c: float) -> float:
         """
         Compute the frost point in degrees Celsius
 
         :param t_air_c: current ambient temperature in degrees Celsius
-        :type t_air_c: float
         :param dew_point_c: current dew point in degrees Celsius
-        :type dew_point_c: float
-
         :return: the frost point in degrees Celsius
-        :rtype: float
         """
 
         try:
@@ -954,33 +947,49 @@ class Gw1000(object):
         return frost_point_c
 
     @staticmethod
-    def get_windchill_index_metric(t_air_c, wind_speed):
+    def get_abs_hum_c(t_air_c: float, rel_humidity: float) -> float:
+        """
+        Return the absolute humidity in (g/cm3) from the relative humidity in % and temperature (Celsius)
+    
+        :param t_air_c: temperature in celsius
+        :param rel_humidity: relative humidity in %
+        :return: val = absolute humidity in (g/cm3)
+        """
+
+        const = MAGNUS_COEFFICIENTS['positive'] if t_air_c > 0 else MAGNUS_COEFFICIENTS['negative']
+        mw = 18.016  # kg/kmol (Molekulargewicht des Wasserdampfes)
+        rs = 8314.3  # J/(kmol*K) (universelle Gaskonstante)
+
+        def svp():
+            """Compute saturated water vapor pressure (Sättigungsdampfdruck) in hPa"""
+            return const['a'] * math.exp((const['b'] * t_air_c) / (const['c'] + t_air_c))
+
+        def vp():
+            """Compute actual water vapor pressure (Dampfdruck) in hPa"""
+            return rel_humidity / 100 * svp()
+
+        return 10 ** 5 * mw / rs * vp() / (t_air_c + 273.15)
+
+    @staticmethod
+    def get_windchill_index_metric(t_air_c: float, wind_speed: float) -> float:
         """
         Compute the wind chill index
 
         :param t_air_c: current ambient temperature in degrees Celsius
-        :type t_air_c: float
         :param wind_speed: wind speed in kilometers/hour
-        :type wind_speed: float
-
         :return: the wind chill index
-        :rtype: float
         """
 
         return 13.12 + 0.6215*t_air_c - 11.37*math.pow(wind_speed, 0.16) + 0.3965*t_air_c*math.pow(wind_speed, 0.16)
 
     @staticmethod
-    def get_windchill_index_imperial(air_temp_f, wind_speed_mph):
+    def get_windchill_index_imperial(air_temp_f: float, wind_speed_mph: float) -> float:
         """
         Compute the wind chill index
 
         :param air_temp_f: current ambient temperature in fahrenheit
-        :type air_temp_f: float
         :param wind_speed_mph: wind speed in miles/hour
-        :type wind_speed_mph: float
-
         :return: the wind chill index
-        :rtype: float
         """
 
         if air_temp_f <= 50 and wind_speed_mph >= 3:
@@ -991,7 +1000,7 @@ class Gw1000(object):
         return windchill
 
     @staticmethod
-    def get_heat_index(temperature_f, rel_hum):
+    def get_heat_index(temperature_f: float, rel_hum: float):
         """
         Compute the heat index
 
@@ -1014,17 +1023,13 @@ class Gw1000(object):
         return heat_index
 
     @staticmethod
-    def get_weather_now(hpa, lang='de'):
+    def get_weather_now(hpa: float, lang: str = 'de') -> str:
         """
         Computes text for current weather condition
 
         :param hpa: current air pressure in hpa
-        :type hpa: float
         :param lang: acronym of language
-        :type lang: str
-
         :return: wind direction text
-        :rtype: str
         """
 
         _weather_now_de = ["undefiniert", "stürmisch, Regen", "regnerisch", "wechselhaft", "sonnig", "trocken, Gewitter"]
@@ -1049,17 +1054,13 @@ class Gw1000(object):
             return _weather_now_en[entry]
 
     @staticmethod
-    def get_wind_dir_text(wdir, lang='de'):
+    def get_wind_dir_text(wdir: float, lang: str = 'de') -> str:
         """
         Computes wind direction text on wind direction in degrees
 
         :param wdir: wind direction in degrees
-        :type wdir: float
         :param lang: acronym of language
-        :type lang: str
-
         :return: wind direction text
-        :rtype: str
         """
 
         _wind_dir_zz = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
@@ -1084,17 +1085,13 @@ class Gw1000(object):
         return s
 
     @staticmethod
-    def make_weather_forecast(diff, lang='de'):
+    def make_weather_forecast(diff: float, lang: str = 'de') -> str:
         """
         Computes weather forecast based on changes for relative air pressure
 
         :param diff: pressure difference between now and 3 hours ago
-        :type diff: float
         :param lang: acronym of language
-        :type lang: str
-
         :return: the wind chill index
-        :rtype: float
         """
 
         # diff = CurDiff3h = round(baromrelhpa - ago3h_baromrelhpa,1)
@@ -1133,17 +1130,13 @@ class Gw1000(object):
         return wprogtxt
 
     @staticmethod
-    def cloud_ceiling(temp, dewpt):
+    def cloud_ceiling(temp: float, dewpt: float) -> float:
         """
         Computes cloud ceiling (Wolkenuntergrenze)
 
         :param temp: outside temperatur in celsius
-        :type temp: float
         :param dewpt: outside dew point in celsius
-        :type dewpt: float
-
         :return: cloud ceiling in meter
-        :rtype: float
         """
 
         # Faustformel für die Berechnung der Höhe der Wolkenuntergrenze von Quellwolken: Höhe in Meter = 122 mal Spread (Taupunktdifferenz)
@@ -1175,7 +1168,7 @@ class Gw1000(object):
         return a
 
     @staticmethod
-    def get_beaufort_number(speed_in_mps):
+    def get_beaufort_number(speed_in_mps: float) -> Union[None, int]:
         """
         get the beaufort number from windspeed in meters per second
         """
@@ -1201,7 +1194,7 @@ class Gw1000(object):
             return None
 
     @staticmethod
-    def get_beaufort_description(speed_in_bft, lang='de'):
+    def get_beaufort_description(speed_in_bft: int, lang: str = 'de') -> Union[None, str]:
         """
         get the beaufort description from beaufort number
         """
@@ -4850,7 +4843,7 @@ class EcowittClient(Consumer):
 # ============================================================================
 
 
-def natural_sort_keys(source_dict):
+def natural_sort_keys(source_dict) -> list:
     """Return a naturally sorted list of keys for a dict."""
 
     def atoi(text):
@@ -4876,7 +4869,7 @@ def natural_sort_keys(source_dict):
     return keys_list
 
 
-def natural_sort_dict(source_dict):
+def natural_sort_dict(source_dict) -> str:
     """
     Return a string representation of a dict sorted naturally by key.
 
@@ -4974,7 +4967,7 @@ def obfuscate(plain, obf_char='*'):
         return plain
 
 
-def timestamp_to_string(ts, format_str="%Y-%m-%d %H:%M:%S %Z"):
+def timestamp_to_string(ts, format_str="%Y-%m-%d %H:%M:%S %Z") -> str:
     """
     Return a string formatted from the timestamp
 
@@ -5025,7 +5018,13 @@ def ver_str_to_num(s: str) -> Union[None, int]:
 def mph_to_kmh(f: float, n: int = 1) -> float:
     """Convert mph to kmh"""
 
-    return round(float(f)/0.621371, n)
+    return round(float(f) / 0.621371192, n)
+
+
+def kmh_to_mph(f: float, n: int = 1) -> float:
+    """Convert km/h to moh"""
+
+    return round(float(f) * 0.621371192, n)
 
 
 def mph_to_ms(f: float, n: int = 1) -> float:
@@ -5094,3 +5093,9 @@ def utc_to_local(utc_dt: datetime) -> datetime:
 
 def solar(f: float, n: int = 0) -> float:
     return round(float(f)*1, n)
+
+
+MAGNUS_COEFFICIENTS = dict(
+    positive=dict(a=7.5, b=17.368, c=238.88),
+    negative=dict(a=7.6, b=17.966, c=247.15),
+)
