@@ -303,14 +303,14 @@ item_attributes:
             - leak_ch2
             - leak_ch3
             - leak_ch4
-            - leak_ch1_batt
-            - leak_ch2_batt
-            - leak_ch3_batt
-            - leak_ch4_batt
-            - leak_ch1_sig
-            - leak_ch2_sig
-            - leak_ch3_sig
-            - leak_ch4_sig
+            - wh55_ch1_batt
+            - wh55_ch2_batt
+            - wh55_ch3_batt
+            - wh55_ch4_batt
+            - wh55_ch1_sig
+            - wh55_ch2_sig
+            - wh55_ch3_sig
+            - wh55_ch4_sig
             # WH57
             - lightningdist
             - lightningdettime
