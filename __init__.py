@@ -423,15 +423,15 @@ class Foshk(SmartPlugin):
         for foshk_attribute in data:
             item_list = self.get_item_list('match', f'{source}.{foshk_attribute}')
             if not item_list:
-                self.logger.debug(f"No item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found.")
+                # self.logger.debug(f"No item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found.")
                 continue
             elif len(item_list) > 1:
-                self.logger.debug(f"More than one item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found. First one will be used.")
+                # self.logger.debug(f"More than one item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found. First one will be used.")
                 continue
 
             item = item_list[0]
             value = data[foshk_attribute]
-            self.logger.debug(f"Value {value} will be set to item={item.path()} with foshk_attribute={foshk_attribute}, datasource={source}")
+            # self.logger.debug(f"Value {value} will be set to item={item.path()} with foshk_attribute={foshk_attribute}, datasource={source}")
             item(value, self.get_shortname(), source)
 
     def firmware_update(self):
@@ -1231,6 +1231,29 @@ class Gw1000(object):
             return _beaufort_descriptions_de[speed_in_bft]
         return _beaufort_descriptions_en[speed_in_bft]
 
+
+class Collector(object):
+    """
+    Base class for a client that polls an API.
+    """
+
+    # a queue object for passing data back to the driver
+    my_queue = queue.Queue()
+
+    def __init__(self, plugin_instance):
+        self._plugin_instance = plugin_instance
+        self.logger = self._plugin_instance.logger
+        self.logger.debug('Init Collector Object')
+        self.queue = queue.Queue()
+        pass
+
+    def startup(self):
+        pass
+
+    def shutdown(self):
+        pass
+
+
 # ============================================================================
 #                            Gateway API classes
 # ============================================================================
@@ -1355,7 +1378,7 @@ class Gw1000Driver(Gw1000):
             # wrap in a try to catch any instances where the queue is empty
             try:
                 # get any data from the collector queue
-                queue_data = self.collector.my_queue.get(True, 10)
+                queue_data = self.collector.data_queue.get(True, 10)
             except queue.Empty:
                 # self.logger.debug("API. genLoopPackets: there was nothing in the queue so continue")
                 # there was nothing in the queue so continue
@@ -1558,33 +1581,7 @@ class Gw1000Driver(Gw1000):
         self.collector.shutdown()
 
 
-class Collector(object):
-    """
-    Base class for a client that polls an API.
-    """
-
-    # a queue object for passing data back to the driver
-    my_queue = queue.Queue()
-
-    def __init__(self, plugin_instance):
-        # init logger
-        self._plugin_instance = plugin_instance
-        self.logger = self._plugin_instance.logger
-        self.logger.debug("Starting Collector Object")
-        pass
-
-    def startup(self):
-        pass
-
-    def shutdown(self):
-        pass
-
-    @staticmethod
-    def get_queue():
-        return Collector.my_queue
-
-
-class Gw1000Collector(Collector):
+class Gw1000Collector:
     """
     Class to poll the GW1000/GW1100 API, decode and return data to the driver.
     """
@@ -1649,6 +1646,9 @@ class Gw1000Collector(Collector):
                 {'name': 'custom', 'long_name': 'Customized'}
                 ]
 
+    # create queue object
+    data_queue = queue.Queue()
+
     def __init__(self,
                  ip_address=None,
                  port=None,
@@ -1670,7 +1670,7 @@ class Gw1000Collector(Collector):
         """
 
         # initialize my base class:
-        super().__init__(plugin_instance)
+        # super().__init__(plugin_instance)
 
         # handle plugin instance
         self._plugin_instance = plugin_instance
@@ -1687,6 +1687,9 @@ class Gw1000Collector(Collector):
 
         # are we using a th32 sensor
         self.use_th32 = use_th32
+
+        # create queue object
+        self.data_queue = queue.Queue()
 
         # get a station object to do the handle the interaction with the GW1000/GW1100 API
         self.station = Gw1000Collector.Station(ip_address=ip_address,
@@ -1751,7 +1754,7 @@ class Gw1000Collector(Collector):
                     # assign the GW1000IOError exception so it will be sent in the queue to our controlling object
                     queue_data = e
                 # put the queue data in the queue
-                self.my_queue.put(queue_data)
+                self.data_queue.put(queue_data)
                 # debug log when we will next poll the API
                 # self.logger.debug(f'Next update in {self.poll_interval} seconds')
                 # reset the last poll ts
@@ -3802,7 +3805,6 @@ class Gw1000Collector(Collector):
         not_registered = ('fffffffe', 'ffffffff')
 
         def __init__(self, sensor_id_data=None, show_battery=False, debug_sensors=False, plugin_instance=None):
-            """Initialise myself"""
 
             # get instance
             self._plugin_instance = plugin_instance
@@ -4103,7 +4105,7 @@ class Gw1000TcpDriver(Gw1000):
             # wrap in a try to catch any instances where the queue is empty
             try:
                 # get any data from the collector queue
-                queue_data = self.client.get_queue().get(True, 10)
+                queue_data = self.client.data_queue.get(True, 10)
                 # self.logger.debug(f"TCP: queue_data={queue_data}")
             except queue.Empty:
                 # self.logger.debug("TCP. genLoopPackets: there was nothing in the queue so continue")
@@ -4236,27 +4238,7 @@ class Gw1000TcpDriver(Gw1000):
         self.logger.debug(f"sensors_missed={self.sensors_missed}")
 
 
-class Consumer(object):
-    """The Consumer contains primarily the queue to put the received data to"""
-
-    queue = queue.Queue()
-
-    def __init__(self, plugin_instance):
-
-        self._plugin_instance = plugin_instance
-
-    def startup(self):
-        pass
-
-    def shutdown(self):
-        pass
-
-    @staticmethod
-    def get_queue():
-        return Consumer.queue
-
-
-class EcowittClient(Consumer):
+class EcowittClient:
     """
     Use the ecowitt protocol (not WU protocol) to capture data
 
@@ -4347,10 +4329,13 @@ class EcowittClient(Consumer):
             'wh35_ch8': {'long_name': 'WH35 ch8', 'batt_fn': 'batt_volt'}
         }
 
+    # create queue object
+    data_queue = queue.Queue()
+
     def __init__(self, tcp_server_address, tcp_server_port, data_cycle=0, use_th32=False, show_battery=False, debug_rain=False, debug_wind=False, debug_sensors=False, plugin_instance=None):
 
-        # initialize superclasses
-        super(EcowittClient, self).__init__(plugin_instance)
+        # initialize superclass
+        # super().__init__(plugin_instance)
 
         # get instance
         self._plugin_instance = plugin_instance
@@ -4455,6 +4440,9 @@ class EcowittClient(Consumer):
 
         return self.sensors_obj.sensor_data['client_ip']
 
+    def get_queue(self):
+        return self.data_queue
+
     class Server(object):
 
         def run(self):
@@ -4513,7 +4501,7 @@ class EcowittClient(Consumer):
             else:
                 data += f'&client_ip={client_ip}'
                 # logger.debug(f"POST: {obfuscate_passwords(str(data))}")
-                Consumer.queue.put(data)
+                EcowittClient.data_queue.put(data)
 
         def do_PUT(self):
             pass
@@ -4523,7 +4511,7 @@ class EcowittClient(Consumer):
             # get the query string from an HTTP GET
             data = urlparse.urlparse(self.path).query
             logger.debug(f"GET: {obfuscate_passwords(data)}")
-            Consumer.queue.put(data)
+            EcowittClient.data_queue.put(data)
             self.reply()
 
     class Parser(object):
@@ -4540,7 +4528,6 @@ class EcowittClient(Consumer):
         @staticmethod
         def parse(data):
             """Parse the ecowitt data and add it to a dictionary."""
-
             data_dict = {}
             line = data.splitlines()[0]
             if ':' in line and '&' in line:
@@ -4569,6 +4556,7 @@ class EcowittClient(Consumer):
                 'model':                (None,      'model'),
                 'dateutc':              (str_to_datetimeutc,   'datetime'),
                 'runtime':              (None,      'runtime'),
+                'interval':             (None,      'interval'),
                 # Indoor
                 'tempinf':              (f_to_c,    'intemp'),
                 'humidityin':           (None,      'inhumid'),

@@ -103,6 +103,7 @@ item_attributes:
             - firmware_version
             - firmware_update_available
             - firmware_update_text
+            - interval
             - set_reset
             - set_reboot
             - set_firmware_upgrade
