@@ -4114,7 +4114,7 @@ class Gw1000TcpDriver(Gw1000):
             else:
                 self.logger.debug(f"TCP. genLoopPackets: queue_data={queue_data}")
                 parsed_data = self.client.parser.parse(queue_data)
-                self.logger.debug(f"TCP. genLoopPackets: parsed_data={parsed_data}")
+                # self.logger.debug(f"TCP. genLoopPackets: parsed_data={parsed_data}")
 
                 client_ip = parsed_data['client_ip']
                 # self.logger.debug(f"TCP. genLoopPackets: client_ip={client_ip}, gateway_ip={self.ip_selected_gateway}")
@@ -4125,7 +4125,7 @@ class Gw1000TcpDriver(Gw1000):
                     # self.logger.debug(f"TCP. genLoopPackets: con_data={con_data}")
 
                     clean_data = self.client.parser.clean_data(con_data)
-                    self.logger.debug(f"TCP. genLoopPackets: clean_data={clean_data}")
+                    # self.logger.debug(f"TCP. genLoopPackets: clean_data={clean_data}")
 
                     # put timestamp of now to packet
                     packet = {'timestamp': int(time.time() + 0.5)}
