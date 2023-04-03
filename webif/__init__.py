@@ -53,8 +53,6 @@ class WebInterface(SmartPluginWebIf):
         self.logger = plugin.logger
         self.webif_dir = webif_dir
         self.plugin = plugin
-        self.items = Items.get_instance()
-        self.plgitems = []
 
         self.tplenv = self.init_template_environment()
 
@@ -68,12 +66,9 @@ class WebInterface(SmartPluginWebIf):
         :return: contents of the template after beeing rendered
         """
 
-        try:
-            pagelength = self.plugin.webif_pagelength
-        except Exception:
-            pagelength = 100
-
         maintenance = True if self.plugin.log_level <= 20 else False
+
+        item_list = self.plugin.get_item_list()
 
         tmpl = self.tplenv.get_template('index.html')
 
@@ -81,9 +76,9 @@ class WebInterface(SmartPluginWebIf):
                            plugin_shortname=self.plugin.get_shortname(),
                            plugin_version=self.plugin.get_version(),
                            plugin_info=self.plugin.get_info(),
-                           webif_pagelength=pagelength,
-                           items=self.plugin.item_list,
-                           item_count=len(self.plugin.item_list),
+                           webif_pagelength=self.plugin.get_parameter_value('webif_pagelength'),
+                           items=item_list,
+                           item_count=len(item_list),
                            maintenance=maintenance,
                            )
 
@@ -101,13 +96,12 @@ class WebInterface(SmartPluginWebIf):
             # get the new data
             data = dict()
             data['item_values'] = dict()
-            for item in self.plugin.item_list:
+            for item in self.plugin.get_item_list():
                 data['item_values'][item.id()] = {}
                 data['item_values'][item.id()]['value'] = item()
                 data['item_values'][item.id()]['last_update'] = item.property.last_update.strftime('%d.%m.%Y %H:%M:%S')
                 data['item_values'][item.id()]['last_change'] = item.property.last_change.strftime('%d.%m.%Y %H:%M:%S')
-            data['api_data'] = self.plugin.data_dict
-            data['tcp_data'] = self.plugin.data_dict2
+            data.update(self.plugin.data_dict)
 
             try:
                 return json.dumps(data, default=str)

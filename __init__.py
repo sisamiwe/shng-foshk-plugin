@@ -69,23 +69,23 @@ import urllib.parse as urlparse
 
 # SET GLOBAL DEFAULTS
 # default network broadcast address - the address that network broadcasts are sent to
-default_broadcast_address = '255.255.255.255'
+DEFAULT_BROADCAST_ADDRESS = '255.255.255.255'
 # default network broadcast port - the port that network broadcasts are sent to
-default_broadcast_port = 46000
+DEFAULT_BROADCAST_PORT = 46000
 # default socket timeout
-default_socket_timeout = 2
+DEFAULT_SOCKET_TIMEOUT = 2
 # default broadcast timeout
-default_broadcast_timeout = 5
+DEFAULT_BROADCAST_TIMEOUT = 5
 # default retry/wait time
-default_retry_wait = 10
+DEFAULT_RETRY_WAIT = 10
 # default max tries when polling the API
-default_max_tries = 3
+DEFAULT_MAX_TRIES = 3
 # firmware update url
-fw_update_url = 'http://download.ecowitt.net/down/filewave?v=FirwaveReadme.txt'.replace("\"", "")
+FW_UPDATE_URL = 'http://download.ecowitt.net/down/filewave?v=FirwaveReadme.txt'.replace("\"", "")
 # default port for tcp server
-default_tcp_port = 8080
+DEFAULT_TCP_PORT = 8080
 # known device models
-known_models = ('GW1000', 'GW1100', 'WH2650')
+KNOWN_MODELS = ('GW1000', 'GW1100', 'WH2650', 'GW2000A', 'DP2000')
 
 
 class Foshk(SmartPlugin):
@@ -93,7 +93,7 @@ class Foshk(SmartPlugin):
     Main class of the Plugin. Does all plugin specific stuff and provides the update functions for the items.
     """
 
-    meta_attributes = ['gateway_model',
+    META_ATTRIBUTES = ['gateway_model',
                        'frequency',
                        'sensor_warning',
                        'battery_warning',
@@ -105,9 +105,9 @@ class Foshk(SmartPlugin):
                        'firmware_update_text',
                        ]
 
-    tcp_attributes = ['runtime']
+    TCP_ATTRIBUTES = ['runtime']
 
-    PLUGIN_VERSION = '1.0.1'
+    PLUGIN_VERSION = '1.1.0'
 
     def __init__(self, sh):
         """
@@ -116,9 +116,6 @@ class Foshk(SmartPlugin):
 
         # call init code of parent class (SmartPlugin)
         super().__init__()
-
-        # init instance of shtime
-        # shtime = Shtime.get_instance()
 
         # get the parameters for the plugin (as defined in metadata plugin.yaml):
         self._broadcast_address = None
@@ -137,18 +134,15 @@ class Foshk(SmartPlugin):
         self._use_customer_server = bool(_ecowitt_data_cycle)
         if self._use_customer_server:
             self._http_server_ip = Utils.get_local_ipv4_address()
-            self._http_server_port = self.select_port_for_tcp_server(default_tcp_port)
+            self._http_server_port = self.select_port_for_tcp_server(DEFAULT_TCP_PORT)
             self._data_cycle = max(_ecowitt_data_cycle, 16)
             self.logger.debug(f"Receiving ECOWITT data has been enabled. Data upload to {self._http_server_ip}:{self._http_server_port} with an interval of {self._data_cycle}s will be set.")
             if not self._http_server_ip or not self._http_server_port:
                 self.logger.error(f"Receiving ECOWITT data has been enabled, but not able to define server ip or port with setting {self._http_server_ip}:{self._http_server_port}")
                 self._init_complete = False
-        self.webif_pagelength = self.get_parameter_value('webif_pagelength')
 
         # define properties
-        self.items = {}                                                             # dict to hold Items using Plugin attribute [_foshk_attribute] = (item, _foshk_datasource)
-        self.data_dict = {}                                                         # dict to hold all live data gotten from weather station gateway
-        self.data_dict2 = {}                                                        # dict to hold all data gotten from weather station gateway via tcp
+        self.data_dict = {'api': {}, 'tcp': {}}                                     # dict to hold all live data gotten from weather station gateway via tcp and api
         self.gateway_connected = False                                              # is gateway connected; driver established
         self.api_data_thread = None                                                 # thread property for get data via api
         self.tcp_data_thread = None                                                 # thread property for get data via http
@@ -156,20 +150,26 @@ class Foshk(SmartPlugin):
         self.api_driver = None                                                      # api driver object
         self.tcp_driver = None                                                      # tcp driver object
         self.alive = False                                                          # plugin alive
-        self._altitude = sh._elev                                                   # altitude of installation used from shNG setting
-        self._my_language = self.get_sh().get_defaultlanguage()                     # current shNG language (= 'de')
+        self._altitude = self.get_sh()._elev                                        # altitude of installation used from shNG setting
+        self.language = self.get_sh().get_defaultlanguage()                         # current shNG language (= 'de')
 
         # get a Gw1000Driver object
         try:
             self.logger.debug(f"Start interrogating.....")
-            self.api_driver = Gw1000Driver(self)
+            self.api_driver = Gw1000Driver(self,
+                                           poll_interval=self._gateway_poll_cycle,
+                                           broadcast_address=self._broadcast_address,
+                                           broadcast_port=self._broadcast_port,
+                                           ip_address=self._gateway_address,
+                                           gateway_port=self._gateway_port)
+
             self.logger.debug(f"Interrogating {self.api_driver.collector.station.model} at {self.api_driver.collector.station.ip_address.decode()}:{self.api_driver.collector.station.port}")
             self.gateway_connected = True
         except GW1000IOError as e:
             self.logger.error(f"Unable to connect to device: {e}")
             self._init_complete = False
 
-        # if use of customer service is enabled
+        # if usage of customer service is enabled
         if self._use_customer_server:
             # initialize tcp server
             try:
@@ -181,9 +181,6 @@ class Foshk(SmartPlugin):
         # get webinterface
         if not self.init_webinterface(WebInterface):
             self.logger.warning("Webinterface not initialized")
-            # self._init_complete = False
-        else:
-            self.logger.debug(f"Init of Plugin {self.get_shortname()} complete")
 
     def run(self):
         """
@@ -211,7 +208,7 @@ class Foshk(SmartPlugin):
             self.get_api_data_thread_startup()
         except Exception as e:
             self.logger.error(f"Unable to start 'get_api_data' thread: {e}")
-        # if use of customer service is enabled
+        # if usage of customer service is enabled
         if self._use_customer_server:
             # start endless loop for 'get_tcp_data' in own thread until plugin stops
             try:
@@ -261,22 +258,29 @@ class Foshk(SmartPlugin):
         """
 
         if self.has_iattr(item.conf, 'foshk_attibute'):
-            _foshk_attribute = (self.get_iattr_value(item.conf, 'foshk_attibute')).lower()
+            foshk_attribute = (self.get_iattr_value(item.conf, 'foshk_attibute')).lower()
 
-            if _foshk_attribute in self.meta_attributes:
-                self.items[item] = (_foshk_attribute, 'meta')
-            elif _foshk_attribute in self.tcp_attributes:
-                self.items[item] = (_foshk_attribute, 'ecowitt')
+            if foshk_attribute in self.META_ATTRIBUTES:
+                source = 'meta'
+
+            elif foshk_attribute in self.TCP_ATTRIBUTES:
+                source = 'ecowitt'
+
             elif self.has_iattr(item.conf, 'foshk_datasource'):
-                _foshk_datasource = (self.get_iattr_value(item.conf, 'foshk_datasource')).lower()
-                if _foshk_datasource == 'ecowitt' and not self._use_customer_server:
-                    self.logger.warning(f" Item {item.id()} should use datasource {_foshk_datasource} as per item.yaml, but 'ECOWITT'-protocol not enabled. Item ignored")
+                foshk_datasource = (self.get_iattr_value(item.conf, 'foshk_datasource')).lower()
+                if foshk_datasource == 'ecowitt' and not self._use_customer_server:
+                    self.logger.warning(f" Item {item.path()} should use datasource {foshk_datasource} as per item.yaml, but 'ECOWITT'-protocol not enabled. Item ignored")
+                    source = None
                 else:
-                    self.items[item] = (_foshk_attribute, _foshk_datasource)
-            else:
-                self.items[item] = (_foshk_attribute, 'api')
+                    source = foshk_datasource
 
-            if _foshk_attribute.startswith('set'):
+            else:
+                source = 'api'
+
+            item_config_data_dict = {'foshk_attribute': foshk_attribute, 'source': source, 'match': f'{source}.{foshk_attribute}'}
+            self.add_item(item, config_data_dict=item_config_data_dict, mapping=None)
+
+            if foshk_attribute.startswith('set'):
                 return self.update_item
 
     def update_item(self, item, caller=None, source=None, dest=None):
@@ -383,10 +387,9 @@ class Foshk(SmartPlugin):
 
         while self.alive:
             for packet in self.api_driver.genLoopPackets():
-                # log packet
+                # log packet and store it
                 self.logger.debug(f"get_api_data: packet={packet}")
-                # put packet to property
-                self.data_dict = packet
+                self.data_dict['api'] = packet
                 # start item update
                 self.update_item_values(packet, 'api')
 
@@ -397,10 +400,9 @@ class Foshk(SmartPlugin):
 
         while self.alive:
             for packet in self.tcp_driver.genLoopPackets():
-                # log packet
+                # log packet and store it
                 self.logger.debug(f"get_tcp_data: packet={packet}")
-                # put packet to property
-                self.data_dict2 = packet
+                self.data_dict['tcp'] = packet
                 # start item update
                 self.update_item_values(packet, 'ecowitt')
 
@@ -412,17 +414,21 @@ class Foshk(SmartPlugin):
         :param source: source the data come from
         """
 
-        self.logger.debug(f"update_item_values: Called with source={source}")
+        self.logger.debug(f"Called with source={source}")
 
-        for item in self.items:
-            foshk_attribute = self.items[item][0]
-            datasource = self.items[item][1]
-            # self.logger.debug(f"update_item_values: foshk_attribute={foshk_attribute}; item={item.id()}, datasource={datasource}")
-            if foshk_attribute in data and datasource == source:
-                value = data.get(foshk_attribute)
-                self.logger.debug(f"update_item_values: Value {value} set for item={item.id()} with foshk_attribute={foshk_attribute}, datasource={datasource}")
-                if item is not None:
-                    item(value, self.get_shortname(), source)
+        for foshk_attribute in data:
+            item_list = self.get_item_list('match', f'{source}.{foshk_attribute}')
+            if not item_list:
+                self.logger.debug(f"No item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found.")
+                continue
+            elif len(item_list) > 1:
+                self.logger.debug(f"More than one item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found. First one will be used.")
+                continue
+
+            item = item_list[0]
+            value = data[foshk_attribute]
+            self.logger.debug(f"Value {value} set for item={item.path()} with foshk_attribute={foshk_attribute}, datasource={source}")
+            item(value, self.get_shortname(), source)
 
     def firmware_update(self):
         """
@@ -440,15 +446,15 @@ class Foshk(SmartPlugin):
         Check if firmware update is available
         """
 
-        fw_info = requests.get(fw_update_url)
-        self.logger.debug(f"check_firmware_update: getting update info from {fw_update_url} results in {fw_info.status_code}")
+        fw_info = requests.get(FW_UPDATE_URL)
+        self.logger.debug(f"check_firmware_update: getting update info from {FW_UPDATE_URL} results in {fw_info.status_code}")
 
         if fw_info.status_code == 200:
             # get current firmware version
             current_firmware = self.api_driver.firmware_version
 
             model = "unknown"
-            for i in known_models:
+            for i in KNOWN_MODELS:
                 if i in current_firmware.upper():
                     model = i
 
@@ -467,14 +473,14 @@ class Foshk(SmartPlugin):
                 self.logger.debug(f"remote_firmware_notes={remote_firmware_notes}")
                 self.logger.info(' '.join(remote_firmware_notes))
                 self.update_available = True
-                data = {'firmware_update_available': True, 'firmware_update_text': remote_firmware_notes}
+                packet = {'firmware_update_available': True, 'firmware_update_text': remote_firmware_notes}
 
             else:
                 self.logger.info(f"No newer firmware found for {model}. Installed version is: {current_firmware}, available version is: {remote_firmware}.")
                 self.update_available = False
-                data = {'firmware_update_available': False, 'firmware_update_text': ['None']}
+                packet = {'firmware_update_available': False, 'firmware_update_text': ['None']}
 
-            self.update_item_values(data, 'meta')
+            self.update_item_values(packet, 'meta')
 
     def set_usr_path(self, custom_ecowitt_path: str = "/data/report/", custom_wu_path: str = "/weatherstation/updateweatherstation.php?"):
         """
@@ -534,11 +540,11 @@ class Foshk(SmartPlugin):
             self.logger.error(f"reset: {result}")
 
     def update_gateway_meta_data_items(self):
-        data_dict = dict()
-        data_dict['gateway_model'] = self.stationmodel
-        data_dict['frequency'] = self.system_parameters['frequency']
-        data_dict['firmware_version'] = self.firmware_version
-        self.update_item_values(data_dict, 'meta')
+        packet = dict()
+        packet['gateway_model'] = self.stationmodel
+        packet['frequency'] = self.system_parameters['frequency']
+        packet['firmware_version'] = self.firmware_version
+        self.update_item_values(packet, 'meta')
 
     @property
     def stationmodel(self) -> str:
@@ -561,10 +567,6 @@ class Foshk(SmartPlugin):
         return self._sensor_warning
 
     @property
-    def language(self) -> str:
-        return self._my_language
-
-    @property
     def broadcast_address(self) -> str:
         return self._broadcast_address
 
@@ -583,10 +585,6 @@ class Foshk(SmartPlugin):
     @property
     def gateway_poll_cycle(self) -> int:
         return self._gateway_poll_cycle
-
-    @property
-    def item_list(self) -> list:
-        return list(self.items)
 
     @property
     def log_level(self) -> int:
@@ -632,7 +630,8 @@ class Gw1000(object):
 
         # init logger
         self._plugin_instance = plugin_instance
-        self._plugin_instance.logger.debug("Init Gw1000 Object")
+        self.logger = self._plugin_instance.logger
+        self.logger.debug("Init Gw1000 Object")
 
         # set the language property to the global language
         self.language = self._plugin_instance.language
@@ -682,7 +681,7 @@ class Gw1000(object):
         if self.debug_loop:
             debug_list.append(f"debug_loop is {self.debug_loop}")
         if len(debug_list) > 0:
-            self._plugin_instance.logger.info(" ".join(debug_list))
+            self.logger.info(" ".join(debug_list))
 
     def add_calculated_data(self, data):
         """
@@ -705,6 +704,15 @@ class Gw1000(object):
                 data['outdewpt'] = round(dewpt_c, 1)
                 data['outfrostpt'] = round(frostpt_c, 1)
                 data['cloud_ceiling'] = int(round(self.cloud_ceiling(data["outtemp"], dewpt_c), 1))
+
+        if "intemp" in data and 'intemp' in data :
+            dewpt_c = self.get_dew_point_c(data["intemp"], data["intemp"])
+            data['indewpt'] = round(dewpt_c, 1)
+
+        for i in range(1, 9):
+            if f'temp{i}' in data and f'humid{i}' in data:
+                dewpt_c = self.get_dew_point_c(data[f'temp{i}'], data[f'humid{i}'])
+                data[f'dewpt{i}'] = round(dewpt_c, 1)
 
         if "winddir" in data:
             data['winddir_text'] = self.get_wind_dir_text(data["winddir"], self.language)
@@ -750,10 +758,10 @@ class Gw1000(object):
 
         if self.rain_total_field:
             self.rain_mapping_confirmed = True
-            self._plugin_instance.logger.info(f"Using '{self.rain_total_field}' for rain total")
+            self.logger.info(f"Using '{self.rain_total_field}' for rain total")
         elif self.debug_rain:
             # if debug_rain is set log that we had nothing
-            self._plugin_instance.logger.info("No suitable field found for rain total")
+            self.logger.info("No suitable field found for rain total")
 
     def calculate_rain(self, data):
         """
@@ -774,7 +782,7 @@ class Gw1000(object):
             data['rain'] = self.delta_rain(new_total, self.last_rain)
             # if debug_rain is set log some pertinent values
             if self.debug_rain:
-                self._plugin_instance.logger.info(f"calculate_rain: last_rain={self.last_rain} new_total={new_total} calculated rain={data['rain']}")
+                self.logger.info(f"calculate_rain: last_rain={self.last_rain} new_total={new_total} calculated rain={data['rain']}")
             # save the new total as the old total for next time
             self.last_rain = new_total
 
@@ -1258,51 +1266,61 @@ class Gw1000Driver(Gw1000):
     processing loop. The Gw1000Collector is turn uses child classes Station and Parser to interact directly with the GW1000/GW1100 API and
     parse the API responses respectively."""
 
-    def __init__(self, plugin_instance):
+    def __init__(self,
+                 plugin_instance,
+                 poll_interval: int,
+                 broadcast_address=None,
+                 broadcast_port=None,
+                 ip_address=None,
+                 gateway_port=None,
+                 use_th32=False):
         """
         Initialise a GW1000/GW1100 driver object.
         """
 
         # get instance
         self._plugin_instance = plugin_instance
+        self.logger = self._plugin_instance.logger
 
         # get data poll cycle
-        self.poll_interval = self._plugin_instance.gateway_poll_cycle
+        self.poll_interval = poll_interval
 
         self.driver_alive = False
 
         # now initialize my superclasses
-        super().__init__(self.poll_interval, plugin_instance)
+        super().__init__(self.poll_interval, self._plugin_instance)
 
         # network broadcast address and port
-        self.broadcast_address = self._plugin_instance.broadcast_address
+        self.broadcast_address = broadcast_address
         if self.broadcast_address is None:
-            self.broadcast_address = default_broadcast_address
-        self.broadcast_port = self._plugin_instance.broadcast_port
+            self.broadcast_address = DEFAULT_BROADCAST_ADDRESS
+
+        self.broadcast_port = broadcast_port
         if self.broadcast_port is None:
-            self.broadcast_port = default_broadcast_port
-        self.socket_timeout = default_socket_timeout
-        self.broadcast_timeout = default_broadcast_timeout
+            self.broadcast_port = DEFAULT_BROADCAST_PORT
 
-        # set the port property from obtain the GW1000/GW1100 port from the config dict for port number we have a default value we can use, so if port is not specified use the default
-        self.port = self._plugin_instance.gateway_port  # will be None if it need to be auto detected
-
-        # how many times to poll the API before giving up, default is default_max_tries
-        self.max_tries = default_max_tries
-
-        # wait time in seconds between retries, default is default_retry_wait seconds
-        self.retry_wait = default_retry_wait
+        self.socket_timeout = DEFAULT_SOCKET_TIMEOUT
+        self.broadcast_timeout = DEFAULT_BROADCAST_TIMEOUT
 
         # set the IP address property to the GW1000/GW1100 IP address
-        self.ip_address = self._plugin_instance.gateway_address  # will be None if it need to be auto detected
+        self.ip_address = ip_address  # will be None if it need to be auto detected
+
+        # set the port property from obtain the GW1000/GW1100 port from the config dict for port number we have a default value we can use, so if port is not specified use the default
+        self.port = gateway_port  # will be None if it need to be auto detected
+
+        # how many times to poll the API before giving up, default is DEFAULT_MAX_TRIES
+        self.max_tries = DEFAULT_MAX_TRIES
+
+        # wait time in seconds between retries, default is DEFAULT_RETRY_WAIT seconds
+        self.retry_wait = DEFAULT_RETRY_WAIT
 
         # log the relevant settings/parameters we are using
-        self._plugin_instance.logger.debug("Starting Gw1000Driver")
+        self.logger.debug("Starting Gw1000Driver")
 
         # Is a WH32 in use. WH32 TH sensor can override/provide outdoor TH data to the GW1000/GW1100. In terms of TH data the process is transparent
         # and we do not need to know if a WH32 or other sensor is providing outdoor TH data but in terms of battery state we need to know so the
         # battery state data can be reported against the correct sensor.
-        use_th32 = False
+        use_th32 = use_th32
 
         # log all found sensors since beginning of plugin as a set
         self.sensors = []
@@ -1325,20 +1343,20 @@ class Gw1000Driver(Gw1000):
                                          debug_rain=self.debug_rain,
                                          debug_wind=self.debug_wind,
                                          debug_sensors=self.debug_sensors,
-                                         plugin_instance=plugin_instance)
+                                         plugin_instance=self._plugin_instance)
 
         # log setup
         if self.ip_address is None and self.port is None:
-            self._plugin_instance.logger.info(f'{self.collector.station.model} IP address and port not specified, attempting to discover {self.collector.station.model}...')
+            self.logger.info(f'{self.collector.station.model} IP address and port not specified, attempting to discover {self.collector.station.model}...')
         elif self.ip_address is None:
-            self._plugin_instance.logger.info(f'{self.collector.station.model} IP address not specified, attempting to discover {self.collector.station.model}...')
+            self.logger.info(f'{self.collector.station.model} IP address not specified, attempting to discover {self.collector.station.model}...')
         elif self.port is None:
-            self._plugin_instance.logger.info(f'{self.collector.station.model} port not specified, attempting to discover {self.collector.station.model}...')
-        self._plugin_instance.logger.info(f'{self.collector.station.model} address is {self.collector.station.ip_address.decode()}:{self.collector.station.port}')
-        self._plugin_instance.logger.info(f'poll interval is {self.poll_interval} seconds')
-        self._plugin_instance.logger.debug(f'max tries is {self.max_tries}, retry wait time is {self.retry_wait} seconds')
-        self._plugin_instance.logger.debug(f'broadcast address is {self.broadcast_address}:{self.broadcast_port}, broadcast timeout is {self.broadcast_timeout} seconds')
-        self._plugin_instance.logger.debug(f'socket timeout is {self.socket_timeout} seconds')
+            self.logger.info(f'{self.collector.station.model} port not specified, attempting to discover {self.collector.station.model}...')
+        self.logger.info(f'{self.collector.station.model} address is {self.collector.station.ip_address.decode()}:{self.collector.station.port}')
+        self.logger.info(f'poll interval is {self.poll_interval} seconds')
+        self.logger.debug(f'max tries is {self.max_tries}, retry wait time is {self.retry_wait} seconds')
+        self.logger.debug(f'broadcast address is {self.broadcast_address}:{self.broadcast_port}, broadcast timeout is {self.broadcast_timeout} seconds')
+        self.logger.debug(f'socket timeout is {self.socket_timeout} seconds')
 
         # start the Gw1000Collector in its own thread
         self.collector.startup()
@@ -1358,7 +1376,7 @@ class Gw1000Driver(Gw1000):
                 # get any data from the collector queue
                 queue_data = self.collector.my_queue.get(True, 10)
             except queue.Empty:
-                # self._plugin_instance.logger.debug("API. genLoopPackets: there was nothing in the queue so continue")
+                # self.logger.debug("API. genLoopPackets: there was nothing in the queue so continue")
                 # there was nothing in the queue so continue
                 pass
             else:
@@ -1369,7 +1387,7 @@ class Gw1000Driver(Gw1000):
 
                 # if the data is of instance dict, it must have data
                 if isinstance(queue_data, dict):
-                    self._plugin_instance.logger.debug(f"API. genLoopPackets: queue_data={queue_data}")
+                    self.logger.debug(f"API. genLoopPackets: queue_data={queue_data}")
                     # Now start to create a loop packet.
 
                     # put timestamp of now to packet
@@ -1382,7 +1400,7 @@ class Gw1000Driver(Gw1000):
                         packet['datetime_utc'] = datetime.utcnow().replace(tzinfo=timezone.utc, microsecond=0)
 
                     if self.debug_loop:
-                        self._plugin_instance.logger.debug(f"Received {self.collector.station.model} data (debug_loop): {datetime_to_string(packet['datetime_utc'])} {natural_sort_dict(queue_data)}")
+                        self.logger.debug(f"Received {self.collector.station.model} data (debug_loop): {datetime_to_string(packet['datetime_utc'])} {natural_sort_dict(queue_data)}")
 
                     # if not already determined, determine which cumulative rain field will be used to determine the per period rain field
                     if not self.rain_mapping_confirmed:
@@ -1410,7 +1428,7 @@ class Gw1000Driver(Gw1000):
 
                     # log the packet if necessary, there are several debug settings that may require this, start from the highest (most encompassing) and work to the lowest (least encompassing)
                     if self.debug_loop:
-                        self._plugin_instance.logger.info(f"API. genLoopPackets: Packet {datetime_to_string(packet['datetime_utc'])}: {natural_sort_dict(packet)}")
+                        self.logger.info(f"API. genLoopPackets: Packet {datetime_to_string(packet['datetime_utc'])}: {natural_sort_dict(packet)}")
                     # yield the loop packet
                     yield packet
                     # time.sleep(self.poll_interval)
@@ -1424,15 +1442,15 @@ class Gw1000Driver(Gw1000):
                     # and process it if we have something
                     if e:
                         # is it a GW1000Error
-                        self._plugin_instance.logger.error(f"Caught unexpected exception {e.__class__.__name__}: {e}")
+                        self.logger.error(f"Caught unexpected exception {e.__class__.__name__}: {e}")
                         # then raise it
                         raise e
 
-                # if it's None then its a signal the Collector needs to shutdown
+                # if it's None then its a signal, the Collector needs to shutdown
                 elif queue_data is None:
                     # if debug_loop log what we received
                     if self.debug_loop:
-                        self._plugin_instance.logger.info("Received 'None'")
+                        self.logger.info("Received 'None'")
                     # we received the signal to shutdown, so call closePort()
                     self.closePort()
                     # and raise an exception to cause the engine to shutdown
@@ -1458,11 +1476,11 @@ class Gw1000Driver(Gw1000):
         if batterycheck != "":
             data['battery_warning'] = 0
             if not self.battery_warning:
-                self._plugin_instance.logger.warning(f"<WARNING> Battery level for sensor(s) {batterycheck} is critical - please swap battery")
+                self.logger.warning(f"<WARNING> Battery level for sensor(s) {batterycheck} is critical - please swap battery")
                 self.battery_warning = True
                 data['battery_warning'] = 1
         elif self.battery_warning:
-            self._plugin_instance.logger.info("<OK> Battery level for all sensors is ok again")
+            self.logger.info("<OK> Battery level for all sensors is ok again")
             self.battery_warning = False
             data['battery_warning'] = 0
 
@@ -1473,12 +1491,12 @@ class Gw1000Driver(Gw1000):
 
         # get currently connected sensors
         connected_sensors = self.collector.sensors.connected_sensors
-        # self._plugin_instance.logger.debug(f"check_sensors: connected_sensors={connected_sensors}")
+        # self.logger.debug(f"check_sensors: connected_sensors={connected_sensors}")
         # log all found sensors during runtime
         self.sensors = list(set(self.sensors + connected_sensors))
         # check if all sensors are still connected, create log entry data field
         if set(connected_sensors) == set(self.sensors):
-            # self._plugin_instance.logger.debug(f"check_sensors: All sensors are still connected!")
+            # self.logger.debug(f"check_sensors: All sensors are still connected!")
             self.sensor_warning = False
             data['sensor_warning'] = 0
         else:
@@ -1491,7 +1509,7 @@ class Gw1000Driver(Gw1000):
                     blacklist.add(sensor)
 
             if blacklist:
-                self._plugin_instance.logger.error(f"API: check_sensors: The following sensors where lost (more than {missing_count} data cycles): {list(blacklist)}")
+                self.logger.error(f"API: check_sensors: The following sensors where lost (more than {missing_count} data cycles): {list(blacklist)}")
                 self.sensor_warning = True
                 data['sensor_warning'] = 1
             else:
@@ -1509,7 +1527,7 @@ class Gw1000Driver(Gw1000):
             else:
                 self.sensors_missed[sensor] += 1
 
-        self._plugin_instance.logger.debug(f"sensors_missed={self.sensors_missed}")
+        self.logger.debug(f"sensors_missed={self.sensors_missed}")
 
     @property
     def hardware_name(self):
@@ -1570,7 +1588,8 @@ class Collector(object):
     def __init__(self, plugin_instance):
         # init logger
         self._plugin_instance = plugin_instance
-        self._plugin_instance.logger.debug("Starting Collector Object")
+        self.logger = self._plugin_instance.logger
+        self.logger.debug("Starting Collector Object")
         pass
 
     def startup(self):
@@ -1645,9 +1664,22 @@ class Gw1000Collector(Collector):
                 {'name': 'custom', 'long_name': 'Customized'}
                 ]
 
-    def __init__(self, ip_address=None, port=None, broadcast_address=None, broadcast_port=None, socket_timeout=None, broadcast_timeout=None,
-                 poll_interval=0, max_tries=default_max_tries, retry_wait=default_retry_wait, use_th32=False, show_battery=False, debug_rain=False,
-                 debug_wind=False, debug_sensors=False, plugin_instance=None):
+    def __init__(self,
+                 ip_address=None,
+                 port=None,
+                 broadcast_address=None,
+                 broadcast_port=None,
+                 socket_timeout=None,
+                 broadcast_timeout=None,
+                 poll_interval=0,
+                 max_tries=DEFAULT_MAX_TRIES,
+                 retry_wait=DEFAULT_RETRY_WAIT,
+                 use_th32=False,
+                 show_battery=False,
+                 debug_rain=False,
+                 debug_wind=False,
+                 debug_sensors=False,
+                 plugin_instance=None):
         """
         Initialise our class.
         """
@@ -1657,17 +1689,15 @@ class Gw1000Collector(Collector):
 
         # handle plugin instance
         self._plugin_instance = plugin_instance
-
-        # init logger
-        self.logger = logging.getLogger(__name__)
+        self.logger = self._plugin_instance.logger
 
         # interval between polls of the API, use a default
         self.poll_interval = poll_interval
 
-        # how many times to poll the API before giving up, default is default_max_tries
+        # how many times to poll the API before giving up, default is DEFAULT_MAX_TRIES
         self.max_tries = max_tries
 
-        # period in seconds to wait before polling again, default is default_retry_wait seconds
+        # period in seconds to wait before polling again, default is DEFAULT_RETRY_WAIT seconds
         self.retry_wait = retry_wait
 
         # are we using a th32 sensor
@@ -2411,18 +2441,18 @@ class Gw1000Collector(Collector):
         def __init__(self, ip_address=None, port=None,
                      broadcast_address=None, broadcast_port=None,
                      socket_timeout=None, broadcast_timeout=None,
-                     max_tries=default_max_tries,
-                     retry_wait=default_retry_wait, mac=None):
+                     max_tries=DEFAULT_MAX_TRIES,
+                     retry_wait=DEFAULT_RETRY_WAIT, mac=None):
 
             # init logger
             self.logger = logging.getLogger(__name__)
 
             # network broadcast address
-            self.broadcast_address = broadcast_address if broadcast_address is not None else default_broadcast_address
+            self.broadcast_address = broadcast_address if broadcast_address is not None else DEFAULT_BROADCAST_ADDRESS
             # network broadcast port
-            self.broadcast_port = broadcast_port if broadcast_port is not None else default_broadcast_port
-            self.socket_timeout = socket_timeout if socket_timeout is not None else default_socket_timeout
-            self.broadcast_timeout = broadcast_timeout if broadcast_timeout is not None else default_broadcast_timeout
+            self.broadcast_port = broadcast_port if broadcast_port is not None else DEFAULT_BROADCAST_PORT
+            self.socket_timeout = socket_timeout if socket_timeout is not None else DEFAULT_SOCKET_TIMEOUT
+            self.broadcast_timeout = broadcast_timeout if broadcast_timeout is not None else DEFAULT_BROADCAST_TIMEOUT
 
             self.device_list = []
 
@@ -2670,7 +2700,8 @@ class Gw1000Collector(Collector):
 
             return self.get_model(ssid_string)
 
-        def get_model(self, t):
+        @staticmethod
+        def get_model(t):
             """
             Determine the device model from a string.
 
@@ -2683,7 +2714,7 @@ class Gw1000Collector(Collector):
             This method uses a simple check to see if a known model name is
             contained in the string concerned.
 
-            Known model strings are contained in a tuple Station.known_models.
+            Known model strings are contained in a tuple Station.KNOWN_MODELS.
 
             If a known model is found in the string the model is returned as a
             string. None is returned if a known model is not found in the
@@ -2693,7 +2724,7 @@ class Gw1000Collector(Collector):
             # do we have a string to check
             if t is not None:
                 # we have a string, now do we have a know model in the string, if so return the model string
-                for model in known_models:
+                for model in KNOWN_MODELS:
                     if model in t.upper():
                         return model
                 # we don't have a known model so return None
@@ -3790,6 +3821,7 @@ class Gw1000Collector(Collector):
 
             # get instance
             self._plugin_instance = plugin_instance
+            self.logger = self._plugin_instance.logger
 
             # set the show_battery property
             self.show_battery = show_battery
@@ -3839,7 +3871,7 @@ class Gw1000Collector(Collector):
                         self.sensor_data[address] = {'id': sensor_id, 'battery': batt_state, 'signal': data[index + 6]}
                     else:
                         if self.debug_sensors:
-                            self._plugin_instance.logger.info("Unknown sensor ID '%s'" % bytes_to_hex(address))
+                            self.logger.info("Unknown sensor ID '%s'" % bytes_to_hex(address))
                     # each sensor entry is seven bytes in length so skip to the
                     # start of the next sensor
                     index += 7
@@ -4050,9 +4082,10 @@ class Gw1000TcpDriver(Gw1000):
 
         # init instance
         self._plugin_instance = plugin_instance
+        self.logger = self._plugin_instance.logger
 
         # log the relevant settings/parameters we are using
-        self._plugin_instance.logger.debug("Starting Gw1000TcpDriver")
+        self.logger.debug("Starting Gw1000TcpDriver")
 
         # log all found sensors since beginning of plugin as a set
         self.sensors = []
@@ -4070,7 +4103,7 @@ class Gw1000TcpDriver(Gw1000):
         self.ip_selected_gateway = self._plugin_instance.gateway_address
 
     def closePort(self):
-        self._plugin_instance.logger.info('Stop and Shutdown of FoshkPlugin TCP Server called')
+        self.logger.info('Stop and Shutdown of FoshkPlugin TCP Server called')
         self.driver_alive = False
         self.client.stop_server()
         self.client.shutdown()
@@ -4082,26 +4115,26 @@ class Gw1000TcpDriver(Gw1000):
             try:
                 # get any data from the collector queue
                 queue_data = self.client.get_queue().get(True, 10)
-                # self._plugin_instance.logger.debug(f"TCP: queue_data={queue_data}")
+                # self.logger.debug(f"TCP: queue_data={queue_data}")
             except queue.Empty:
-                # self._plugin_instance.logger.debug("TCP. genLoopPackets: there was nothing in the queue so continue")
+                # self.logger.debug("TCP. genLoopPackets: there was nothing in the queue so continue")
                 # there was nothing in the queue so continue
                 pass
             else:
-                self._plugin_instance.logger.debug(f"TCP. genLoopPackets: queue_data={queue_data}")
+                self.logger.debug(f"TCP. genLoopPackets: queue_data={queue_data}")
                 parsed_data = self.client.parser.parse(queue_data)
-                self._plugin_instance.logger.debug(f"TCP. genLoopPackets: parsed_data={parsed_data}")
+                self.logger.debug(f"TCP. genLoopPackets: parsed_data={parsed_data}")
 
                 client_ip = parsed_data['client_ip']
-                # self._plugin_instance.logger.debug(f"TCP. genLoopPackets: client_ip={client_ip}, gateway_ip={self.ip_selected_gateway}")
+                # self.logger.debug(f"TCP. genLoopPackets: client_ip={client_ip}, gateway_ip={self.ip_selected_gateway}")
 
                 if client_ip == self.ip_selected_gateway:
                     con_data = self.client.parser.convert_data(parsed_data)
                     self.client.sensors_obj.get_sensor_data(con_data)
-                    # self._plugin_instance.logger.debug(f"TCP. genLoopPackets: con_data={con_data}")
+                    # self.logger.debug(f"TCP. genLoopPackets: con_data={con_data}")
 
                     clean_data = self.client.parser.clean_data(con_data)
-                    self._plugin_instance.logger.debug(f"TCP. genLoopPackets: clean_data={clean_data}")
+                    self.logger.debug(f"TCP. genLoopPackets: clean_data={clean_data}")
 
                     # put timestamp of now to packet
                     packet = {'timestamp': int(time.time() + 0.5)}
@@ -4138,11 +4171,11 @@ class Gw1000TcpDriver(Gw1000):
 
                     # log the packet if necessary, there are several debug settings that may require this, start from the highest (most encompassing) and work to the lowest (least encompassing)
                     if self.debug_loop:
-                        self._plugin_instance.logger.info(f"TCP. genLoopPackets: Packet {datetime_to_string(packet['datetime_utc'])}: {natural_sort_dict(packet)}")
+                        self.logger.info(f"TCP. genLoopPackets: Packet {datetime_to_string(packet['datetime_utc'])}: {natural_sort_dict(packet)}")
                     # yield the loop packet
                     yield packet
                 # else:
-                    # self._plugin_instance.logger.debug(f"TCP. genLoopPackets: Received message was from client_ip={client_ip} and therefore not from selected  gateway={self.ip_selected_gateway}. Message will be ignored.")
+                    # self.logger.debug(f"TCP. genLoopPackets: Received message was from client_ip={client_ip} and therefore not from selected  gateway={self.ip_selected_gateway}. Message will be ignored.")
 
     def check_battery(self, data):
         """Check if batteries states are critical, create log entry and add a separate field for battery warning."""
@@ -4161,11 +4194,11 @@ class Gw1000TcpDriver(Gw1000):
         if batterycheck != "":
             data['battery_warning'] = 0
             if not self.battery_warning:
-                self._plugin_instance.logger.warning(f"<WARNING> TCP: Battery level for sensor(s) {batterycheck} is critical - please swap battery")
+                self.logger.warning(f"<WARNING> TCP: Battery level for sensor(s) {batterycheck} is critical - please swap battery")
                 self.battery_warning = True
                 data['battery_warning'] = 1
         elif self.battery_warning:
-            self._plugin_instance.logger.info("<OK> TCP: Battery level for all sensors is ok again")
+            self.logger.info("<OK> TCP: Battery level for all sensors is ok again")
             self.battery_warning = False
             data['battery_warning'] = 0
 
@@ -4179,7 +4212,7 @@ class Gw1000TcpDriver(Gw1000):
 
         # check if all sensors are still connected, create log entry data field
         if set(connected_sensors) == set(self.sensors):
-            # self._plugin_instance.logger.debug(f"check_sensors: All sensors are still connected!")
+            # self.logger.debug(f"check_sensors: All sensors are still connected!")
             self.sensor_warning = False
             data['sensor_warning'] = 0
             self.sensors_missed.clear()
@@ -4193,7 +4226,7 @@ class Gw1000TcpDriver(Gw1000):
                     blacklist.add(sensor)
 
             if blacklist:
-                self._plugin_instance.logger.error(f"TCP: check_sensors: The following sensors where lost (more than {missing_count} data cycles): {list(blacklist)}")
+                self.logger.error(f"TCP: check_sensors: The following sensors where lost (more than {missing_count} data cycles): {list(blacklist)}")
                 self.sensor_warning = True
                 data['sensor_warning'] = 1
             else:
@@ -4211,7 +4244,7 @@ class Gw1000TcpDriver(Gw1000):
             else:
                 self.sensors_missed[sensor] += 1
 
-        self._plugin_instance.logger.debug(f"sensors_missed={self.sensors_missed}")
+        self.logger.debug(f"sensors_missed={self.sensors_missed}")
 
 
 class Consumer(object):
@@ -4229,7 +4262,8 @@ class Consumer(object):
     def shutdown(self):
         pass
 
-    def get_queue(self):
+    @staticmethod
+    def get_queue():
         return Consumer.queue
 
 
@@ -4331,13 +4365,14 @@ class EcowittClient(Consumer):
 
         # get instance
         self._plugin_instance = plugin_instance
+        self.logger = self._plugin_instance.logger
 
         self._server_thread = None
         self.collect_data = False
         self.data_cylce = data_cycle
 
         # log the relevant settings/parameters we are using
-        self._plugin_instance.logger.debug("Starting EcowittClient")
+        self.logger.debug("Starting EcowittClient")
 
         # get a parser object to parse any data from the station
         self.parser = EcowittClient.Parser(plugin_instance)
@@ -4365,7 +4400,7 @@ class EcowittClient(Consumer):
             self._server_thread.setName(_name)
             self._server_thread.start()
         except threading.ThreadError:
-            self._plugin_instance.logger.error("Unable to launch Gw1000Collector thread")
+            self.logger.error("Unable to launch Gw1000Collector thread")
             self._server_thread = None
 
     def shutdown(self):
@@ -4375,9 +4410,9 @@ class EcowittClient(Consumer):
             self.collect_data = False
             self._server_thread.join(10)
             if self._server_thread.is_alive():
-                self._plugin_instance.logger.error("Unable to shut down Gw1000Collector thread")
+                self.logger.error("Unable to shut down Gw1000Collector thread")
             else:
-                self._plugin_instance.logger.info("Gw1000Collector thread has been terminated")
+                self.logger.info("Gw1000Collector thread has been terminated")
         self._server_thread = None
 
     @property
@@ -4404,7 +4439,7 @@ class EcowittClient(Consumer):
         t = self.sensors_obj.sensor_data['model']
         if t is not None:
             # we have a string, now do we have a know model in the string, if so return the model string
-            for model in known_models:
+            for model in KNOWN_MODELS:
                 if model in t.upper():
                     return model
             # we don't have a known model so return None
@@ -4448,17 +4483,18 @@ class EcowittClient(Consumer):
 
             # init instance
             self._plugin_instance = plugin_instance
+            self.logger = self._plugin_instance.logger
 
             # init TCP Server
-            self._plugin_instance.logger.info(f"start tcp server at {address}:{port}")
+            self.logger.info(f"start tcp server at {address}:{port}")
             socketserver.TCPServer.__init__(self, (address, int(port)), handler)
 
         def run(self):
-            # self._plugin_instance.logger.debug("start tcp server")
+            # self.logger.debug("start tcp server")
             self.serve_forever()
 
         def stop(self):
-            self._plugin_instance.logger.debug("Stop von FoshkPlugin TCP Server called")
+            self.logger.debug("Stop von FoshkPlugin TCP Server called")
             self.shutdown()
             self.server_close()
 
@@ -4510,6 +4546,7 @@ class EcowittClient(Consumer):
             self._last_rain = None
             self._rain_mapping_confirmed = False
             self._plugin_instance = plugin_instance
+            self.logger = self._plugin_instance.logger
 
         @staticmethod
         def parse(data):
@@ -4667,7 +4704,7 @@ class EcowittClient(Consumer):
                 try:
                     decoder, field = response_struct[key]
                 except KeyError:
-                    self._plugin_instance.logger.error(f"Unknown key '{key}' detected. Try do decode remaining sensor data.")
+                    self.logger.error(f"Unknown key '{key}' detected. Try do decode remaining sensor data.")
                     pass
                 else:
                     if decoder:
