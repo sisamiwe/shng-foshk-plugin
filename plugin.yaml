@@ -4,7 +4,7 @@ plugin:
     type: gateway                   # plugin type (gateway, interface, protocol, system, web)
     description:
         de: 'Anbindung eines Foshk Wetterstation-Gateway wie bspw. GW1000 mit entsprechender API'
-        en: 'Connect to a Foshk weatherstation gateway like GW1000 using their API'
+        en: 'Connect to a Foshk weather station gateway like GW1000 using their API'
     maintainer: sisamiwe
 #    tester:                         # Who tests this plugin?
     state: develop                   # change to ready when done with development
@@ -27,7 +27,7 @@ parameters:
         default: '0.0.0.0'
         description:
             de: 'IP-Adresse des Gateways'
-            en: 'IP-Adress of the gateway'
+            en: 'IP-Address of the gateway'
 
     Gateway_Port:
         type: int
@@ -84,7 +84,7 @@ parameters:
             en: 'Interval the gateway provides the data'
 
 item_attributes:
-    foshk_attibute:
+    foshk_attribute:
         type: str
         description:
             de: 'Datenattribut des Foshk-Gerätes'
@@ -344,136 +344,136 @@ item_structs:
         gateway_model:
             type: str
             visu_acl: ro
-            foshk_attibute: gateway_model
+            foshk_attribute: gateway_model
 
         dateutc:
             type: foo
             visu_acl: ro
-            foshk_attibute: datetime_utc
+            foshk_attribute: datetime_utc
 
         runtime:
             type: num
             visu_acl: ro
-            foshk_attibute: runtime
+            foshk_attribute: runtime
 
         frequency:
             type: str
             visu_acl: ro
-            foshk_attibute: frequency
+            foshk_attribute: frequency
 
         firmware:
             type: str
             visu_acl: ro
-            foshk_attibute: firmware_version
+            foshk_attribute: firmware_version
 
             update_available:
                 type: bool
                 visu_acl: ro
-                foshk_attibute: firmware_update_available
+                foshk_attribute: firmware_update_available
 
             update_text:
                 type: list
                 visu_acl: ro
-                foshk_attibute: firmware_update_text
+                foshk_attribute: firmware_update_text
 
         weatherstation_warning:
             type: bool
             visu_acl: ro
-            foshk_attibute: weatherstation_warning
+            foshk_attribute: weatherstation_warning
 
         sensor_warning:
             type: bool
             visu_acl: ro
-            foshk_attibute: sensor_warning
+            foshk_attribute: sensor_warning
 
         battery_warning:
             type: bool
             visu_acl: ro
-            foshk_attibute: battery_warning
+            foshk_attribute: battery_warning
 
         storm_warning:
             type: bool
             visu_acl: ro
-            foshk_attibute: storm_warning
+            foshk_attribute: storm_warning
 
         thunderstorm_warning:
             type: bool
             visu_acl: ro
-            foshk_attibute: thunderstorm_warning
+            foshk_attribute: thunderstorm_warning
 
         reboot:
             type: bool
             visu_acl: rw
-            foshk_attibute: set_reboot
+            foshk_attribute: set_reboot
 
         reset:
             type: bool
             visu_acl: rw
-            foshk_attibute: set_reset
+            foshk_attribute: set_reset
     rain:
         type: num
-        foshk_attibute: rain
+        foshk_attribute: rain
 
         rate:
             type: num
-            foshk_attibute: rainrate
+            foshk_attribute: rainrate
         event:
             type: num
-            foshk_attibute: rainevent
+            foshk_attribute: rainevent
         hour:
             type: num
-            foshk_attibute: rainhour
+            foshk_attribute: rainhour
         day:
             type: num
-            foshk_attibute: rainday
+            foshk_attribute: rainday
         week:
             type: num
-            foshk_attibute: rainweek
+            foshk_attribute: rainweek
         month:
             type: num
-            foshk_attibute: rainmonth
+            foshk_attribute: rainmonth
         year:
             type: num
-            foshk_attibute: rainyear
+            foshk_attribute: rainyear
         total:
             type: num
-            foshk_attibute: raintotals
+            foshk_attribute: raintotals
     wind:
         winddir:
             type: num
-            foshk_attibute: winddir
+            foshk_attribute: winddir
             database: yes
         winddir_text:
             type: str
-            foshk_attibute: winddir_text
+            foshk_attribute: winddir_text
         winddir_avg10m:
             type: num
-            foshk_attibute: winddir_avg10m
+            foshk_attribute: winddir_avg10m
         windspeedkmh:
             type: num
-            foshk_attibute: windspeed
+            foshk_attribute: windspeed
             database: yes
             enforce_updates: on
         windspeed_bft:
             type: num
-            foshk_attibute: windspeed_bft
+            foshk_attribute: windspeed_bft
         windspeed_bft_text:
             type: str
-            foshk_attibute: windspeed_bft_text
+            foshk_attribute: windspeed_bft_text
         windspdkmh_avg10m:
             type: num
-            foshk_attibute: windspeed_avg10m
+            foshk_attribute: windspeed_avg10m
         windgustkmh:
             type: num
-            foshk_attibute: gustspeed
+            foshk_attribute: gustspeed
             database: yes
             enforce_updates: on
         windgustkmh_max10m:
             type: num
-            foshk_attibute: gustspeed_avg10m
+            foshk_attribute: gustspeed_avg10m
 #        winddaymax:
 #            type: num
-#            foshk_attibute: winddaymax
+#            foshk_attribute: winddaymax
 
 item_attribute_prefixes: NONE
 
