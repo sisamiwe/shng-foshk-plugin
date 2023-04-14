@@ -582,7 +582,7 @@ class Gateway(object):
     """
     Base class for interacting with a Ecowitt Gateway.
 
-    There are a number of common properties and methods (eg IP address, field map, rain calculation etc) when dealing with a Ecowitt Gateway as a driver.
+    There are a number of common properties and methods (eg IP address, field map, rain calculation etc) when dealing with an Ecowitt Gateway as a driver.
     This class captures those common features.
     """
 
@@ -1088,7 +1088,7 @@ class Gateway(object):
         :return: cloud ceiling in meter
         """
 
-        # Faustformel für die Berechnung der Höhe der Wolkenuntergrenze von Quellwolken: Höhe in Meter = 122 mal Spread (Taupunktdifferenz)
+        # Faustformel für die Berechnung der Höhe der Wolkenuntergrenze von Quellwolken: Höhe in Meter = 122 x Spread (Taupunktdifferenz)
         return int(round((temp - dewpt) * 122, 1))
 
     @staticmethod
@@ -3128,9 +3128,9 @@ class GatewayApiClient:
 
         def check_response(self, response, cmd_code):
             """
-            Check the validity of a Ecowitt Gateway API response.
+            Check the validity of an Ecowitt Gateway API response.
 
-            Checks the validity of a Ecowitt Gateway API response. Two checks are performed:
+            Checks the validity of an Ecowitt Gateway API response. Two checks are performed:
                 1.  the third byte of the response is the same as the command code used in the API call
                 2.  the calculated checksum of the data in the response matches the checksum byte in the response
 
@@ -3164,7 +3164,7 @@ class GatewayApiClient:
         @staticmethod
         def calc_checksum(data):
             """
-            Calculate the checksum for a Ecowitt Gateway API call or response.
+            Calculate the checksum for an Ecowitt Gateway API call or response.
 
             The checksum used on the Ecowitt Gateway responses is simply the LSB of the sum of the bytes.
 
@@ -3180,9 +3180,9 @@ class GatewayApiClient:
             """
             Attempt to rediscover a lost Ecowitt Gateway.
 
-            Use UDP broadcast to discover a Ecowitt Gateway that may have changed to a new IP. We should not be re-discovering a Ecowitt Gateway for
-            which the user specified an IP, only for those for which we discovered the IP address on startup. If a Ecowitt Gateway is
-            discovered then change my ip_address and port properties as necessary to use the device in future. If the rediscover was
+            Use UDP broadcast to discover an Ecowitt Gateway that may have changed to a new IP. We should not be re-discovering an Ecowitt Gateway for
+            which the user specified an IP, only for those for which we discovered the IP address on startup. If an Ecowitt Gateway is
+            discovered then change my ip_address and port properties as necessary to use the device in the future. If the rediscover was
             successful return True otherwise return False.
             """
 
