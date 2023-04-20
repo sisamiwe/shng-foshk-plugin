@@ -77,15 +77,15 @@
 	<tbody>
 		<tr>
 			<td class="py-1"><strong>Gateway-IP</strong></td>
-			<td class="py-1">{{ p.api_driver.collector.station.ip_address.decode() }}</td>
+			<td class="py-1">{{ p.interface_config.ip_address }}</td>
 			<td class="py-1" width="50px"></td>
 			<td class="py-1"><strong>Gateway-Port</strong></td>
-			<td class="py-1">{{p.api_driver.collector.station.port}}</td>
+			<td class="py-1">{{p.interface_config.ip_address.port}}</td>
 			<td class="py-1" width="50px"></td>
 		</tr>
 		<tr>
 			<td class="py-1"><strong>Data Poll Cycle [s]</strong></td>
-			<td class="py-1">{{ p._gateway_poll_cycle }}</td>
+			<td class="py-1">{{ p.gateway_poll_cycle }}</td>
 			<td></td>
 			<td class="py-1"><strong>Gateway Connected</strong></td>
 			<td class="py-1">{{ p.gateway_connected }}</td>
@@ -93,10 +93,10 @@
 		</tr>
 		<tr>
 			<td class="py-1"><strong>Connected Sensors</strong></td>
-			<td class="py-1">{{ len(p.api_driver.collector.sensors.connected_addresses) }}</td>
+			<td class="py-1">{{ len(p.api_driver.collector.device.api.sensors.connected_addresses) }}</td>
 			<td></td>
 			<td class="py-1"><strong>Gateway Model</strong></td>
-			<td class="py-1">{{ p.api_driver.collector.station.model }}</td>
+			<td class="py-1">{{ p.api_driver.collector.device.model }}</td>
 			<td></td>
 		</tr>
 	</tbody>
@@ -201,22 +201,22 @@
 			<tbody>
 				<tr>
 					<td class="py-1">{{ _('Model') }}</td>
-					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.station.model }}</td>
+					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.model }}</td>
 					<td></td>
 				</tr>
 				<tr>
 					<td class="py-1">{{ _('MAC') }}</td>
-					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.mac_address }}</td>
+					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.mac_address }}</td>
 					<td></td>
 				</tr>
 				<tr>
 					<td class="py-1">{{ _('IP') }}</td>
-					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.station.ip_address.decode()}}</td>
+					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.ip_address.decode()}}</td>
 					<td></td>
 				</tr>
 				<tr>
 					<td class="py-1">{{ _('Firmware') }}</td>
-					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.firmware_version }}</td>
+					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.firmware_version }}</td>
 					<td></td>
 				</tr>
 			</tbody>
@@ -232,7 +232,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% for entry in p.api_driver.collector.station.device_list %}
+				{% for entry in p.api_driver.collector.device.api.device_list %}
 					<tr>
 						<td class="py-1" colspan=3> <b>{{ _('GATEWAY: ') }} {{ loop.index }}</b></td>
 					</tr>
@@ -270,10 +270,10 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% for entry in p.api_driver.collector.system_parameters %}
+				{% for entry in p.api_driver.collector.device.system_params %}
 					<tr>
 						<td class="py-1">{{ entry }}</td>
-						<td class="py-1" style="text-align:right">{{ p.api_driver.collector.system_parameters[entry] }}</td>
+						<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.system_params[entry] }}</td>
 						<td></td>
 					</tr>
 				{% endfor %}
@@ -290,7 +290,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{%set custom = p.api_driver.collector.custom%}
+				{%set custom = p.api_driver.collector.device.custom_params%}
 				<tr>
 					<td class="py-1">{{ _('Server ID') }}</td>
 					<td class="py-1" style="text-align:right">{% if 'id' in custom and custom['id'] != '' %} {{ custom['id'] }} {% else %} {{ ('-') }} {% endif %} </td>
@@ -344,7 +344,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set calibration = p.api_driver.collector.calibration %}
+				{% set calibration = p.api_driver.collector.device.calibration_coefficient %}
 				{% for entry in calibration %}
 					<tr>
 						<td class="py-1">{{ entry }}</td>
@@ -376,7 +376,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set mulch_offset = p.api_driver.collector.mulch_offset %}
+				{% set mulch_offset = p.api_driver.collector.device.mulch_offset %}
 				{% for sensor in mulch_offset %}
 					<tr>
 						<td class="py-1" colspan=3> <b>{{ _('SENSOR CHANNEL: ') }} {{ sensor +1 }}</b></td>
@@ -405,7 +405,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set soil_calibration = p.api_driver.collector.soil_calibration %}
+				{% set soil_calibration = p.api_driver.collector.device.soil_calibration %}
 				{% for sensor in soil_calibration %}
 					<tr>
 						<td class="py-1" colspan=3> <b>{{ _('SENSOR CHANNEL: ') }} {{ sensor +1 }}</b></td>
@@ -449,7 +449,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set pm25_offset = p.api_driver.collector.pm25_offset %}
+				{% set pm25_offset = p.api_driver.collector.device.pm25_offset %}
 
 					<tr>
 						<td class="py-1">{{ ('PM25 Channel 1') }}</td>
@@ -484,7 +484,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set co2_offset = p.api_driver.collector.co2_offset %}
+				{% set co2_offset = p.api_driver.collector.device.co2_offset %}
 					<tr>
 						<td class="py-1">{{ ('CO2 Offset') }}</td>
 						<td class="py-1" style="text-align:right">{{ co2_offset['co2'] }}</td>
@@ -608,7 +608,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.sensors.battery_description_data }}</td>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.battery_description_data }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -636,7 +636,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.sensors.battery_and_signal_data }}</td>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.battery_and_signal_data }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -678,7 +678,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.sensors.connected_sensors }}</td>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.connected_sensors }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -706,7 +706,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.sensors.data}}</td>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.data}}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -720,7 +720,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.sensors.connected_addresses }}</td>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.connected_addresses }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -734,7 +734,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.sensor_ids }}</td>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensor_ids }}</td>
 				</tr>
 			</tbody>
 		</table>

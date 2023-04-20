@@ -72,6 +72,22 @@ parameters:
         description:
             de: 'Erzeugt ein separates Datenfeld für eine Sensorwarnung.'
             en: 'Creates a separate Data field für sensor warning'
+
+    Use_of_WH32:
+        type: bool
+        mandatory: false
+        default: true
+        description:
+            de: ''
+            en: ''
+
+    Ignore_WH40_Battery:
+        type: bool
+        mandatory: false
+        default: true
+        description:
+            de: ''
+            en: ''
             
     Ecowitt_Data_Cycle:
         type: int
@@ -93,22 +109,19 @@ item_attributes:
             # Gateway
             - gateway_model
             - frequency
-            - datetime_utc
-            - runtime
+            - datetime
+            - runtime                       # nur über TCP verfügbar
             - sensor_warning
             - battery_warning
-            - storm_warning
-            - thunderstorm_warning
-            - weatherstation_warning
+            - storm_warning                 # noch nicht implementiert
+            - thunderstorm_warning          # noch nicht implementiert
+            - weatherstation_warning        # noch nicht implementiert
             - firmware_version
             - firmware_update_available
             - firmware_update_text
             - interval
-            - set_reset
-            - set_reboot
-            - set_firmware_upgrade
-            - set_custom_server
-            - set_user_path
+            - reset                         # set
+            - reboot                        # set
             # indoor
             - intemp                        # Innentemperatur
             - inhumid                       # Innenluftfeuchtigkeit
