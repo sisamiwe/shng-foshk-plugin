@@ -35,7 +35,6 @@
 #  - sunhours
 #  - ptrend
 #  - correct datetime of packets to timezone
-#  - check solar radiation / UV between API and ECOWITT
 ########################################
 
 
