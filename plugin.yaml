@@ -359,10 +359,10 @@ item_structs:
             visu_acl: ro
             foshk_attribute: gateway_model
 
-        dateutc:
+        datetime:
             type: foo
             visu_acl: ro
-            foshk_attribute: datetime_utc
+            foshk_attribute: datetime
 
         runtime:
             type: num
@@ -417,12 +417,12 @@ item_structs:
         reboot:
             type: bool
             visu_acl: rw
-            foshk_attribute: set_reboot
+            foshk_attribute: reboot
 
         reset:
             type: bool
             visu_acl: rw
-            foshk_attribute: set_reset
+            foshk_attribute: reset
     rain:
         type: num
         foshk_attribute: rain
