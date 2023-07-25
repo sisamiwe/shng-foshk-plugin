@@ -87,7 +87,7 @@ class Foshk(SmartPlugin):
 
     TCP_ATTRIBUTES = ['runtime']
 
-    PLUGIN_VERSION = '1.1.1'
+    PLUGIN_VERSION = '1.1.2'
 
     def __init__(self, sh):
         """
@@ -558,6 +558,7 @@ class DebugOptions:
     # special debugger for sensors
     sensors: bool = True
 
+
 @dataclass
 class InterfaceConfig:
     """Class to simplify use and handling of gateway interface config options."""
@@ -571,7 +572,7 @@ class InterfaceConfig:
     # Gateway port for api communication
     port: int = 45000
 
-   # network broadcast address - the address that network broadcasts are sent to
+    # network broadcast address - the address that network broadcasts are sent to
     broadcast_address: str = '255.255.255.255'
 
     # network broadcast port - the port that network broadcasts are sent to
@@ -1233,7 +1234,7 @@ class Gateway(object):
         # source for german descriptions https://www.smarthomeng.de/vom-winde-verweht
         _beaufort_descriptions_de = ["Windstille", "leiser Zug", "leichte Brise", "schwacher Wind", "mäßiger Wind", "frischer Wind", "starker Wind", "steifer Wind", "stürmischer Wind", "Sturm", "schwerer Sturm", "orkanartiger Sturm", "Orkan"]
         # source for english descriptions https://simple.wikipedia.org/wiki/Beaufort_scale
-        _beaufort_descriptions_en = ["Calm", "Light air", "Light breeze","Gentle breeze","Moderate breeze", "Fresh breeze", "Strong breeze", "High wind","Fresh Gale","Strong Gale", "Storm", "Violent storm", "Hurricane-force"]
+        _beaufort_descriptions_en = ["Calm", "Light air", "Light breeze", "Gentle breeze", "Moderate breeze", "Fresh breeze", "Strong breeze", "High wind", "Fresh Gale", "Strong Gale", "Storm", "Violent storm", "Hurricane-force"]
         _beaufort_descriptions = _beaufort_descriptions_de if lang == 'de' else _beaufort_descriptions_en
 
         if speed_in_bft is None or not isinstance(speed_in_bft, int) or not (0 <= speed_in_bft <= 12):
@@ -1326,7 +1327,7 @@ class GatewayApiDriver(Gateway):
                  broadcast_port=None,
                  ip_address=None,
                  port=None,
-                 poll_interval: int=None,
+                 poll_interval: int = None,
                  plugin_instance=None):
 
         # get instance
@@ -1402,9 +1403,9 @@ class GatewayApiDriver(Gateway):
                     packet = {}
 
                     # put timestamp and datetime to paket if not present
-                    if not 'timestamp' in queue_data:
+                    if 'timestamp' not in queue_data:
                         packet['timestamp'] = int(time.time())
-                    if not 'datetime' in queue_data:
+                    if 'datetime' not in queue_data:
                         packet['datetime'] = datetime.now().replace(microsecond=0)
 
                     if self.debug.loop:
@@ -3649,7 +3650,8 @@ class GatewayApi(object):
             except socket.timeout:
                 # if we time out then we are done
                 break
-            except socket.error:
+            except socket.error as e:
+                self.logger.warning(f"Socket Error {e!r} occurred.")
                 # raise any other socket error
                 raise
             else:
@@ -4204,12 +4206,10 @@ class GatewayApi(object):
                 response = self.send_cmd(packet)
             except socket.timeout as e:
                 # a socket timeout occurred, log it
-                if self.log_failures:
-                    self.logger.debug(f"Failed to obtain response to attempt {attempt + 1} to send command '{cmd}': {e}")
+                self.logger.debug(f"Failed to obtain response to attempt {attempt + 1} to send command '{cmd}': {e}")
             except Exception as e:
                 # an exception was encountered, log it
-                if self.log_failures:
-                    self.logger.debug(f"Failed attempt {attempt + 1} to send command '{cmd}':{e}")
+                self.logger.debug(f"Failed attempt {attempt + 1} to send command '{cmd}':{e!r}")
             else:
                 # check the response is valid
                 try:
@@ -4222,8 +4222,7 @@ class GatewayApi(object):
                     # outdated firmware version, raise the exception for our caller to deal with
                     raise
                 except Exception as e:
-                    # Some other error occurred in check_response(), perhaps the response was malformed. Log the stack
-                    # trace but continue.
+                    # Some other error occurred in check_response(), perhaps the response was malformed. Log the stack trace but continue.
                     self.logger.error(f"Unexpected exception occurred while checking response to attempt {attempt + 1} to send command '{cmd}':{e}")
                 else:
                     # our response is valid so return it
@@ -4285,24 +4284,66 @@ class GatewayApi(object):
         s.settimeout(self.socket_timeout)
         # wrap our connect in a try..except, so we can catch any socket related exceptions
         try:
-            # connect to the device
             s.connect((self.ip_address, self.port))
-            # if required log the packet we are sending
             # self.logger.debug(f"Sending packet '{bytes_to_hex(packet)}' to {self.ip_address.decode()}:{self.port}")
-            # send the packet
             s.sendall(packet)
             # obtain the response, we assume here the response will be less than 1024 characters
             response = s.recv(1024)
-            # if required log the response
-            # self.logger.debug(f"Received response '{bytes_to_hex(response)}'")
-            # return the response
+            self.logger.debug(f"Received response '{bytes_to_hex(response)}'")
             return response
-        except socket.error:
+        except socket.error as e:
             # we received a socket error, raise it
+            self.logger.warning(f"Socket Error {e!r} occurred.")
+            raise
+        except Exception as e:
+            # we received a socket error, raise it
+            self.logger.warning(f"Error {e!r} occurred.")
             raise
         finally:
             # make sure we close our socket
             s.close()
+
+    def send_cmd_1(self, packet: bytes) -> bytes:
+        """Send a command to the API and return the response.
+
+        Send a command to the API and return the response. Socket related errors are trapped and raised, code calling send_cmd should be
+        prepared to handle such exceptions.
+
+        cmd: A valid API command
+
+        Returns the response as a byte string.
+        """
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(self.socket_timeout)
+        s.connect((self.ip_address, self.port))
+
+        # keep track of connection status
+        self.socket_connected = True
+        self.logger.debug("connected to server")
+
+        while True:
+            # attempt to send and receive wave, otherwise reconnect
+            try:
+                s.sendall(packet)
+                response = s.recv(1024)
+                self.logger.debug(f"Received response '{bytes_to_hex(response)}'")
+                return response
+            except socket.error:
+                # set connection status and recreate socket
+                self.socket_connected = False
+                s = socket.socket()
+                self.logger.debug("connection lost... reconnecting")
+                while not self.socket_connected:
+                    # attempt to reconnect, otherwise sleep for 2 seconds
+                    try:
+                        s.connect((self.ip_address, self.port))
+                        self.socket_connected = True
+                        self.logger.debug("re-connection successful")
+                    except socket.error:
+                        time.sleep(2)
+            finally:
+                s.close()
 
     def check_response(self, response: bytes, cmd_code: bytes) -> None:
         """Check the validity of an API response.
@@ -4856,7 +4897,7 @@ class GatewayTcpDriver(Gateway):
                     # put timestamp of now to packet
                     packet = {'timestamp': int(time.time() + 0.5)}
 
-                    if not 'datetime' in queue_data:
+                    if 'datetime' not in queue_data:
                         packet['datetime'] = datetime.now().replace(microsecond=0)
 
                     # if not already determined, determine which cumulative rain field will be used to determine the per period rain field
