@@ -124,7 +124,7 @@
 
 {% set tab1title = "<strong>" ~ p.get_shortname() ~ " Items</strong>" %}
 {% set tab2title = "<strong>" ~ p.get_shortname() ~ "Data</strong> " %}
-{% set tab3title = "<strong>" ~ p.get_shortname() ~ " Settings</strong> " %}
+{% if p.api_driver %}{% set tab3title = "<strong>" ~ p.get_shortname() ~ " Settings</strong> " %}{% else %}{% set tab4title = "hidden" %}{% endif %}
 {% if maintenance %}{% set tab4title = "<strong>" ~ p.get_shortname() ~ " Maintenance</strong> " %}{% else %}{% set tab4title = "hidden" %}{% endif %}
 
 
@@ -187,8 +187,9 @@
 {% block bodytab3 %}
 <div class="table-responsive, row" style="margin-left: 3px; margin-right: 3px;" >
     <div class="col-sm-12">
-        <h3></h3>
+		<h3></h3>
         <h3 style="color:#A9A9A9;">GATEWAY DETAILS</h3>
+
 		<table id="" class="table table-striped table-hover pluginList display">
 			<!-- <caption>GATEWAY DETAILS</caption> -->
 			<thead>
@@ -221,8 +222,10 @@
 				</tr>
 			</tbody>
 		</table>
-        <h3><br></h3>
+
+		<h3><br></h3>
         <h3 style="color:#A9A9A9;">DISCOVERED GATEWAY (just valid, if no IP is given in Plugin Config</h3>
+
 		<table id="" class="table table-striped table-hover pluginList display">
 			<thead>
 				<tr>
@@ -259,8 +262,10 @@
 				{% endfor %}
 			</tbody>
 		</table>
-        <h3><br></h3>
+
+		<h3><br></h3>
         <h3 style="color:#A9A9A9;">SYSTEM PARAMETERS</h3>
+
 		<table id="" class="table table-striped table-hover pluginList display">
 			<thead>
 				<tr>
@@ -279,8 +284,10 @@
 				{% endfor %}
 			</tbody>
 		</table>
+
 		<h3><br></h3>
         <h3 style="color:#A9A9A9;">CUSTOM SERVER SETTING</h3>
+
 		<table id="" class="table table-striped table-hover pluginList display">
 			<thead>
 				<tr>
@@ -333,6 +340,7 @@
 				</tr>
 			</tbody>
 		</table>
+
 		<h3><br></h3>
         <h3 style="color:#A9A9A9;">SENSOR CALIBRATION</h3>
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -365,6 +373,7 @@
 				{% endfor %}
 			</tbody>
 		</table>
+
 		<h3><br></h3>
         <h3 style="color:#A9A9A9;">MULTI CHANNEL SENSOR CALIBRATION</h3>
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -438,7 +447,8 @@
 				{% endfor %}
 			</tbody>
 		</table>
-        <h3><br></h3>
+
+		<h3><br></h3>
         <h3 style="color:#A9A9A9;">PM25 SENSOR CALIBRATION</h3>
 		<table id="" class="table table-striped table-hover pluginList display">
 			<thead>
@@ -473,6 +483,7 @@
 					</tr>
 			</tbody>
 		</table>
+
 		<h3><br></h3>
         <h3 style="color:#A9A9A9;">CO2 SENSOR CALIBRATION</h3>
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -510,7 +521,9 @@
 {% block bodytab4 %}
 <div class="table-responsive, row" style="margin-left: 3px; margin-right: 3px;">
     <div class="col-sm-12">
-        <h3><br></h3>
+
+	{% if p.api_driver %}
+		<h3><br></h3>
         <h3 style="color:#A9A9A9;">FOSHK PLUGIN API PARAMETERS</h3>
 		<table id="" class="table table-striped table-hover pluginList display">
 			<thead>
@@ -554,6 +567,114 @@
 				</tr>
 			</tbody>
 		</table>
+
+		<h3><br></h3>
+        <h3 style="color:#A9A9A9;"></h3>
+		<table id="" class="table table-striped table-hover pluginList display">
+			<thead>
+				<tr>
+				  <th>{{ _('dict API "collector.battery_desc"') }}</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.battery_description_data }}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h3><br></h3>
+        <h3 style="color:#A9A9A9;"></h3>
+		<table id="" class="table table-striped table-hover pluginList display">
+			<thead>
+				<tr>
+				  <th>{{ _('dict "battery_and_signal_data"') }}</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.battery_and_signal_data }}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h3><br></h3>
+        <h3 style="color:#A9A9A9;"></h3>
+		<table id="" class="table table-striped table-hover pluginList display">
+			<thead>
+				<tr>
+				  <th>{{ _('deque API "wind_avg10m"') }}</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+				  <td class="py-1">{{ p.api_driver.wind_avg10m }}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h3><br></h3>
+        <h3 style="color:#A9A9A9;"></h3>
+		<table id="" class="table table-striped table-hover pluginList display">
+			<thead>
+				<tr>
+				  <th>{{ _('dict API "connected_sensors"') }}</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.connected_sensors }}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h3><br></h3>
+        <h3 style="color:#A9A9A9;"></h3>
+		<table id="" class="table table-striped table-hover pluginList display">
+			<thead>
+				<tr>
+				  <th>{{ _('dict "data"') }}</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.data}}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h3><br></h3>
+        <h3 style="color:#A9A9A9;"></h3>
+		<table id="" class="table table-striped table-hover pluginList display">
+			<thead>
+				<tr>
+				  <th>{{ _('dict "sensors"') }}</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.connected_addresses }}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h3><br></h3>
+        <h3 style="color:#A9A9A9;"></h3>
+		<table id="" class="table table-striped table-hover pluginList display">
+			<thead>
+				<tr>
+				  <th>{{ _('dict "sensor_ids"') }}</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+				  <td class="py-1">{{ p.api_driver.collector.device.api.sensor_ids }}</td>
+				</tr>
+			</tbody>
+		</table>
+	{% endif %}
+
+	{% if p.tcp_driver %}
 		<h3><br></h3>
         <h3 style="color:#A9A9A9;">FOSHK PLUGIN TCP PARAMETERS</h3>
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -598,20 +719,7 @@
 				</tr>
 			</tbody>
 		</table>
-        <h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('dict API "collector.battery_desc"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.battery_description_data }}</td>
-				</tr>
-			</tbody>
-		</table>
+
 		<h3><br></h3>
         <h3 style="color:#A9A9A9;"></h3>
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -626,34 +734,7 @@
 				</tr>
 			</tbody>
 		</table>
-		<h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('dict "battery_and_signal_data"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.battery_and_signal_data }}</td>
-				</tr>
-			</tbody>
-		</table>
-		<h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('deque API "wind_avg10m"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.api_driver.wind_avg10m }}</td>
-				</tr>
-			</tbody>
-		</table>
+
 		<h3><br></h3>
         <h3 style="color:#A9A9A9;"></h3>
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -668,20 +749,7 @@
 				</tr>
 			</tbody>
 		</table>
-        <h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('dict API "connected_sensors"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.connected_sensors }}</td>
-				</tr>
-			</tbody>
-		</table>
+
 		<h3><br></h3>
         <h3 style="color:#A9A9A9;"></h3>
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -696,76 +764,8 @@
 				</tr>
 			</tbody>
 		</table>
-		<h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('dict "data"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.data}}</td>
-				</tr>
-			</tbody>
-		</table>
-        <h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('dict "sensors"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.connected_addresses }}</td>
-				</tr>
-			</tbody>
-		</table>
-		<h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('dict "sensor_ids"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensor_ids }}</td>
-				</tr>
-			</tbody>
-		</table>
-        <h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('dict "items"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.items }}</td>
-				</tr>
-			</tbody>
-		</table>
-		        <h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('_plg_item_dict') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p._plg_item_dict }}</td>
-				</tr>
-			</tbody>
-		</table>
+	{% endif %}
+
 	</div>
 </div>
 {% endblock bodytab4 %}

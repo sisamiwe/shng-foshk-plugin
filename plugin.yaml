@@ -488,6 +488,113 @@ item_structs:
 #            type: num
 #            foshk_attribute: winddaymax
 
+    indoor: # GW2000
+        intemp:                        # Innentemperatur
+            type: num
+            foshk_attribute: intemp
+        inhumid:                       # Innenluftfeuchtigkeit
+            type: num
+            foshk_attribute: inhumid
+        absbarometer:                  # absoluter Luftdruck
+            type: num
+            foshk_attribute: absbarometer
+        relbarometer:                  # relativer Luftdruck
+            type: num
+            foshk_attribute: relbarometer
+        indewpt:                       # Taupunkt
+            type: num
+            foshk_attribute: indewpt
+        inabshum:                      # absolute Luftfeuchte
+            type: num
+            foshk_attribute: inabshum
+
+    ws90:
+        outtemp:
+            type: num
+            foshk_attribute: outtemp
+        outhumid:
+            type: num
+            foshk_attribute: outhumid
+        light:
+            type: num
+            foshk_attribute: light
+        uv:
+            type: num
+            foshk_attribute: uv
+        uvi:
+            type: num
+            foshk_attribute: uvi
+        winddaymax:
+            type: num
+            foshk_attribute: winddaymax
+        datetime:
+            type: str
+            foshk_attribute: datetime
+        p_rainrate:
+            type: num
+            foshk_attribute: p_rainrate
+        p_rainday:
+            type: num
+            foshk_attribute: p_rainday
+        p_rainweek:
+            type: num
+            foshk_attribute: p_rainweek
+        p_rainmonth:
+            type: num
+            foshk_attribute: p_rainmonth
+        p_rainyear:
+            type: num
+            foshk_attribute: p_rainyear
+        p_rainevent:
+            type: num
+            foshk_attribute: p_rainevent
+        gain0:
+            type: num
+            foshk_attribute: gain0
+        gain1:
+            type: num
+            foshk_attribute: gain1
+        gain2:
+            type: num
+            foshk_attribute: gain2
+        gain3:
+            type: num
+            foshk_attribute: gain3
+        gain4:
+            type: num
+            foshk_attribute: gain4
+        gain5:
+            type: num
+            foshk_attribute: gain5
+        gain6:
+            type: num
+            foshk_attribute: gain6
+        gain7:
+            type: num
+            foshk_attribute: gain7
+        gain8:
+            type: num
+            foshk_attribute: gain8
+        gain9:
+            type: num
+            foshk_attribute: gain9
+
+        day_reset:
+            type: num
+            foshk_attribute: day_reset
+        week_reset:
+            type: num
+            foshk_attribute: week_reset
+        annual_reset:
+            type: num
+            foshk_attribute: annual_reset
+        ws90_batt:
+            type: num
+            foshk_attribute: ws90_batt
+        ws90_sig:
+            type: num
+            foshk_attribute: ws90_sig
+
 item_attribute_prefixes: NONE
 
 plugin_functions:
