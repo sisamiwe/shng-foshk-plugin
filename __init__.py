@@ -326,6 +326,7 @@ class Foshk(SmartPlugin):
         try:
             _name = 'plugins.' + self.get_fullname() + '.get_api_data'
             self.api_data_thread = threading.Thread(target=self.get_api_data, name=_name)
+            self.logger = logging.getLogger(__name__)
             self.api_data_thread.daemon = False
             self.api_data_thread.start()
             self.logger.debug("FoshkPlugin thread for 'get_api_data' has been started")
@@ -354,6 +355,7 @@ class Foshk(SmartPlugin):
         try:
             _name = 'plugins.' + self.get_fullname() + '.get_tcp_data'
             self.tcp_data_thread = threading.Thread(target=self.get_tcp_data, name=_name)
+            self.logger = logging.getLogger(__name__)
             self.tcp_data_thread.daemon = False
             self.tcp_data_thread.start()
             self.logger.debug("FoshkPlugin thread for 'get_tcp_data' has been started")
@@ -1761,7 +1763,7 @@ class ApiParser(object):
         b'\x13': ('decode_big_rain', 4, 'rainyear'),
         b'\x14': ('decode_big_rain', 4, 'raintotals'),
         b'\x15': ('decode_light', 4, 'light'),
-        b'\x16': ('decode_uv', 2, 'uv'),
+        b'\x16': ('decode_uv', 2, 'solarradiation'),
         b'\x17': ('decode_uvi', 1, 'uvi'),
         b'\x18': ('decode_datetime_as_dt', 6, 'datetime'),
         b'\x19': ('decode_speed', 2, 'winddaymax'),
@@ -4717,8 +4719,7 @@ class GatewayDevice(object):
     def ws90_firmware_version(self):
         """Provide the WH90 firmware version.
 
-        Return the WS90 installed firmware version. If no WS90 is available the
-        value None is returned.
+        Return the WS90 installed firmware version. If no WS90 is available the value None is returned.
         """
 
         # sensors = self.http.get_sensors_info()

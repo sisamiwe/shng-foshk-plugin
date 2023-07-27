@@ -23,7 +23,6 @@ plugin:
 parameters:
     Gateway_IP:
         type: ipv4
-        mandatory: false
         default: '0.0.0.0'
         description:
             de: 'IP-Adresse des Gateways'
@@ -31,7 +30,6 @@ parameters:
 
     Gateway_Port:
         type: int
-        mandatory: false
         default: 45000
         description:
             de: 'UDP Port des Gateways'
@@ -39,7 +37,6 @@ parameters:
 
     Gateway_Poll_Cycle:
         type: int
-        mandatory: false
         default: 20
         valid_min: 16
         valid_max: 600
@@ -49,7 +46,6 @@ parameters:
 
     FW_Update_Check_Cycle:
         type: int
-        mandatory: false
         default: 0
         valid_min: 0
         valid_max: 90
@@ -59,7 +55,6 @@ parameters:
 
     Battery_Warning:
         type: bool
-        mandatory: false
         default: true
         description:
             de: 'Erzeugt ein separates Datenfeld für eine Batteriewarnung.'
@@ -67,7 +62,6 @@ parameters:
 
     Sensor_Warning:
         type: bool
-        mandatory: false
         default: true
         description:
             de: 'Erzeugt ein separates Datenfeld für eine Sensorwarnung.'
@@ -75,7 +69,6 @@ parameters:
 
     Use_of_WH32:
         type: bool
-        mandatory: false
         default: true
         description:
             de: ''
@@ -83,7 +76,6 @@ parameters:
 
     Ignore_WH40_Battery:
         type: bool
-        mandatory: false
         default: true
         description:
             de: ''
@@ -91,7 +83,6 @@ parameters:
             
     Ecowitt_Data_Cycle:
         type: int
-        mandatory: False
         default: 20
         valid_min: 0
         valid_max: 600
@@ -155,6 +146,15 @@ item_attributes:
             - rainmonth                     # kumulierte Regenmenge des aktuellen Monats
             - rainyear                      # kumulierte Regenmenge des aktuellen Jahres
             - raintotals                    # kumulierte Regenmenge seit Inbetriebnahme bzw. Reset
+            - rain_priority                 #
+            - rad_comp                      #
+            - p_rainrate                    # Regenmenge pro Zeit in mm/h des aktuellen Regenevents (WS90)
+            - p_rainevent                   # kumulierte Regenmenge in mm des aktuellen Regenevents (WS90)
+            - p_rainhour                    # kumulierte Regenmenge der aktuellen Stunde (WS90)
+            - p_rainday                     # kumulierte Regenmenge des aktuellen Tages (WS90)
+            - p_rainweek                    # kumulierte Regenmenge der aktuellen Woche (WS90)
+            - p_rainmonth                   # kumulierte Regenmenge des aktuellen Monats (WS90)
+            - p_rainyear                    # kumulierte Regenmenge des aktuellen Jahres (WS90)
             # wind
             - winddir                       # Windrichtung in °
             - windspeed                     # Windgeschwindigkeit in m/s

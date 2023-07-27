@@ -66,8 +66,6 @@ class WebInterface(SmartPluginWebIf):
         :return: contents of the template after beeing rendered
         """
 
-        maintenance = True if self.plugin.log_level <= 20 else False
-
         item_list = self.plugin.get_item_list()
 
         tmpl = self.tplenv.get_template('index.html')
@@ -79,7 +77,7 @@ class WebInterface(SmartPluginWebIf):
                            webif_pagelength=self.plugin.get_parameter_value('webif_pagelength'),
                            items=item_list,
                            item_count=len(item_list),
-                           maintenance=maintenance,
+                           maintenance=True if self.plugin.log_level <= 20 else False,
                            )
 
     @cherrypy.expose
