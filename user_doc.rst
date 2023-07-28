@@ -3,10 +3,13 @@ FOSHK
 
 Anforderungen
 -------------
-Benötigt wird eine Wetterstation von Fine Offset Electronics mit entsprechender API.
-Getestet wurden GW1000 und WH2650.
+Benötigt wird eine Wetterstation von `Fine Offset Electronics <https://www.foshk.com >`_ mit entsprechender API
+oder ein passendes Gateway das die Daten der Wetterstation lokal zur Verfügung stellt.
+Die Datenbasis muss *Ecowitt kompatibel* erfolgen.
 
-Die API ist hier beschrieben:
+Getestet wurden GW1000 und WH2650 sowie Froggit DP2000 mit DP1100 7-in-1 Sensor (entspricht GW2000 mit WS90)
+
+Die API ist hier beschrieben: `Data Exchange TCP Protocol for GW1000,1100,1900,2000,2680,2650 <https://osswww.ecowitt.net/uploads/20220407/WN1900%20GW1000,1100%20WH2680,2650%20telenet%20v1.6.4.pdf>`_
 
 Das Plugin bietet die Möglichkeit, die Wetterdaten direkt über die API zu lesen oder die Daten aus dem ECOWITT Protokoll der "Customized Settings" zu beziehen.
 Die Einrichtung erfolgt automatisch gemäß den Einstellungen im Plugin.

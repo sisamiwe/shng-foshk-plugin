@@ -63,8 +63,8 @@ from collections import deque
 from typing import Union
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
+from json import JSONDecodeError
 from dataclasses import dataclass
-# from json.decoder import JSONDecodeError
 import urllib.parse as urlparse
 
 
@@ -87,7 +87,7 @@ class Foshk(SmartPlugin):
 
     TCP_ATTRIBUTES = ['runtime']
 
-    PLUGIN_VERSION = '1.1.2'
+    PLUGIN_VERSION = '1.1.3'
 
     def __init__(self, sh):
         """
@@ -96,50 +96,6 @@ class Foshk(SmartPlugin):
 
         # call init code of parent class (SmartPlugin)
         super().__init__()
-
-        # get the parameters for the plugin (as defined in metadata plugin.yaml):
-        self.gateway_address = self.get_parameter_value('Gateway_IP')
-        if self.gateway_address == '127.0.0.1':
-            self.gateway_address = None
-
-        self.gateway_port = self.get_parameter_value('Gateway_Port')
-        if self.gateway_port == 0 or not is_port_valid(self.gateway_port):
-            self.gateway_port = None
-
-        self.gateway_poll_cycle = self.get_parameter_value('Gateway_Poll_Cycle')
-        self.fw_update_check_cycle = self.get_parameter_value('FW_Update_Check_Cycle') * 24 * 60 * 60                    # convert from days into seconds
-        self.show_battery_warning = self.get_parameter_value('Battery_Warning')
-        self.show_sensor_warning = self.get_parameter_value('Sensor_Warning')
-        self.use_wh32 = self.get_parameter_value('Use_of_WH32')
-        self.ignore_wh40_batt = self.get_parameter_value('Ignore_WH40_Battery')
-
-        interface_config = {'ip_address': self.gateway_address,
-                            'port': self.gateway_port,
-                            'poll_interval': self.gateway_poll_cycle,
-                            'fw_check_interval': self.fw_update_check_cycle,
-                            'show_battery_warning': self.show_battery_warning,
-                            'show_sensor_warning': self.show_sensor_warning,
-                            'use_wh32': self.use_wh32,
-                            'ignore_wh40_batt': self.ignore_wh40_batt}
-
-        _ecowitt_data_cycle = self.get_parameter_value('Ecowitt_Data_Cycle')
-        self.use_customer_server = bool(_ecowitt_data_cycle)
-        if self.use_customer_server:
-            self.http_server_ip = Utils.get_local_ipv4_address()
-            self.http_server_port = self.select_port_for_tcp_server(8080)
-            self.data_cycle = max(_ecowitt_data_cycle, 16)
-            self.logger.debug(f"Receiving ECOWITT data has been enabled. Data upload to {self.http_server_ip}:{self.http_server_port} with an interval of {self.data_cycle}s will be set.")
-
-            interface_config.update({'http_server_ip': self.http_server_ip,
-                                     'http_server_port': self.http_server_port,
-                                     'http_data_cycle': self.data_cycle})
-
-            if not self.http_server_ip or not self.http_server_port:
-                self.logger.error(f"Receiving ECOWITT data has been enabled, but not able to define server ip or port with setting {self.http_server_ip}:{self.http_server_port}")
-                self._init_complete = False
-
-        # init Class InterfaceConfig
-        self.interface_config = InterfaceConfig(**interface_config)
 
         # define variables and attributes
         self.data_dict = {'api': {}, 'tcp': {}}                                     # dict to hold all live data gotten from weather station gateway via tcp and api
@@ -153,15 +109,50 @@ class Foshk(SmartPlugin):
         self._altitude = self.get_sh()._elev                                        # altitude of installation used from shNG setting
         self.language = self.get_sh().get_defaultlanguage()                         # current shNG language (= 'de')
 
+        # get the parameters for the plugin (as defined in metadata plugin.yaml):
+        gateway_address = self.get_parameter_value('Gateway_IP')
+        if gateway_address == '127.0.0.1':
+            gateway_address = None
+
+        gateway_port = self.get_parameter_value('Gateway_Port')
+        if gateway_port == 0 or not is_port_valid(gateway_port):
+            gateway_port = None
+
+        interface_config = {'ip_address': gateway_address,
+                            'port': gateway_port,
+                            'api_data_cycle': self.get_parameter_value('Gateway_Poll_Cycle'),
+                            'fw_check_cycle': (self.get_parameter_value('FW_Update_Check_Cycle') * 24 * 60 * 60),
+                            'show_battery_warning': self.get_parameter_value('Battery_Warning'),
+                            'show_sensor_warning': self.get_parameter_value('Sensor_Warning'),
+                            'use_wh32': self.get_parameter_value('Use_of_WH32'),
+                            'ignore_wh40_batt': self.get_parameter_value('Ignore_WH40_Battery'),
+                            }
+
+        _ecowitt_data_cycle = self.get_parameter_value('Ecowitt_Data_Cycle')
+        self.use_customer_server = bool(_ecowitt_data_cycle)
+        if self.use_customer_server:
+            eco_server_ip = Utils.get_local_ipv4_address()
+            eco_server_port = self.select_port_for_tcp_server(8080)
+            eco_data_cycle = max(_ecowitt_data_cycle, 16)
+            self.logger.debug(f"Receiving ECOWITT data has been enabled. Data upload to {eco_server_ip}:{eco_server_port} with an interval of {eco_data_cycle}s will be set.")
+
+            interface_config.update({'eco_server_ip': eco_server_ip,
+                                     'eco_server_port': eco_server_port,
+                                     'eco_data_cycle': eco_data_cycle})
+
+            if not eco_server_ip or not eco_server_port:
+                self.logger.error(f"Receiving ECOWITT data has been enabled, but not able to define server ip or port with setting {eco_server_ip}:{eco_server_port}")
+                self._init_complete = False
+
+        # init Class InterfaceConfig
+        self.interface_config = InterfaceConfig(**interface_config)
+
         # get a GatewayApiDriver object
         try:
             self.logger.debug(f"Start interrogating.....")
-            self.api_driver = GatewayApiDriver(ip_address=self.gateway_address,
-                                               port=self.gateway_port,
-                                               poll_interval=self.gateway_poll_cycle,
-                                               plugin_instance=self)
+            self.api_driver = GatewayApiDriver(plugin_instance=self)
 
-            self.logger.debug(f"Interrogating {self.api_driver.collector.device.model} at {self.api_driver.collector.device.ip_address.decode()}:{self.api_driver.collector.device.port}")
+            self.logger.debug(f"Interrogating {self.api_driver.collector.device.model} at {self.api_driver.collector.device.ip_address}:{self.api_driver.collector.device.port}")
             self.gateway_connected = True
         except GatewayIOError as e:
             self.logger.error(f"Unable to connect to device: {e}")
@@ -170,11 +161,7 @@ class Foshk(SmartPlugin):
         # if usage of customer service is enabled, initialize tcp server
         if self.use_customer_server:
             try:
-                self.tcp_driver = GatewayTcpDriver(tcp_server_address=self.http_server_ip,
-                                                   tcp_server_port=self.http_server_port,
-                                                   data_cycle=self.data_cycle,
-                                                   gateway_address=self.gateway_address,
-                                                   plugin_instance=self)
+                self.tcp_driver = GatewayTcpDriver(plugin_instance=self)
             except Exception as e:
                 self.logger.error(f"Unable to start 'tcp_driver' thread: {e}")
                 self._init_complete = False
@@ -193,20 +180,22 @@ class Foshk(SmartPlugin):
 
         # if customer server is used, set parameters accordingly
         if self.use_customer_server:
-            self._set_custom_params(custom_server_id='', custom_password='', custom_host=self.http_server_ip, custom_port=self.http_server_port, custom_interval=self.data_cycle, custom_type=False, custom_enabled=True)
+            self._set_custom_params()
             self._set_usr_path()
 
         # set class property to selected IP
-        self.gateway_address = self.api_driver.collector.device.ip_address
-        self.gateway_port = self.api_driver.collector.device.port
+        self.interface_config.ip_address = self.api_driver.collector.device.ip_address
+        self.interface_config.port = self.api_driver.collector.device.port
 
         # start endless loop for 'get_api_data' in own thread until plugin stops
-        self.get_api_data_thread_startup()
+        # self.get_api_data_thread_startup()
+        self.get_api_data()
 
         # if usage of customer service is enabled
         if self.use_customer_server:
             # start endless loop for 'get_tcp_data' in own thread until plugin stops
-            self.get_tcp_data_thread_startup()
+            # self.get_tcp_data_thread_startup()
+            self.get_tcp_data()
 
         self.update_gateway_meta_data_items()
 
@@ -455,7 +444,7 @@ class Foshk(SmartPlugin):
         else:
             self.logger.error(f"set_usr_path: {result}")
 
-    def _set_custom_params(self, custom_server_id: str, custom_password: str, custom_host: str, custom_port: int, custom_interval: int, custom_type: bool, custom_enabled: bool):
+    def _set_custom_params(self, custom_server_id: str = '', custom_password: str = '', custom_host: str = None, custom_port: int = None, custom_interval: int = None, custom_type: bool = False, custom_enabled: bool = True):
         """
         Set customer parameter for Ecowitt data to receive
 
@@ -467,6 +456,13 @@ class Foshk(SmartPlugin):
         :param custom_type: type of custom data upload
         :param custom_enabled: enable / disable custom upload
         """
+
+        if not custom_host:
+            custom_host = self.interface_config.eco_server_ip
+        if not custom_port:
+            custom_port = self.interface_config.eco_server_port
+        if not custom_interval:
+            custom_interval = self.interface_config.eco_data_cycle
 
         result = self.api_driver.collector.device.set_custom_params(custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled)
         if result == 'SUCCESS' or result == 'NO NEED':
@@ -540,9 +536,13 @@ class UnknownApiCommand(Exception):
     """Exception raised when an unknown API command is used."""
 
 
+class UnknownHttpCommand(Exception):
+    """Exception raised when an unknown HTTP command was selected."""
+
 # ============================================================================
 #                           Gateway Config classes
 # ============================================================================
+
 
 @dataclass
 class DebugOptions:
@@ -574,6 +574,9 @@ class InterfaceConfig:
     # Gateway port for api communication
     port: int = 45000
 
+    # Gateway mac address
+    mac: str = None
+
     # network broadcast address - the address that network broadcasts are sent to
     broadcast_address: str = '255.255.255.255'
 
@@ -582,6 +585,9 @@ class InterfaceConfig:
 
     # default socket timeout in sec
     socket_timeout: int = 2
+
+    # default request timeout in sec
+    request_timeout: int = 2
 
     # default broadcast timeout in sec
     broadcast_timeout: int = 5
@@ -595,8 +601,8 @@ class InterfaceConfig:
     # When run as a service the default age in seconds after which API data is considered stale and will not be used to augment loop packets
     max_age: int = 60
 
-    # default device poll interval in sec
-    poll_interval: int = 20
+    # default device poll interval in sec via api
+    api_data_cycle: int = 20
 
     # default period between lost contact log entries during an extended period of lost contact when run as a Service  in sec
     lost_contact_log_period: int = 21600
@@ -605,7 +611,7 @@ class InterfaceConfig:
     show_battery: bool = False
 
     # default firmware update check interval in sec
-    fw_check_interval: int = 86400
+    fw_check_cycle: int = 86400
 
     # show availability of firmware update
     show_fw_update_avail: bool = True
@@ -622,17 +628,20 @@ class InterfaceConfig:
     # is WH32 in use
     use_wh32: bool = True
 
+    # is WH24 attached
+    is_wh24: bool = False
+
     # should WH40 batt be ignored
     ignore_wh40_batt: bool = True
 
     # ip-address of http server for uploading ecowitt protocol
-    http_server_ip: str = None
+    eco_server_ip: str = None
 
     # port of http server for uploading ecowitt protocol
-    http_server_port: int = None
+    eco_server_port: int = None
 
     # data cycle for uploading ecowitt protocol
-    http_data_cycle: int = None
+    eco_data_cycle: int = None
 
 
 # ============================================================================
@@ -648,7 +657,7 @@ class Gateway(object):
     This class captures those common features.
     """
 
-    def __init__(self, data_cycle, debug, plugin_instance):
+    def __init__(self, plugin_instance):
         """
         Initialise a Gateway object.
         """
@@ -658,17 +667,20 @@ class Gateway(object):
         self.logger = self._plugin_instance.logger
         self.logger.debug("Init Gateway Object")
 
+        # get interface config
+        self.interface_config = self._plugin_instance.interface_config
+
         # set the language property to the global language
         self.language = self._plugin_instance.language
 
         # how often (in seconds) we will receive data
-        self.data_cycle = data_cycle
+        self.data_cycle = self.interface_config.api_data_cycle
 
         # create deque to hold 10 minutes of wind speed, wind direction and windgust
         self.wind_avg10m = deque(maxlen=(int(10*60/int(self.data_cycle))))
 
         # get debug settings
-        self.debug = debug if debug is not None else DebugOptions()
+        self.debug = DebugOptions()
 
         # is there a sensor warning
         self.sensor_warning = False
@@ -1324,13 +1336,7 @@ class GatewayApiDriver(Gateway):
     processing loop. The GatewayApiClient is turn uses child classes Station and Parser to interact directly with the Ecowitt Gateway API and
     parse the API responses respectively."""
 
-    def __init__(self,
-                 broadcast_address=None,
-                 broadcast_port=None,
-                 ip_address=None,
-                 port=None,
-                 poll_interval: int = None,
-                 plugin_instance=None):
+    def __init__(self, plugin_instance):
 
         # get instance
         self._plugin_instance = plugin_instance
@@ -1343,32 +1349,26 @@ class GatewayApiDriver(Gateway):
         self.driver_alive = False
 
         # get debug options
-        self.debug = DebugOptions()
+        # self.debug = DebugOptions()
 
         # now initialize my superclasses
-        super().__init__(poll_interval, self.debug, plugin_instance)
+        super().__init__(plugin_instance)
 
         # log the relevant settings/parameters we are using
         self.logger.debug("Starting GatewayApiDriver")
 
         # create an GatewayApiClient object to interact with the Ecowitt Gateway API
-        self.collector = GatewayCollector(ip_address=ip_address,
-                                          port=port,
-                                          broadcast_address=broadcast_address,
-                                          broadcast_port=broadcast_port,
-                                          poll_interval=poll_interval,
-                                          debug=self.debug,
-                                          plugin_instance=plugin_instance)
+        self.collector = GatewayCollector(plugin_instance=plugin_instance)
 
         # log setup
-        if ip_address is None and port is None:
+        if self.interface_config.ip_address is None and self.interface_config.port is None:
             self.logger.info(f'{self.collector.device.model} IP address and port not specified, attempting to discover {self.collector.device.model}...')
-        elif ip_address is None:
+        elif self.interface_config.ip_address is None:
             self.logger.info(f'{self.collector.device.model} IP address not specified, attempting to discover {self.collector.device.model}...')
-        elif port is None:
+        elif self.interface_config.port is None:
             self.logger.info(f'{self.collector.device.model} port not specified, attempting to discover {self.collector.device.model}...')
-        self.logger.info(f'{self.collector.device.model} address is {self.collector.device.ip_address.decode()}:{self.collector.device.port}')
-        self.logger.info(f'poll interval is {poll_interval} seconds')
+        self.logger.info(f'{self.collector.device.model} address is {self.collector.device.ip_address}:{self.collector.device.port}')
+        self.logger.info(f'poll interval is {self.interface_config.api_data_cycle} seconds')
         self.logger.debug(f'max tries is {self.interface_config.max_tries}, retry wait time is {self.interface_config.retry_wait} seconds')
         self.logger.debug(f'broadcast address is {self.interface_config.broadcast_address}:{self.interface_config.broadcast_port}, broadcast timeout is {self.interface_config.broadcast_timeout} seconds')
         self.logger.debug(f'socket timeout is {self.interface_config.socket_timeout} seconds')
@@ -1488,14 +1488,7 @@ class GatewayCollector:
 
     data_queue = queue.Queue()
 
-    def __init__(self,
-                 ip_address=None,
-                 port=None,
-                 broadcast_address=None,
-                 broadcast_port=None,
-                 poll_interval=None,
-                 debug=None,
-                 plugin_instance=None):
+    def __init__(self, plugin_instance):
         """Initialise our class."""
 
         # get plugin instance
@@ -1504,18 +1497,13 @@ class GatewayCollector:
 
         # get interface config
         self.interface_config = self._plugin_instance.interface_config
-        self.poll_interval = poll_interval if poll_interval is not None else self.interface_config.poll_interval
-        self.fw_update_check_interval = self.interface_config.fw_check_interval
+        self.api_data_cycle = self.interface_config.api_data_cycle
+        self.fw_update_check_cycle = self.interface_config.fw_check_cycle
         self.show_fw_update_avail = self.interface_config.show_fw_update_avail
         ignore_wh40_batt = self.interface_config.ignore_wh40_batt
 
         # get a GatewayDevice to handle interaction with the gateway device
-        self.device = GatewayDevice(ip_address=ip_address,
-                                    port=port,
-                                    broadcast_address=broadcast_address,
-                                    broadcast_port=broadcast_port,
-                                    debug=debug,
-                                    plugin_instance=plugin_instance)
+        self.device = GatewayDevice(plugin_instance)
 
         # start off logging failures
         self.log_failures = True
@@ -1553,7 +1541,7 @@ class GatewayCollector:
             # store the current time
             now = time.time()
             # is it time to poll?
-            if now - last_poll > self.poll_interval:
+            if now - last_poll > self.api_data_cycle:
                 # it is time to poll, wrap in a try..except in case we get a GatewayIOError exception
                 try:
                     queue_data = self.get_current_data()
@@ -1565,11 +1553,11 @@ class GatewayCollector:
                     queue_data = e
                 else:
                     # do a firmware update check if required
-                    if now - last_fw_check > self.fw_update_check_interval and self.show_fw_update_avail:
+                    if now - last_fw_check > self.fw_update_check_cycle and self.show_fw_update_avail:
                         update_available, latest_firmware, update_text = self.device.check_firmware_update()
                         if update_available:
                             self.logger.warning(f"A newer firmware for {self.device.model} is available. Installed version is: {self.device.firmware_version}, new version is: {latest_firmware}.")
-                            self.logger.info(f"    update at http://{self.device.ip_address.decode()} or via the WSView Plus app")
+                            self.logger.info(f"    update at http://{self.device.ip_address} or via the WSView Plus app")
 
                         queue_data.update({'firmware_update_available': update_available, 'firmware_update_text': update_text})
                         last_fw_check = now
@@ -1577,7 +1565,7 @@ class GatewayCollector:
                 # put the queue data in the queue
                 self.data_queue.put(queue_data)
                 # debug log when we will next poll the API
-                self.logger.debug(f'Next update in {self.poll_interval} seconds')
+                self.logger.debug(f'Next update in {self.api_data_cycle} seconds')
                 # reset the last poll ts
                 last_poll = now
 
@@ -1633,43 +1621,6 @@ class GatewayCollector:
         self.logger.debug(f"Processed parsed data: {parsed_data}")
         return parsed_data
 
-    # @property
-    # def calibration(self):
-    #     """Obtain device calibration data."""
-    #
-    #     # obtain the calibration data via the API
-    #     parsed_cal_coeff = self.device.api.get_calibration_coefficient()
-    #     # obtain the offset calibration data via the API
-    #     parsed_offset = self.device.api.get_offset_calibration()
-    #     # update our parsed gain data with the parsed offset calibration data
-    #     parsed_cal_coeff.update(parsed_offset)
-    #     # return the parsed data
-    #     return parsed_cal_coeff
-    #
-    # @property
-    # def sensors(self):
-    #     """Get the current Sensors object.
-    #
-    #     A Sensors object holds the address, id, battery state and signal level
-    #     data sensors known to the device. The sensor id value can be used to
-    #     discriminate between connected sensors, connecting sensors and disabled
-    #     sensor addresses.
-    #
-    #     Before using the GatewayCollector's Sensors object it should be updated
-    #     with recent sensor ID data via the API
-    #     """
-    #
-    #     # obtain current sensor id data via the API, we may get a GWIOError
-    #     # exception, if we do let it bubble up
-    #     # TODO. This should return a value
-    #     response = self.device.api.get_sensor_id()
-    #     # if we made it here our response was validated by checksum
-    #     # re-initialise our sensors object with the sensor ID data we just
-    #     # obtained
-    #     self.device.api.sensors.set_sensor_id_data(response)
-    #     # return our Sensors object
-    #     return self.device.api.sensors
-    #
     def startup(self):
         """Start a thread that collects data from the API."""
 
@@ -1873,24 +1824,22 @@ class ApiParser(object):
         b'\x87': ('decode_rain_gain', 20, None),
         b'\x88': ('decode_rain_reset', 3, None)
     }
-    # tuple of field codes for device rain related fields in the live data
-    # so we can isolate these fields
-    rain_field_codes = (b'\x0D', b'\x0E', b'\x0F', b'\x10',
-                        b'\x11', b'\x12', b'\x13', b'\x14',
-                        b'\x80', b'\x81', b'\x83', b'\x84',
-                        b'\x85', b'\x86')
-    # tuple of field codes for wind related fields in the device live data
-    # so we can isolate these fields
+    # tuple of field codes for device rain related fields in the live data so we can isolate these fields
+    rain_field_codes = (b'\x0D', b'\x0E', b'\x0F', b'\x10', b'\x11', b'\x12', b'\x13', b'\x14', b'\x80', b'\x81', b'\x83', b'\x84', b'\x85', b'\x86')
+    # tuple of field codes for wind related fields in the device live data so we can isolate these fields
     wind_field_codes = (b'\x0A', b'\x0B', b'\x0C', b'\x19')
 
-    def __init__(self, log_unknown_fields=True, plugin_instance=None):
+    def __init__(self, plugin_instance):
 
         # get instance
         self._plugin_instance = plugin_instance
         self.logger = self._plugin_instance.logger
 
+        # get interface config
+        self.interface_config = self._plugin_instance.interface_config
+
         # do we log unknown fields at info or leave at debug
-        self.log_unknown_fields = log_unknown_fields
+        self.log_unknown_fields = self.interface_config.log_unknown_fields
 
     def parse_addressed_data(self, payload, structure):
         """Parse an address structure API response payload.
@@ -2628,8 +2577,7 @@ class ApiParser(object):
                                                 bytes
         """
 
-        # return the parsed response, in this case we simply return the
-        # bytes as a semicolon separated hex string
+        # return the parsed response, in this case we simply return the bytes as a semicolon separated hex string
         return bytes_to_hex(response[4:10], separator=":")
 
     @staticmethod
@@ -3140,43 +3088,44 @@ class Sensors(object):
     # 'fffffffe' means the sensor is disabled, 'ffffffff' means the sensor is registering.
     not_registered = ('fffffffe', 'ffffffff')
 
-    def __init__(self,
-                 sensor_id_data=None,
-                 ignore_wh40_batt=True,
-                 show_battery=False,
-                 use_wh32=True,
-                 is_wh24=False,
-                 debug=None,
-                 plugin_instance=None):
-        """Initialise myself"""
+    def __init__(self, plugin_instance, sensor_id_data=None):
 
         # get instance
         self._plugin_instance = plugin_instance
         self.logger = self._plugin_instance.logger
 
-        # are we using a WH32 sensor, if so tell our sensor id decoding we have a WH32, otherwise it will default to WH26.
-        if use_wh32:
+        # get interface config
+        self.interface_config = self._plugin_instance.interface_config
+
+        # If WH32 sensor is used, decode that, otherwise it will decode to WH26 by default
+        if self.interface_config.use_wh32:
             # set the WH24 sensor id decode dict entry
             self.sensor_ids[b'\x05']['name'] = 'wh32'
             self.sensor_ids[b'\x05']['long_name'] = 'WH32'
-        # Tell our sensor id decoding whether we have a WH24 or a WH65. By default, we are coded to use a WH65. Is there a WH24 connected?
-        if is_wh24:
+
+        # Tell our sensor id decoding whether we have a WH24 or a WH65. By default, we are coded to use a WH65.
+        if self.interface_config.is_wh24:
             # set the WH24 sensor id decode dict entry
             self.sensor_ids[b'\x00']['name'] = 'wh24'
             self.sensor_ids[b'\x00']['long_name'] = 'WH24'
 
         # do we ignore battery state data from legacy WH40 sensors that do not provide valid battery state data
-        self.ignore_wh40_batt = ignore_wh40_batt
+        self.ignore_wh40_batt = self.interface_config.ignore_wh40_batt
+
         # set the show_battery property
-        self.show_battery = show_battery
+        self.show_battery = self.interface_config.show_battery
+
         # initialise legacy WH40 flag
         self.legacy_wh40 = None
+
         # initialise a dict to hold the parsed sensor data
         self.sensor_data = dict()
+
         # parse the raw sensor ID data and store the results in my parsed sensor data dict
         self.set_sensor_id_data(sensor_id_data)
+
         # debug sensors
-        self.debug = debug if debug is not None else DebugOptions()
+        self.debug = DebugOptions()
 
     def set_sensor_id_data(self, id_data):
         """Parse the raw sensor ID data and store the results.
@@ -3512,18 +3461,7 @@ class GatewayApi(object):
     # header used in each API command and response packet
     HEADER = b'\xff\xff'
     
-    def __init__(self,
-                 ip_address=None,
-                 port=None,
-                 broadcast_address=None,
-                 broadcast_port=None,
-                 socket_timeout=None,
-                 broadcast_timeout=None,
-                 max_tries=None,
-                 retry_wait=None,
-                 mac=None,
-                 debug=None,
-                 plugin_instance=None):
+    def __init__(self, plugin_instance):
 
         # get instance
         self._plugin_instance = plugin_instance
@@ -3531,32 +3469,29 @@ class GatewayApi(object):
 
         # get interface config
         self.interface_config = self._plugin_instance.interface_config
+        ip_address = self.interface_config.ip_address
+        port = self.interface_config.port
+        self.max_tries = self.interface_config.max_tries
+        self.retry_wait = self.interface_config.retry_wait
+        self.broadcast_address = self.interface_config.broadcast_address
+        self.broadcast_port = self.interface_config.broadcast_port
+        self.socket_timeout = self.interface_config.socket_timeout
+        self.broadcast_timeout = self.interface_config.broadcast_timeout
 
         # get a parser object to parse any API data
-        self.parser = ApiParser(log_unknown_fields=self.interface_config.log_unknown_fields,
-                                plugin_instance=plugin_instance)
+        self.parser = ApiParser(plugin_instance)
 
-        # define network parameters
-        self.broadcast_address = broadcast_address if broadcast_address is not None else self.interface_config.broadcast_address
-        self.broadcast_port = broadcast_port if broadcast_port is not None else self.interface_config.broadcast_port
-        self.socket_timeout = socket_timeout if socket_timeout is not None else self.interface_config.socket_timeout
-        self.broadcast_timeout = broadcast_timeout if broadcast_timeout is not None else self.interface_config.broadcast_timeout
-
-        # initialise flags to indicate if IP address or port were discovered
+        # initialise flags to indicate if IP address were discovered
         self.ip_discovered = ip_address is None
-        self.port_discovered = port is None
 
-        # if IP address or port was not specified (None) then attempt to
-        # discover the device with a UDP broadcast
+        # if IP address or port was not specified (None) then attempt to discover the device with a UDP broadcast
         if ip_address is None or port is None:
-            for attempt in range(max_tries):
+            for attempt in range(self.max_tries):
                 try:
-                    # discover devices on the local network, the result is a list of dicts in IP address order with each dict
-                    # containing data for a unique discovered device
+                    # discover devices on the local network, the result is a list of dicts in IP address order with each dict containing data for a unique discovered device
                     self.device_list = self.discover()
                 except socket.error as e:
                     self.logger.error(f"Unable to detect device IP address and port: {e} ({type(e)})")
-                    # signal that we have a critical error
                     raise
                 else:
                     # did we find any devices
@@ -3578,43 +3513,36 @@ class GatewayApi(object):
                         # did not discover any device so log it
                         self.logger.debug(f"Failed to detect device IP address and/or port after {attempt + 1,} attempts")
                         # do we try again or raise an exception
-                        if attempt < max_tries - 1:
+                        if attempt < self.max_tries - 1:
                             # we still have at least one more try left so sleep and try again
-                            time.sleep(retry_wait)
+                            time.sleep(self.retry_wait)
                         else:
                             # we've used all our tries, log it and raise an exception
                             _msg = f"Failed to detect device IP address and/or port after {attempt + 1,} attempts"
                             self.logger.error(_msg)
                             raise GatewayIOError(_msg)
 
-        # set our ip_address property but encode it first, it saves doing  it repeatedly later
-        self.ip_address = ip_address.encode()
-        self.port = port
-        self.max_tries = max_tries if max_tries is not None else self.interface_config.max_tries
-        self.retry_wait = retry_wait if retry_wait is not None else self.interface_config.retry_wait
+            # update interface config
+            self.interface_config.ip_address = ip_address.encode()
+            self.interface_config.port = port
 
-        # start off logging failures
-        self.log_failures = True
+        # set our ip_address property but encode it first, it saves doing it repeatedly later
+        self.ip_address = self.interface_config.ip_address
+        self.port = self.interface_config.port
 
         # Get my MAC address to use later if we have to rediscover. Within class GatewayApi the MAC address is stored as a bytestring.
-        if mac is None:
-            self.mac = self.get_mac_address()
-        else:
-            self.mac = mac
+        self.interface_config.mac = self.get_mac_address()
+
         # get my device model
         self.model = self.get_model_from_firmware(self.get_firmware_version())
 
         # Do we have a WH24 attached? First obtain our system parameters.
         _sys_params = self.get_system_params()
-        is_wh24 = _sys_params.get('sensor_type', 0) == 'WH24'
+        self.interface_config.is_wh24 = _sys_params.get('sensor_type', 0) == 'WH24'
 
         # get a Sensors object to parse any API sensor state data
-        self.sensors = Sensors(use_wh32=self.interface_config.use_wh32,
-                               ignore_wh40_batt=self.interface_config.ignore_wh40_batt,
-                               show_battery=self.interface_config.show_battery_warning,
-                               is_wh24=is_wh24,
-                               debug=debug,
-                               plugin_instance=plugin_instance)
+        self.sensors = Sensors(plugin_instance=plugin_instance)
+
         # update the sensors object
         self.update_sensor_id_data()
 
@@ -4017,7 +3945,7 @@ class GatewayApi(object):
         calling get_firmware_version() should be prepared to handle this exception.
         """
 
-        self.logger.debug(f"set_firmware_upgrade: Firmware update called for {self.ip_address.decode()}:{self.port}")
+        self.logger.debug(f"set_firmware_upgrade: Firmware update called for {self.ip_address}:{self.port}")
         payload = bytearray()
         payload.extend(self.ip_address)
         payload.extend(int_to_bytes(self.port, 2))
@@ -4157,7 +4085,7 @@ class GatewayApi(object):
         calling set_reboot() should be prepared to handle this exception.
         """
 
-        self.logger.debug(f"set_reboot: Reboot called for {self.ip_address.decode()}:{self.port}")
+        self.logger.debug(f"set_reboot: Reboot called for {self.ip_address}:{self.port}")
         return self.send_cmd_with_retries('CMD_WRITE_REBOOT')
 
     def set_reset(self):
@@ -4169,7 +4097,7 @@ class GatewayApi(object):
         calling set_reboot() should be prepared to handle this exception.
         """
 
-        self.logger.debug(f"set_reboot: Reset called for {self.ip_address.decode()}:{self.port}")
+        self.logger.debug(f"set_reboot: Reset called for {self.ip_address}:{self.port}")
         return self.send_cmd_with_retries('CMD_WRITE_RESET')
 
     def read_rain(self) -> dict:
@@ -4234,7 +4162,7 @@ class GatewayApi(object):
                 time.sleep(self.retry_wait)
         # if we made it here we failed after self.max_tries attempts first log it
         _msg = f"Failed to obtain response to command '{cmd}' after {self.max_tries} attempts"
-        if response is not None or self.log_failures:
+        if response is not None:
             self.logger.error(_msg)
         # then finally, raise a GWIOError exception
         raise GatewayIOError(_msg)
@@ -4416,8 +4344,7 @@ class GatewayApi(object):
         # we will only rediscover if we first discovered
         if self.ip_discovered:
             # log that we are attempting re-discovery
-            if self.log_failures:
-                self.logger.info(f"Attempting to re-discover {self.model}...")
+            self.logger.info(f"Attempting to re-discover {self.model}...")
             # attempt to discover up to self.max_tries times
             for attempt in range(self.max_tries):
                 # sleep before our attempt, but not if it's the first one
@@ -4440,34 +4367,29 @@ class GatewayApi(object):
                         else:
                             stem = "Multiple devices were"
                         self.logger.info(f"{stem} found at {gw1000_str}")
-                        # iterate over each candidate checking their MAC address against my mac property. This way we know
-                        # we will be connecting to the device we were previously using.
+                        # iterate over each candidate checking their MAC address against my mac property. This way we know we will be connecting to the device we were previously using.
                         for device in device_list:
                             # do the MACs match, if so we have our old device and we can exit the loop
-                            if self.mac == device['mac']:
+                            if self.interface_config.mac == device['mac']:
                                 self.ip_address = device['ip_address'].encode()
                                 self.port = device['port']
                                 break
                         else:
-                            # we have exhausted the device list without a match so continue the outer loop if we have
-                            # any attempts left
+                            # we have exhausted the device list without a match so continue the outer loop if we have any attempts left
                             continue
                         # log the new IP address and port
-                        self.logger.info(f"{self.model} at address {self.ip_address.decode()}:{self.port} will be used")
+                        self.logger.info(f"{self.model} at address {self.ip_address}:{self.port} will be used")
                         # return True indicating the re-discovery was successful
                         return True
                     else:
                         # did not discover any devices so log it
-                        if self.log_failures:
-                            self.logger.debug(f"Failed attempt {attempt + 1} to detect any devices")
+                        self.logger.debug(f"Failed attempt {attempt + 1} to detect any devices")
             else:
                 # we exhausted our attempts at re-discovery so log it
-                if self.log_failures:
-                    self.logger.info(f"Failed to detect original {self.model} after {self.max_tries} attempts")
+                self.logger.info(f"Failed to detect original {self.model} after {self.max_tries} attempts")
         else:
             # an IP address was specified, so we cannot go searching, log it
-            if self.log_failures:
-                self.logger.debug("IP address specified in 'weewx.conf', re-discovery was not attempted")
+            self.logger.debug("IP address specified in 'weewx.conf', re-discovery was not attempted")
         # if we made it here re-discovery was unsuccessful so return False
         return False
 
@@ -4479,6 +4401,237 @@ class GatewayApi(object):
         sensor_id_data = self.get_sensor_id()
         # now use the sensor ID data to re-initialise our sensors object
         self.sensors.set_sensor_id_data(sensor_id_data)
+
+
+class GatewayHttp(object):
+    """Class to interact with a gateway device via HTTP requests."""
+
+    # HTTP request commands
+    commands = ['get_version', 'get_livedata_info', 'get_ws_settings', 'get_calibration_data', 'get_rain_totals',
+                'get_device_info',
+                'get_sensors_info', 'get_network_info', 'get_units_info', 'get_cli_soilad', 'get_cli_multiCh',
+                'get_cli_pm25',
+                'get_cli_co2', 'get_piezo_rain']
+
+    def __init__(self, plugin_instance):
+        """Initialise a HttpRequest object."""
+
+        # get instance
+        self._plugin_instance = plugin_instance
+        self.logger = self._plugin_instance.logger
+
+        # get interface config
+        self.interface_config = self._plugin_instance.interface_config
+        self.host = self.interface_config.ip_address
+        self.port = self.interface_config.port
+        self.timeout = self.interface_config.request_timeout
+        self._session = requests.Session()
+
+    def request(self, cmd: str, params: dict = None, result: str = 'json'):
+        """Send a HTTP request to the device and return the response.
+
+        Create a HTTP request with optional data and headers. Send the HTTP request to the device as a GET request and obtain the response. The
+        JSON deserialized response is returned. If the response cannot be deserialized the value None is returned. URL or timeout errors are
+        logged and raised.
+
+        :param cmd:          cmd to be requested
+        :param params:       params for request
+        :param result:       type of result
+        :return:             request response
+        """
+
+        def build_url() -> str:
+            """
+            Builds a request url
+            :return: string of the url, dependent on settings of the FritzDevice
+            """
+            return f"http://{self.host}:{self.port}/{cmd}?"
+
+        # an invalid command
+        if cmd not in GatewayHttp.commands:
+            raise UnknownHttpCommand(f"Unknown HTTP command '{cmd}'")
+
+        url = build_url()
+
+        try:
+            rsp = self._session.get(url, params=params, timeout=self.timeout)
+        except Exception as e:
+            self.logger.error(f"Error during GET request {e} occurred.")
+        else:
+            status_code = rsp.status_code
+            if status_code == 200:
+                self.logger.debug("Sending HTTP request successful")
+                if result == 'json':
+                    try:
+                        data = rsp.json()
+                    except JSONDecodeError:
+                        self.logger.error('Error occurred during parsing request response to json')
+                    else:
+                        return data
+                else:
+                    return rsp.text.strip()
+            elif status_code == 403:
+                self.logger.debug("HTTP access denied.")
+            else:
+                self.logger.error(f"HTTP request error code: {status_code}")
+                rsp.raise_for_status()
+                self.logger.debug(f"Url: {url}, Params: {params}")
+
+    def get_version(self):
+        """Get the device firmware related information.
+
+        Returns a dict or None if no valid data was returned by the device."""
+
+        try:
+            return self.request('get_version')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_livedata_info(self):
+        """Get live sensor data from the device.
+
+        Returns a dict or None if no valid data was returned by the device."""
+
+        try:
+            return self.request('get_livedata_info')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_ws_settings(self):
+        """Get weather services settings from the device.
+
+        Returns a dict or None if no valid data was returned by the device."""
+
+        try:
+            return self.request('get_ws_settings')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_calibration_data(self):
+        """Get calibration settings from the device.
+
+        Returns a dict or None if no valid data was returned by the device."""
+
+        try:
+            return self.request('get_calibration_data')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_rain_totals(self):
+        """Get rainfall totals and settings from the device.
+
+        Returns a dict or None if no valid data was returned by the device."""
+
+        try:
+            return self.request('get_rain_totals')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_device_info(self):
+        """Get device settings from the device.
+
+        Returns a dict or None if no valid data was returned by the device."""
+
+        try:
+            return self.request('get_device_info')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_sensors_info(self):
+        """Get sensor ID data from the device.
+
+        Combines all pages of available data and returns a single dict or None
+        if no valid data was returned by the device."""
+
+        try:
+            page_1 = self.request(cmd='get_sensors_info', params={'page': 1})
+        except requests.exceptions.Timeout:
+            page_1 = None
+        try:
+            page_2 = self.request(cmd='get_sensors_info', params={'page': 2})
+        except requests.exceptions.Timeout:
+            page_2 = None
+        if page_1 is not None and page_2 is not None:
+            return page_1 + page_2
+        elif page_1 is None:
+            return page_2
+        else:
+            return page_1
+
+    def get_network_info(self):
+        """Get network related data/settings from the device.
+
+        Returns a dict or None if no valid data was returned by the device."""
+
+        try:
+            return self.request('get_network_info')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_units_info(self):
+        """Get units settings from the device.
+
+        Returns a dict or None if no valid data was returned by the device."""
+
+        try:
+            return self.request('get_units_info')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_cli_soilad(self):
+        """Get multichannel soil moisture sensor calibration data from the device.
+
+        Returns a list of dicts or None if no valid data was returned by the
+        device."""
+
+        try:
+            return self.request('get_cli_soilad')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_cli_multiCh(self):
+        """Get multichannel temperature/humidity sensor calibration data from
+        the device.
+
+        Returns a list of dicts or None if no valid data was returned by the
+        device."""
+
+        try:
+            return self.request('get_cli_multiCh')
+        except requests.exceptions.Timeout:
+            pass
+
+    def get_cli_pm25(self):
+        """Get PM2.5 sensor offset data from the device.
+
+        Returns a list of dicts or None if no valid data was returned by the
+        device."""
+
+        try:
+            return self.request('get_cli_pm25')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_cli_co2(self):
+        """Get CO2 sensor offset data from the device.
+
+        Returns a list of dicts or None if no valid data was returned by the
+        device."""
+
+        try:
+            return self.request('get_cli_co2')
+        except requests.exceptions.Timeout:
+            return None
+
+    def get_piezo_rain(self):
+        """Get piezo rain sensor data/settings from the device.
+
+        Returns a dict or None if no valid data was returned by the device."""
+
+        try:
+            return self.request('get_piezo_rain')
+        except requests.exceptions.Timeout:
+            return None
 
 
 class GatewayDevice(object):
@@ -4510,13 +4663,7 @@ class GatewayDevice(object):
                 {'name': 'wow_params', 'long_name': 'Weather Observations Website'},
                 {'name': 'custom_params', 'long_name': 'Customized'}]
 
-    def __init__(self,
-                 ip_address=None,
-                 port=None,
-                 broadcast_address=None,
-                 broadcast_port=None,
-                 debug=None,
-                 plugin_instance=None):
+    def __init__(self,               plugin_instance=None):
         """Initialise a GatewayDevice object."""
 
         # get instance
@@ -4527,12 +4674,10 @@ class GatewayDevice(object):
         self.interface_config = self._plugin_instance.interface_config
 
         # get a GatewayApi object to handle the interaction with the API
-        self.api = GatewayApi(ip_address=ip_address,
-                              port=port,
-                              broadcast_address=broadcast_address,
-                              broadcast_port=broadcast_port,
-                              debug=debug,
-                              plugin_instance=plugin_instance)
+        self.api = GatewayApi(plugin_instance)
+
+        # get a GatewayHttp object to handle any HTTP requests
+        self.http = GatewayHttp(plugin_instance)
 
         # start off logging failures
         self.log_failures = True
@@ -4695,12 +4840,14 @@ class GatewayDevice(object):
 
         Return True if a device firmware update is available or False otherwise."""
 
-        # version = self.http.get_version()
-        # if version is not None and 'newVersion' in version:
-        #     return True if version['newVersion'] == '1' else False
-        # return False
+        # ToDo: Unterscheiden zwischen Geräte, die get_request unterstützen und denen, die es nicht tun
 
-        return self.check_firmware_update()[0]
+        version = self.http.get_version()
+        if version is not None and 'newVersion' in version:
+            return True if version['newVersion'] == '1' else False
+        return False
+
+        # return self.check_firmware_update()[0]
 
     @property
     def calibration(self):
@@ -4722,10 +4869,10 @@ class GatewayDevice(object):
         Return the WS90 installed firmware version. If no WS90 is available the value None is returned.
         """
 
-        # sensors = self.http.get_sensors_info()
-        # for sensor in sensors:
-        #     if sensor.get('img') == 'wh90':
-        #         return sensor.get('version', 'not available')
+        sensors = self.http.get_sensors_info()
+        for sensor in sensors:
+            if sensor.get('img') == 'wh90':
+                return sensor.get('version', 'not available')
         return None
 
     def reboot(self):
@@ -4834,7 +4981,7 @@ class GatewayDevice(object):
 
 class GatewayTcpDriver(Gateway):
 
-    def __init__(self, tcp_server_address, tcp_server_port, data_cycle, gateway_address, plugin_instance):
+    def __init__(self, plugin_instance):
         """Initialise an Ecowitt Gateway API driver object."""
 
         # init instance
@@ -4849,7 +4996,7 @@ class GatewayTcpDriver(Gateway):
         self.debug = DebugOptions()
 
         # now initialize my superclasses
-        super().__init__(data_cycle, self.debug, plugin_instance)
+        super().__init__(plugin_instance)
 
         # log all found sensors since beginning of plugin as a set
         self.sensors = []
@@ -4858,15 +5005,13 @@ class GatewayTcpDriver(Gateway):
         self.sensors_missed = {}
 
         # get ECOWITT client
-        self.client = GatewayTcpClient(tcp_server_address=tcp_server_address,
-                                       tcp_server_port=tcp_server_port,
-                                       plugin_instance=plugin_instance)
+        self.client = GatewayTcpClient(plugin_instance)
 
         # start the ECOWITT client in its own thread
         self.client.startup()
         self.driver_alive = True
 
-        self.ip_selected_gateway = gateway_address
+        self.ip_selected_gateway = self.interface_config.ip_address
 
     def closePort(self):
         self.logger.info('Stop and Shutdown of FoshkPlugin TCP Server called')
@@ -5014,7 +5159,7 @@ class GatewayTcpClient:
     # create queue object
     data_queue = queue.Queue()
 
-    def __init__(self, tcp_server_address, tcp_server_port, show_battery=False, debug_sensors=False, plugin_instance=None):
+    def __init__(self, plugin_instance):
 
         # get instance
         self._plugin_instance = plugin_instance
@@ -5030,10 +5175,10 @@ class GatewayTcpClient:
         self.logger.debug("Starting GatewayTcpClient")
 
         # get tcp server object
-        self.tcp_server = GatewayTcpClient.TCPServer(tcp_server_address, tcp_server_port, GatewayTcpClient.Handler, plugin_instance)
+        self.tcp_server = GatewayTcpClient.TCPServer(GatewayTcpClient.Handler, plugin_instance)
 
         # get a sensors object to handle sensor data
-        self.sensors = GatewayTcpClient.Sensors(show_battery=show_battery, debug_sensors=debug_sensors, plugin_instance=plugin_instance)
+        self.sensors = GatewayTcpClient.Sensors(plugin_instance)
 
     def run_server(self):
         self.tcp_server.run()
@@ -5117,11 +5262,16 @@ class GatewayTcpClient:
         daemon_threads = True
         allow_reuse_address = True
 
-        def __init__(self, address, port, handler, plugin_instance):
+        def __init__(self, handler, plugin_instance):
 
             # init instance
             self._plugin_instance = plugin_instance
             self.logger = self._plugin_instance.logger
+
+            # get interface config
+            self.interface_config = self._plugin_instance.interface_config
+            address = self.interface_config.eco_server_ip
+            port = self.interface_config.eco_server_port
 
             # init TCP Server
             self.logger.info(f"start tcp server at {address}:{port}")
@@ -5482,1388 +5632,15 @@ class GatewayTcpClient:
 
 
 # ============================================================================
-#                        Gateway HTTP get request classes
-# ============================================================================
-
-# class GatewayHttpDriver(Gateway):
-#     """Ecowitt Gateway driver class for HTTP get request.
-#     """
-#
-#     def __init__(self,
-#                  gateway_address=None,
-#                  gateway_port=None,
-#                  poll_interval=20,
-#                  use_th32=False,
-#                  plugin_instance=None):
-#         """
-#         Initialise an Ecowitt Gateway driver object.
-#         """
-#
-#         # get instance
-#         self._plugin_instance = plugin_instance
-#         self.logger = self._plugin_instance.logger
-#
-#         # get data poll cycle
-#         self.poll_interval = poll_interval
-#
-#         self.driver_alive = False
-#
-#         # now initialize my superclasses
-#         super().__init__(self.poll_interval, self._plugin_instance)
-#
-#         # set the IP address property to the Ecowitt Gateway IP address
-#         self.gateway_address = gateway_address
-#
-#         # set the port property from obtain the Ecowitt Gateway port from the config dict for port number we have a default value we can use, so if port is not specified use the default
-#         self.gateway_port = gateway_port
-#
-#         # log the relevant settings/parameters we are using
-#         self.logger.debug("Starting GatewayApiDriver")
-#
-#         # Is a WH32 in use. WH32 TH sensor can override/provide outdoor TH data to the Ecowitt Gateway. In terms of TH data the process is transparent
-#         # and we do not need to know if a WH32 or other sensor is providing outdoor TH data but in terms of battery state we need to know so the
-#         # battery state data can be reported against the correct sensor.
-#         use_th32 = use_th32
-#
-#         # log all found sensors since beginning of plugin as a set
-#         self.sensors = []
-#
-#         # log sensors, that were missed with count of cycles
-#         self.sensors_missed = {}
-#
-#         # create an GatewayApiClient object to interact with the Ecowitt Gateway API
-#         self.client = GatewayHttpClient(gateway_address=self.gateway_address,
-#                                            gateway_port=self.gateway_port,
-#                                            poll_interval=self.poll_interval,
-#                                            use_th32=use_th32,
-#                                            show_battery=self.show_battery,
-#                                            debug_rain=self.debug_rain,
-#                                            debug_wind=self.debug_wind,
-#                                            debug_sensors=self.debug_sensors,
-#                                            plugin_instance=self._plugin_instance)
-#
-#         self.logger.info(f'{self.client.station.model} address is {self.client.station.ip_address.decode()}:{self.client.station.port}')
-#         self.logger.info(f'poll interval is {self.poll_interval} seconds')
-#
-#         self.driver_alive = True
-#
-#     def genLoopPackets(self):
-#         """
-#         Generator function that returns loop packets.
-#
-#         Run a continuous loop checking the GatewayApiClient queue for data. When data arrives map the raw data to a loop packet and yield the packet.
-#         """
-#
-#         # generate loop packets forever
-#         while self.driver_alive:
-#             # wrap in a try to catch any instances where the queue is empty
-#             try:
-#                 # get any data from the collector queue
-#                 queue_data = self.client.data_queue.get(True, 10)
-#             except queue.Empty:
-#                 # self.logger.debug("API. genLoopPackets: there was nothing in the queue so continue")
-#                 # there was nothing in the queue so continue
-#                 pass
-#             else:
-#                 # We received something in the queue, it will be one of three things:
-#                 # 1. a dict containing sensor data
-#                 # 2. an exception
-#                 # 3. the value None signalling a serious error that means the Collector needs to shut down
-#
-#                 # if the data is of instance dict, it must have data
-#                 if isinstance(queue_data, dict):
-#                     self.logger.debug(f"API. genLoopPackets: queue_data={queue_data}")
-#                     # Now start to create a loop packet.
-#
-#                     # put timestamp of now to packet
-#                     packet = {'timestamp': int(time.time() + 0.5)}
-#
-#                     if 'datetime' in queue_data and isinstance(queue_data['datetime'], datetime):
-#                         packet['datetime_utc'] = queue_data['datetime']
-#                     else:
-#                         # we don't have a datetime at utc so create one
-#                         packet['datetime_utc'] = datetime.utcnow().replace(tzinfo=timezone.utc, microsecond=0)
-#
-#                     if self.debug_loop:
-#                         self.logger.debug(f"Received {self.client.station.model} data (debug_loop): {datetime_to_string(packet['datetime_utc'])} {natural_sort_dict(queue_data)}")
-#
-#                     # if not already determined, determine which cumulative rain field will be used to determine the per period rain field
-#                     if not self.rain_mapping_confirmed:
-#                         self.get_cumulative_rain_field(queue_data)
-#
-#                     # get the rainfall for this period from total
-#                     self.calculate_rain(queue_data)
-#
-#                     # get the lightning strike count for this period from total
-#                     self.calculate_lightning_count(queue_data)
-#
-#                     # add calculated data to queue_data
-#                     self.add_calculated_data(queue_data)
-#
-#                     # add sensor warning data field and log entry if enabled
-#                     if self._plugin_instance.sensorwarning:
-#                         self.check_sensors(queue_data)
-#
-#                     # add battery warning data field and log entry if enabled
-#                     if self._plugin_instance.batterywarning:
-#                         self.check_battery(queue_data)
-#
-#                     # add the queue_data to the empty packet
-#                     packet.update(queue_data)
-#
-#                     # log the packet if necessary, there are several debug settings that may require this, start from the highest (most encompassing) and work to the lowest (least encompassing)
-#                     if self.debug_loop:
-#                         self.logger.info(f"API. genLoopPackets: Packet {datetime_to_string(packet['datetime_utc'])}: {natural_sort_dict(packet)}")
-#                     # yield the loop packet
-#                     yield packet
-#                     # time.sleep(self.poll_interval)
-#
-#                 # if it's a tuple then it's a tuple with an exception and exception text
-#                 elif isinstance(queue_data, BaseException):
-#                     # We have an exception. The collector did not deem it serious enough to want to shutdown or it would have sent None instead. If it is anything else we log it and then raise it.
-#
-#                     # first extract our exception
-#                     e = queue_data
-#                     # and process it if we have something
-#                     if e:
-#                         # is it a GatewayError
-#                         self.logger.error(f"Caught unexpected exception {e.__class__.__name__}: {e}")
-#                         # then raise it
-#                         raise e
-#
-#                 # if it's None then its a signal, the Collector needs to shutdown
-#                 elif queue_data is None:
-#                     # if debug_loop log what we received
-#                     if self.debug_loop:
-#                         self.logger.info("Received 'None'")
-#                     # we received the signal to shutdown, so call closePort()
-#                     self.closePort()
-#                     # and raise an exception to cause the engine to shutdown
-#                     raise GatewayIOError("GatewayApiClient needs to shutdown")
-#                 # if it's none of the above (which it should never be) we don't know what to do with it so pass and wait for the next item in the queue
-#
-#     def check_battery(self, data):
-#         """
-#         Check if batteries states are critical, create log entry and add a separate field for battery warning.
-#         """
-#
-#         # get battery data
-#         raw_data = self.client.battery_desc
-#         # init string to collect message
-#         batterycheck = ''
-#         # iterate over data to look for critical battery
-#         for key in raw_data:
-#             if raw_data[key] != 'OK':
-#                 if batterycheck != '':
-#                     batterycheck += ', '
-#                 batterycheck += key
-#         # check result, create log entry data field
-#         if batterycheck != "":
-#             data['battery_warning'] = 0
-#             if not self.battery_warning:
-#                 self.logger.warning(f"<WARNING> Battery level for sensor(s) {batterycheck} is critical - please swap battery")
-#                 self.battery_warning = True
-#                 data['battery_warning'] = 1
-#         elif self.battery_warning:
-#             self.logger.info("<OK> Battery level for all sensors is ok again")
-#             self.battery_warning = False
-#             data['battery_warning'] = 0
-#
-#     def check_sensors(self, data: dict, missing_count: int = 2):
-#         """
-#         Check if all know sensors are still connected, create log entry and add a separate field for sensor warning.
-#         """
-#
-#         # get currently connected sensors
-#         connected_sensors = self.client.sensors.connected_sensors
-#         # self.logger.debug(f"check_sensors: connected_sensors={connected_sensors}")
-#         # log all found sensors during runtime
-#         self.sensors = list(set(self.sensors + connected_sensors))
-#         # check if all sensors are still connected, create log entry data field
-#         if set(connected_sensors) == set(self.sensors):
-#             # self.logger.debug(f"check_sensors: All sensors are still connected!")
-#             self.sensor_warning = False
-#             data['sensor_warning'] = 0
-#         else:
-#             missing_sensors = list(set(self.sensors).difference(set(connected_sensors)))
-#             self.update_missing_sensor_dict(missing_sensors)
-#
-#             blacklist = set()
-#             for sensor in self.sensors_missed:
-#                 if self.sensors_missed[sensor] >= missing_count:
-#                     blacklist.add(sensor)
-#
-#             if blacklist:
-#                 self.logger.error(f"API: check_sensors: The following sensors where lost (more than {missing_count} data cycles): {list(blacklist)}")
-#                 self.sensor_warning = True
-#                 data['sensor_warning'] = 1
-#             else:
-#                 self.sensor_warning = False
-#                 data['sensor_warning'] = 0
-#
-#     def update_missing_sensor_dict(self, missing_sensors: list):
-#         """
-#         Get list of sensors, which were lost/missed in last data cycle and udpate missing_sensor_dict with count of missing cycles.
-#         """
-#
-#         for sensor in missing_sensors:
-#             if sensor not in self.sensors_missed:
-#                 self.sensors_missed[sensor] = 1
-#             else:
-#                 self.sensors_missed[sensor] += 1
-#
-#         self.logger.debug(f"sensors_missed={self.sensors_missed}")
-#
-#     @property
-#     def hardware_name(self):
-#         """
-#         Return the hardware name.
-#
-#         Use the device model from our Collector's Station object, but if this
-#         is None use the driver name.
-#         """
-#
-#         if self.client.station.model is not None:
-#             return self.client.station.model
-#
-#     @property
-#     def mac_address(self):
-#         """
-#         Return the Ecowitt Gateway MAC address.
-#         """
-#
-#         return self.client.mac_address
-#
-#     @property
-#     def firmware_version(self):
-#         """
-#         Return the Ecowitt Gateway firmware version string.
-#         """
-#
-#         return self.client.firmware_version
-#
-#     @property
-#     def sensor_id_data(self):
-#         """
-#         Return the Ecowitt Gateway sensor identification data.
-#
-#         The sensor ID data is available via the data property of the Collector objects' sensors property.
-#         """
-#
-#         return self.client.sensors.data
-#
-#     def closePort(self):
-#         """
-#         Close down the driver port.
-#         """
-#
-#         # in this case there is no port to close, just shutdown the collector
-#         self.driver_alive = False
-
-
-# class GatewayHttpClient:
-#     """
-#     Class to poll the Ecowitt Gateway API, decode and return data to the driver.
-#     """
-#
-#     # map of sensor ids to short name, long name and battery byte decode function
-#     sensor_ids = {
-#         b'\x00': {'name': 'wh65', 'long_name': 'WH65', 'batt_fn': 'batt_binary'},
-#         b'\x01': {'name': 'wh68', 'long_name': 'WH68', 'batt_fn': 'batt_volt'},
-#         b'\x02': {'name': 'ws80', 'long_name': 'WS80', 'batt_fn': 'batt_volt'},
-#         b'\x03': {'name': 'wh40', 'long_name': 'WH40', 'batt_fn': 'batt_binary'},
-#         b'\x04': {'name': 'wh25', 'long_name': 'WH25', 'batt_fn': 'batt_binary'},
-#         b'\x05': {'name': 'wh26', 'long_name': 'WH26', 'batt_fn': 'batt_binary'},
-#         b'\x06': {'name': 'wh31_ch1', 'long_name': 'WH31 ch1', 'batt_fn': 'batt_binary'},
-#         b'\x07': {'name': 'wh31_ch2', 'long_name': 'WH31 ch2', 'batt_fn': 'batt_binary'},
-#         b'\x08': {'name': 'wh31_ch3', 'long_name': 'WH31 ch3', 'batt_fn': 'batt_binary'},
-#         b'\x09': {'name': 'wh31_ch4', 'long_name': 'WH31 ch4', 'batt_fn': 'batt_binary'},
-#         b'\x0a': {'name': 'wh31_ch5', 'long_name': 'WH31 ch5', 'batt_fn': 'batt_binary'},
-#         b'\x0b': {'name': 'wh31_ch6', 'long_name': 'WH31 ch6', 'batt_fn': 'batt_binary'},
-#         b'\x0c': {'name': 'wh31_ch7', 'long_name': 'WH31 ch7', 'batt_fn': 'batt_binary'},
-#         b'\x0d': {'name': 'wh31_ch8', 'long_name': 'WH31 ch8', 'batt_fn': 'batt_binary'},
-#         b'\x0e': {'name': 'wh51_ch1', 'long_name': 'WH51 ch1', 'batt_fn': 'batt_binary'},
-#         b'\x0f': {'name': 'wh51_ch2', 'long_name': 'WH51 ch2', 'batt_fn': 'batt_binary'},
-#         b'\x10': {'name': 'wh51_ch3', 'long_name': 'WH51 ch3', 'batt_fn': 'batt_binary'},
-#         b'\x11': {'name': 'wh51_ch4', 'long_name': 'WH51 ch4', 'batt_fn': 'batt_binary'},
-#         b'\x12': {'name': 'wh51_ch5', 'long_name': 'WH51 ch5', 'batt_fn': 'batt_binary'},
-#         b'\x13': {'name': 'wh51_ch6', 'long_name': 'WH51 ch6', 'batt_fn': 'batt_binary'},
-#         b'\x14': {'name': 'wh51_ch7', 'long_name': 'WH51 ch7', 'batt_fn': 'batt_binary'},
-#         b'\x15': {'name': 'wh51_ch8', 'long_name': 'WH51 ch8', 'batt_fn': 'batt_binary'},
-#         b'\x16': {'name': 'wh41_ch1', 'long_name': 'WH41 ch1', 'batt_fn': 'batt_int'},
-#         b'\x17': {'name': 'wh41_ch2', 'long_name': 'WH41 ch2', 'batt_fn': 'batt_int'},
-#         b'\x18': {'name': 'wh41_ch3', 'long_name': 'WH41 ch3', 'batt_fn': 'batt_int'},
-#         b'\x19': {'name': 'wh41_ch4', 'long_name': 'WH41 ch4', 'batt_fn': 'batt_int'},
-#         b'\x1a': {'name': 'wh57', 'long_name': 'WH57', 'batt_fn': 'batt_int'},
-#         b'\x1b': {'name': 'wh55_ch1', 'long_name': 'WH55 ch1', 'batt_fn': 'batt_int'},
-#         b'\x1c': {'name': 'wh55_ch2', 'long_name': 'WH55 ch2', 'batt_fn': 'batt_int'},
-#         b'\x1d': {'name': 'wh55_ch3', 'long_name': 'WH55 ch3', 'batt_fn': 'batt_int'},
-#         b'\x1e': {'name': 'wh55_ch4', 'long_name': 'WH55 ch4', 'batt_fn': 'batt_int'},
-#         b'\x1f': {'name': 'wh34_ch1', 'long_name': 'WH34 ch1', 'batt_fn': 'batt_volt'},
-#         b'\x20': {'name': 'wh34_ch2', 'long_name': 'WH34 ch2', 'batt_fn': 'batt_volt'},
-#         b'\x21': {'name': 'wh34_ch3', 'long_name': 'WH34 ch3', 'batt_fn': 'batt_volt'},
-#         b'\x22': {'name': 'wh34_ch4', 'long_name': 'WH34 ch4', 'batt_fn': 'batt_volt'},
-#         b'\x23': {'name': 'wh34_ch5', 'long_name': 'WH34 ch5', 'batt_fn': 'batt_volt'},
-#         b'\x24': {'name': 'wh34_ch6', 'long_name': 'WH34 ch6', 'batt_fn': 'batt_volt'},
-#         b'\x25': {'name': 'wh34_ch7', 'long_name': 'WH34 ch7', 'batt_fn': 'batt_volt'},
-#         b'\x26': {'name': 'wh34_ch8', 'long_name': 'WH34 ch8', 'batt_fn': 'batt_volt'},
-#         b'\x27': {'name': 'wh45', 'long_name': 'WH45', 'batt_fn': 'batt_int'},
-#         b'\x28': {'name': 'wh35_ch1', 'long_name': 'WH35 ch1', 'batt_fn': 'batt_volt'},
-#         b'\x29': {'name': 'wh35_ch2', 'long_name': 'WH35 ch2', 'batt_fn': 'batt_volt'},
-#         b'\x2a': {'name': 'wh35_ch3', 'long_name': 'WH35 ch3', 'batt_fn': 'batt_volt'},
-#         b'\x2b': {'name': 'wh35_ch4', 'long_name': 'WH35 ch4', 'batt_fn': 'batt_volt'},
-#         b'\x2c': {'name': 'wh35_ch5', 'long_name': 'WH35 ch5', 'batt_fn': 'batt_volt'},
-#         b'\x2d': {'name': 'wh35_ch6', 'long_name': 'WH35 ch6', 'batt_fn': 'batt_volt'},
-#         b'\x2e': {'name': 'wh35_ch7', 'long_name': 'WH35 ch7', 'batt_fn': 'batt_volt'},
-#         b'\x2f': {'name': 'wh35_ch8', 'long_name': 'WH35 ch8', 'batt_fn': 'batt_volt'}
-#     }
-#
-#     # create queue object
-#     data_queue = queue.Queue()
-#
-#     def __init__(self,
-#                  gateway_address=None,
-#                  gateway_port=None,
-#                  timeout=None,
-#                  poll_interval=0,
-#                  use_th32=False,
-#                  show_battery=False,
-#                  debug_rain=False,
-#                  debug_wind=False,
-#                  debug_sensors=False,
-#                  plugin_instance=None):
-#         """
-#         Initialise class.
-#         """
-#
-#         # handle plugin instance
-#         self._plugin_instance = plugin_instance
-#         self.logger = self._plugin_instance.logger
-#
-#         self.logger.debug("Init Gateway HTTP Client")
-#
-#         # interval between polls of the API, use a default
-#         self.poll_interval = poll_interval
-#
-#         # are we using a th32 sensor
-#         self.use_th32 = use_th32
-#
-#         timeout = 10
-#
-#         # get a station object to do the handle the interaction with the Ecowitt Gateway API
-#         self.station = GatewayHttpClient.Station(gateway_address=gateway_address,
-#                                                  gateway_port=gateway_port,
-#                                                  timeout=timeout,
-#                                                  plugin_instance=plugin_instance)
-#
-#         # Do we have a WH24 attached? First obtain our system parameters.
-#         _sys_params = self.station.get_system_params()
-#
-#         # WH24 is indicated by the 6th byte being 0
-#         is_wh24 = _sys_params[5] == 0
-#
-#         # get a parser object to parse any data from the station
-#         self.parser = GatewayHttpClient.Parser(is_wh24=is_wh24,
-#                                                debug_rain=debug_rain,
-#                                                debug_wind=debug_wind,
-#                                                plugin_instance=plugin_instance)
-#
-#         # get a sensors object to handle sensor ID data
-#         self.sensors_obj = GatewayHttpClient.Sensors(show_battery=show_battery,
-#                                                      debug_sensors=debug_sensors,
-#                                                      plugin_instance=plugin_instance)
-#
-#         # we start off not collecting data, it will be turned on later when we are threaded
-#         self.collect_data = False
-#
-#     def collect_sensor_data(self):
-#         """
-#         Collect sensor data by polling the API.
-#
-#         Loop forever waking periodically to see if it is time to quit or collect more data.
-#         """
-#
-#         # initialise ts of last time API was polled
-#         last_poll = 0
-#         # collect data continuously while we are told to collect data
-#         while self.collect_data:
-#             # store the current time
-#             now = time.time()
-#             # is it time to poll?
-#             if now - last_poll > self.poll_interval:
-#                 # it is time to poll, wrap in a try..except in case we get a GatewayIOError exception
-#                 try:
-#                     queue_data = self.get_live_sensor_data()
-#                 except GatewayIOError as e:
-#                     # a GatewayIOError occurred, most likely because the Station object could not contact the Ecowitt Gateway
-#                     # first up log the event, but only if we are logging failures
-#                     self.logger.error('Unable to obtain live sensor data')
-#                     # assign the GatewayIOError exception so it will be sent in the queue to our controlling object
-#                     queue_data = e
-#                 # put the queue data in the queue
-#                 self.data_queue.put(queue_data)
-#                 # debug log when we will next poll the API
-#                 # self.logger.debug(f'Next update in {self.poll_interval} seconds')
-#                 # reset the last poll ts
-#                 last_poll = now
-#             # sleep for a second and then see if its time to poll again
-#             time.sleep(1)
-#
-#     def get_live_sensor_data(self):
-#         """
-#         Get all current sensor data.
-#
-#         Obtain live sensor data from the Ecowitt Gateway API then parse the API response to create a timestamped data dict keyed by internal
-#         Ecowitt Gateway field name. Add current sensor battery state and signal level data to the data dict. If no data was obtained from the API the
-#         value None is returned.
-#         """
-#
-#         # obtain the raw data via the Ecowitt Gateway API, we may get a GatewayIOError exception, if we do let it bubble up (the raw data is
-#         # the data returned from the Ecowitt Gateway inclusive of the fixed header, command, payload length, payload and checksum bytes)
-#         raw_data = self.station.get_livedata()
-#         # if we made it here our raw data was validated by checksum get a timestamp to use in case our data does not come with one
-#         _timestamp = int(time.time())
-#         # parse the raw data (the parsed data is a dict keyed by internal Ecowitt Gateway field names and containing the decoded raw sensor data)
-#         parsed_data = self.parser.parse(raw_data, _timestamp)
-#         # self.logger.debug(f"Parsed data: {parsed_data}")
-#         # The parsed live data does not contain any sensor battery state or signal level data. The battery state and signal level data for each
-#         # sensor can be obtained from the Ecowitt Gateway API via our Sensors object.
-#         # first we need to update our Sensors object with current sensor ID data
-#         self.update_sensor_id_data()
-#         # now add any sensor battery state and signal level data to the parsed data
-#         parsed_data.update(self.sensors_obj.battery_and_signal_data)
-#         # self.logger.debug(f"Processed parsed data: {parsed_data}")
-#         return parsed_data
-#
-#     def update_sensor_id_data(self):
-#         """
-#         Update the Sensors object with current sensor ID data.
-#         """
-#
-#         # get the current sensor ID data
-#         sensor_id_data = self.station.get_sensor_id()
-#         # now use the sensor ID data to re-initialise our sensors object
-#         self.sensors_obj.set_sensor_id_data(sensor_id_data)
-#
-#     class Station(object):
-#         """
-#         Class to interact directly with the Ecowitt Gateway API.
-#
-#         A Station object knows how to:
-#         2.  send a command to the Ecowitt Gateway API
-#         3.  receive a response from the Ecowitt Gateway API
-#
-#         A Station object needs an IP address and port as well as a network broadcast address and port.
-#         """
-#
-#         # Ecowitt Gateway API commands
-#         commands = ["get_version", "get_livedata_info", "get_ws_settings", "get_calibraion_data", "get_rain_totals",
-#                 "get_device_info", "get_sensors_info", "get_network_info", "get_units_info", "get_cli_soilad",
-#                 "get_cli_multiCh", "get_cli_pm25", "get_cli_co2", "get_piezo_rain"]
-#
-#         def __init__(self, ip_address=None, port=None, timeout: int = 10, plugin_instance=None):
-#
-#             # get instance
-#             self._plugin_instance = plugin_instance
-#             self.logger = self._plugin_instance.logger
-#
-#             self.host = ip_address
-#             self.port = port
-#             self.timeout = timeout
-#
-#             self._session = requests.Session()
-#
-#         def get_model_from_firmware(self, firmware_string):
-#             """
-#             Determine the device model from the firmware version.
-#
-#             To date Ecowitt Gateway firmware versions have included the device model in the firmware version string returned via the device
-#             API. Whilst this is not guaranteed to be the case for future firmware releases, in the absence of any other direct means of
-#             obtaining the device model number it is a useful means for determining the device model.
-#
-#             The check is a simple check to see if the model name is contained in the firmware version string returned by the device API.
-#
-#             If a known model is found in the firmware version string the model is returned as a string. None is returned if (1) the firmware
-#             string is None or (2) a known model is not found in the firmware version string.
-#             """
-#
-#             # do we have a firmware string
-#             if firmware_string is not None:
-#                 # we have a firmware string so look for a known model in the string and return the result
-#                 return self.get_model(firmware_string)
-#             else:
-#                 # for some reason we have no firmware string, so return None
-#                 return None
-#
-#         def get_model_from_ssid(self, ssid_string):
-#             """
-#             Determine the device model from the device SSID.
-#
-#             To date the Ecowitt gateway device SSID has included the device
-#             model in the SSID returned via the device API. Whilst this is not
-#             guaranteed to be the case for future firmware releases, in the
-#             absence of any other direct means of obtaining the device model
-#             number it is a useful means for determining the device model. This
-#             is particularly the case when using UDP broadcast to discover
-#             devices on the local network.
-#
-#             Note that it may be possible to alter the SSID used by the device
-#             in which case this method may not provide an accurate result.
-#             However, as the device SSID is only used during initial device
-#             configuration and since altering the device SSID is not a normal
-#             part of the initial device configuration, this method of
-#             determining the device model is considered adequate for use during
-#             discovery by UDP broadcast.
-#
-#             The check is a simple check to see if the model name is contained
-#             in the SSID returned by the device API.
-#
-#             If a known model is found in the SSID the model is returned as a
-#             string. None is returned if (1) the SSID is None or (2) a known
-#             model is not found in the SSID.
-#             """
-#
-#             return self.get_model(ssid_string)
-#
-#         @staticmethod
-#         def get_model(t):
-#             """
-#             Determine the device model from a string.
-#
-#             To date Ecowitt Gateway firmware versions have included the
-#             device model in the firmware version string or the device SSID.
-#             Both the firmware version string and device SSID are available via
-#             the device API so checking the firmware version string or SSID
-#             provides a de facto method of determining the device model.
-#
-#             This method uses a simple check to see if a known model name is
-#             contained in the string concerned.
-#
-#             Known model strings are contained in a tuple Station.KNOWN_MODELS.
-#
-#             If a known model is found in the string the model is returned as a
-#             string. None is returned if a known model is not found in the
-#             string.
-#             """
-#
-#             # do we have a string to check
-#             if t is not None:
-#                 # we have a string, now do we have a know model in the string, if so return the model string
-#                 for model in KNOWN_MODELS:
-#                     if model in t.upper():
-#                         return model
-#                 # we don't have a known model so return None
-#                 return None
-#             else:
-#                 # we have no string so return None
-#                 return None
-#
-#         def get_version(self):
-#             """
-#             Get Ecowitt Gateway version.
-#             """
-#
-#             return self._request('get_version')
-#
-#         def get_livedata(self):
-#             """
-#             Get Ecowitt Gateway live data.
-#
-#             “common_list”: {
-#             id :  ITEM_XXXX_list
-#             val :
-#             unit :
-#             Battery :
-#             }
-#
-#             ITEM_XXXX_list: {
-#             #define ITEM_INTEMP          0x01//Indoor Temperature (℃)            2
-#             #define ITEM_OUTTEMP         0x02//Outdoor Temperature (℃)           2
-#             #define ITEM_DEWPOINT        0x03//Dew point (℃)                    2
-#             #define ITEM_WINDCHILL       0x04//Wind chill (℃)                   2
-#             #define ITEM_HEATINDEX       0x05//Heat index (℃)                   2
-#             #define ITEM_INHUMI          0x06//Indoor Humidity (%)               1
-#             #define ITEM_OUTHUMI         0x07//Outdoor Humidity (%)              1
-#             #define ITEM_ABSBARO         0x08//Absolutely Barometric (hpa)        2
-#             #define ITEM_RELBARO         0x09//Relative Barometric (hpa)          2
-#             #define ITEM_WINDDIRECTION   0x0A//Wind Direction (360°)            2
-#             #define ITEM_WINDSPEED       0x0B//Wind Speed (m/s)                  2
-#             #define ITEM_GUSTSPEED       0x0C//Gust Speed (m/s)                  2
-#             #define ITEM_RAINEVENT       0x0D//Rain Event (mm)                   2
-#             #define ITEM_RAINRATE        0x0E//Rain Rate (mm/h)                  2
-#             #define ITEM_RAIN_GAIN       0x0F//Rain gain (mm)                    2
-#             #define ITEM_RAINDAY         0x10//Rain Day (mm)                     2
-#             #define ITEM_RAINWEEK        0x11//Rain Week (mm)                    2
-#             #define ITEM_RAINMONTH       0x12//Rain Month (mm)                   4
-#             #define ITEM_RAINYEAR        0x13//Rain Year (mm)                    4
-#             #define ITEM_RAINTOTALS      0x14//Rain Totals (mm)                  4
-#             #define ITEM_LIGHT           0x15//Light (lux)                       4
-#             #define ITEM_UV              0x16//UV (uW/m2)                        2
-#             #define ITEM_UVI             0x17//UVI (0-15 index)                  1
-#             #define ITEM_TIME            0x18//Date and time                     6
-#             #define ITEM_DAYLWINDMAX     0X19//Day max wind(m/s)                 2
-#             }
-#
-#             """
-#
-#             return self._request('get_livedata_info')
-#
-#         def get_ws_settings(self):
-#             """
-#             Get Ecowitt Gateway settings.
-#             """
-#
-#             return self._request('get_ws_settings')
-#
-#         def get_calibration_data(self):
-#             """
-#             Get Ecowitt Gateway calibraion_data.
-#             """
-#
-#             return self._request('get_calibraion_data')
-#
-#         def get_rain_totals(self):
-#             """
-#             Get Ecowitt Gateway rain_totals.
-#             """
-#
-#             return self._request('get_rain_totals')
-#
-#         def get_device_info(self):
-#             """
-#             Get Ecowitt Gateway device_info.
-#             """
-#
-#             return self._request('get_device_info')
-#
-#         def get_sensors_info(self):
-#             """
-#             Get Ecowitt Gateway sensors_info.
-#             """
-#
-#             return self._request('get_sensors_info')
-#
-#         def get_network_info(self):
-#             """
-#             Get Ecowitt Gateway network_info.
-#             """
-#
-#             return self._request('get_network_info')
-#
-#         def get_units_info(self):
-#             """
-#             Get Ecowitt Gateway units_info.
-#             """
-#
-#             return self._request('get_units_info')
-#
-#         def get_cli_soilad(self):
-#             """
-#             Get Ecowitt Gateway cli_soilad.
-#             """
-#
-#             return self._request('get_cli_soilad')
-#
-#         def get_cli_multiCh(self):
-#             """
-#             Get Ecowitt Gateway cli_multiCh.
-#             """
-#
-#             return self._request('get_cli_multiCh')
-#
-#         def get_cli_pm25(self):
-#             """
-#             Get Ecowitt Gateway cli_pm25.
-#             """
-#
-#             return self._request('get_cli_pm25')
-#
-#         def get_cli_co2(self):
-#             """
-#             Get Ecowitt Gateway cli_co2.
-#             """
-#
-#             return self._request('get_cli_co2')
-#
-#         def get_piezo_rain(self):
-#             """
-#             Get Ecowitt Gateway piezo_rain.
-#             """
-#
-#             return self._request('get_piezo_rain')
-#
-#         def _build_url(self, cmd) -> str:
-#             """
-#             Builds a request url
-#             :return: string of the url, dependent on settings of the FritzDevice
-#             """
-#             return f"http://{self.host}:{self.port}/{cmd}?"
-#
-#         def _request(self, cmd: str, params=None, result: str = 'json'):
-#             """
-#             Send a request with parameters.
-#             :param cmd:          cmd to be requested
-#             :param params:       params for request
-#             :param result:       type of result
-#             :return:             request response
-#             """
-#
-#             url = self._build_url(cmd)
-#
-#             try:
-#                 rsp = self._session.get(url, params=params, timeout=self.timeout)
-#             except Exception as e:
-#                 self.logger.error(f"Error during GET request {e} occurred.")
-#             else:
-#                 status_code = rsp.status_code
-#                 if status_code == 200:
-#                     self.logger.debug("Sending HTTP request successful")
-#                     if result == 'json':
-#                         try:
-#                             data = rsp.json()
-#                         except JSONDecodeError:
-#                             self.logger.error('Error occurred during parsing request response to json')
-#                         else:
-#                             return data
-#                     else:
-#                         return rsp.text.strip()
-#                 elif status_code == 403:
-#                     self.logger.debug("HTTP access denied.")
-#                 else:
-#                     self.logger.error(f"HTTP request error code: {status_code}")
-#                     rsp.raise_for_status()
-#                     self.logger.debug(f"Url: {url}, Params: {params}")
-#
-#     class Parser(object):
-#         """Class to parse Ecowitt Gateway sensor data."""
-#
-#         sensor_ids = {
-#             'common_list': 'wh34',
-#             'piezoRain': 'ws90',
-#             'lightning': 'wh57',
-#             'co2': 'wh45',
-#             'wh25': 'wh25',
-#             'ch_pm25': 'wh41',
-#             'ch_leak': 'wh55',
-#             'ch_aisle': 'wh31',
-#             'ch_soil': 'wh51',
-#             'ch_temp': 'wh30',
-#             'ch_leaf': 'wh35',
-#         }
-#
-#         response_struct = {
-#             '0x01': ('decode_temp', 2, 'intemp'),
-#             '0x02': ('decode_temp', 2, 'outtemp'),
-#             '0x03': ('decode_temp', 2, 'dewpoint'),
-#             '0x04': ('decode_temp', 2, 'windchill'),
-#             '0x05': ('decode_temp', 2, 'heatindex'),
-#             '0x06': ('decode_humid', 1, 'inhumid'),
-#             '0x07': ('decode_humid', 1, 'outhumid'),
-#             '0x08': ('decode_press', 2, 'absbarometer'),
-#             '0x09': ('decode_press', 2, 'relbarometer'),
-#             '0x0A': ('decode_dir', 2, 'winddir'),
-#             '0x0B': ('decode_speed', 2, 'windspeed'),
-#             '0x0C': ('decode_speed', 2, 'gustspeed'),
-#             '0x0D': ('decode_rain', 2, 'rainevent'),
-#             '0x0E': ('decode_rainrate', 2, 'rainrate'),
-#             '0x0F': ('decode_rain', 2, 'rainhour'),
-#             '0x10': ('decode_rain', 2, 'rainday'),
-#             '0x11': ('decode_rain', 2, 'rainweek'),
-#             '0x12': ('decode_big_rain', 4, 'rainmonth'),
-#             '0x13': ('decode_big_rain', 4, 'rainyear'),
-#             '0x14': ('decode_big_rain', 4, 'raintotals'),
-#             '0x15': ('decode_light', 4, 'light'),
-#             '0x16': ('decode_uv', 2, 'solarradiation'),
-#             '0x17': ('decode_uvi', 1, 'uvi'),
-#             '0x18': ('decode_datetime', 6, 'datetime'),
-#             '0x19': ('decode_speed', 2, 'winddaymax'),
-#             '0x1A': ('decode_temp', 2, 'temp1'),
-#             '0x1B': ('decode_temp', 2, 'temp2'),
-#             '0x1C': ('decode_temp', 2, 'temp3'),
-#             '0x1D': ('decode_temp', 2, 'temp4'),
-#             '0x1E': ('decode_temp', 2, 'temp5'),
-#             '0x1F': ('decode_temp', 2, 'temp6'),
-#             '0x20': ('decode_temp', 2, 'temp7'),
-#             '0x21': ('decode_temp', 2, 'temp8'),
-#             '0x22': ('decode_humid', 1, 'humid1'),
-#             '0x23': ('decode_humid', 1, 'humid2'),
-#             '0x24': ('decode_humid', 1, 'humid3'),
-#             '0x25': ('decode_humid', 1, 'humid4'),
-#             '0x26': ('decode_humid', 1, 'humid5'),
-#             '0x27': ('decode_humid', 1, 'humid6'),
-#             '0x28': ('decode_humid', 1, 'humid7'),
-#             '0x29': ('decode_humid', 1, 'humid8'),
-#             '0x2A': ('decode_pm25', 2, 'pm251'),
-#             '0x2B': ('decode_temp', 2, 'soiltemp1'),
-#             '0x2C': ('decode_moist', 1, 'soilmoist1'),
-#             '0x2D': ('decode_temp', 2, 'soiltemp2'),
-#             '0x2E': ('decode_moist', 1, 'soilmoist2'),
-#             '0x2F': ('decode_temp', 2, 'soiltemp3'),
-#             '0x30': ('decode_moist', 1, 'soilmoist3'),
-#             '0x31': ('decode_temp', 2, 'soiltemp4'),
-#             '0x32': ('decode_moist', 1, 'soilmoist4'),
-#             '0x33': ('decode_temp', 2, 'soiltemp5'),
-#             '0x34': ('decode_moist', 1, 'soilmoist5'),
-#             '0x35': ('decode_temp', 2, 'soiltemp6'),
-#             '0x36': ('decode_moist', 1, 'soilmoist6'),
-#             '0x37': ('decode_temp', 2, 'soiltemp7'),
-#             '0x38': ('decode_moist', 1, 'soilmoist7'),
-#             '0x39': ('decode_temp', 2, 'soiltemp8'),
-#             '0x3A': ('decode_moist', 1, 'soilmoist8'),
-#             '0x3B': ('decode_temp', 2, 'soiltemp9'),
-#             '0x3C': ('decode_moist', 1, 'soilmoist9'),
-#             '0x3D': ('decode_temp', 2, 'soiltemp10'),
-#             '0x3E': ('decode_moist', 1, 'soilmoist10'),
-#             '0x3F': ('decode_temp', 2, 'soiltemp11'),
-#             '0x40': ('decode_moist', 1, 'soilmoist11'),
-#             '0x41': ('decode_temp', 2, 'soiltemp12'),
-#             '0x42': ('decode_moist', 1, 'soilmoist12'),
-#             '0x43': ('decode_temp', 2, 'soiltemp13'),
-#             '0x44': ('decode_moist', 1, 'soilmoist13'),
-#             '0x45': ('decode_temp', 2, 'soiltemp14'),
-#             '0x46': ('decode_moist', 1, 'soilmoist14'),
-#             '0x47': ('decode_temp', 2, 'soiltemp15'),
-#             '0x48': ('decode_moist', 1, 'soilmoist15'),
-#             '0x49': ('decode_temp', 2, 'soiltemp16'),
-#             '0x4A': ('decode_moist', 1, 'soilmoist16'),
-#             '0x4C': ('decode_batt', 16, 'lowbatt'),
-#             '0x4D': ('decode_pm25', 2, 'pm251_24h_avg'),
-#             '0x4E': ('decode_pm25', 2, 'pm252_24h_avg'),
-#             '0x4F': ('decode_pm25', 2, 'pm253_24h_avg'),
-#             '0x50': ('decode_pm25', 2, 'pm254_24h_avg'),
-#             '0x51': ('decode_pm25', 2, 'pm252'),
-#             '0x52': ('decode_pm25', 2, 'pm253'),
-#             '0x53': ('decode_pm25', 2, 'pm254'),
-#             '0x58': ('decode_leak', 1, 'leak1'),
-#             '0x59': ('decode_leak', 1, 'leak2'),
-#             '0x5A': ('decode_leak', 1, 'leak3'),
-#             '0x5B': ('decode_leak', 1, 'leak4'),
-#             '0x60': ('decode_distance', 1, 'lightningdist'),
-#             '0x61': ('decode_utc', 4, 'lightningdettime'),
-#             '0x62': ('decode_count', 4, 'lightningcount'),
-#             '0x63': ('decode_wh34', 3, 'temp9'),
-#             '0x64': ('decode_wh34', 3, 'temp10'),
-#             '0x65': ('decode_wh34', 3, 'temp11'),
-#             '0x66': ('decode_wh34', 3, 'temp12'),
-#             '0x67': ('decode_wh34', 3, 'temp13'),
-#             '0x68': ('decode_wh34', 3, 'temp14'),
-#             '0x69': ('decode_wh34', 3, 'temp15'),
-#             '0x6A': ('decode_wh34', 3, 'temp16'),
-#             '0x70': (
-#                 'decode_wh45', 16,
-#                 ('temp17', 'humid17', 'pm10', 'pm10_24h_avg', 'pm255', 'pm255_24h_avg', 'co2', 'co2_24h_avg')),
-#             '0x71': (None, None, None),
-#             '0x72': ('decode_wet', 1, 'leafwet1'),
-#             '0x73': ('decode_wet', 1, 'leafwet2'),
-#             '0x74': ('decode_wet', 1, 'leafwet3'),
-#             '0x75': ('decode_wet', 1, 'leafwet4'),
-#             '0x76': ('decode_wet', 1, 'leafwet5'),
-#             '0x77': ('decode_wet', 1, 'leafwet6'),
-#             '0x78': ('decode_wet', 1, 'leafwet7'),
-#             '0x79': ('decode_wet', 1, 'leafwet8')
-#         }
-#
-#         def __init__(self, is_wh24=False, debug_rain=False, debug_wind=False, plugin_instance=None):
-#
-#             # get instance
-#             self._plugin_instance = plugin_instance
-#             self.logger = self._plugin_instance.logger
-#
-#             # Tell our battery state decoding whether we have a WH24 or a WH65 (they both share the same battery state bit). By default we are
-#             # coded to use a WH65. But is there a WH24 connected?
-#             if is_wh24:
-#                 # We have a WH24. On startup we are set for a WH65 but if it is a restart we will likely already be setup for a WH24. We need
-#                 # to handle both cases.
-#                 if 'wh24' not in self.multi_batt.keys():
-#                     # we don't have a 'wh24' entry so create one, it's the same as the 'wh65' entry
-#                     self.multi_batt['wh24'] = self.multi_batt['wh65']
-#             else:
-#                 # We don't have a WH24 but a WH65. On startup we are set for a WH65 but if it is a restart it is possible we have already
-#                 # been setup for a WH24. We need to handle both cases.
-#                 if 'wh65' not in self.multi_batt.keys():
-#                     # we don't have a 'wh65' entry so create one, it's the same as the 'wh24' entry
-#                     self.multi_batt['wh65'] = self.multi_batt['wh24']
-#             # get debug_rain and debug_wind
-#             self.debug_rain = debug_rain
-#             self.debug_wind = debug_wind
-#
-#         def parse(self, data: dict, timestamp=None):
-#             """
-#             Parse raw sensor data.
-#
-#             Parse the raw sensor data and create a dict of sensor observations/status data. Add a timestamp to the data if one does not already exist.
-#
-#             Returns a dict of observations/status data."""
-#
-#             data_dict = {}
-#             for entry in data:
-#                 # print(entry)
-#                 if entry in ['common_list', 'rain', 'piezoRain']:
-#                     for sensor in data[entry]:
-#                         # print(sensor['id'], int(sensor['id'], 16), decode_common.get(sensor['id'], "unknown"))
-#                         key = self.response_struct.get(sensor['id'], "unknown")[2]
-#
-#                         val = self.parse_value_w_unit(sensor.get('val'), sensor.get('unit'))
-#                         data_dict.update({key: val})
-#
-#                         battery = sensor.get('battery')
-#                         if battery:
-#                             data_dict.update({f"{key}_batt": self.parse_value(battery)})
-#
-#                 elif entry in ['wh25']:
-#                     for sensor in data[entry]:
-#                         intemp = self.parse_value_w_unit(sensor.get('intemp'), sensor.get('unit'))
-#                         data_dict.update({'intemp': intemp})
-#
-#                         for e in ["inhumi", "abs", "rel"]:
-#                             data_dict.update({f"{e.lower()}": self.parse_value(sensor.get(e))})
-#
-#                 elif entry in ['lightning']:
-#                     for sensor in data[entry]:
-#                         key = 'lightning'
-#                         for e in ["distance", "timestamp", "count"]:
-#                             data_dict.update({f"{key}_{e.lower()}": self.parse_value(sensor.get(e))})
-#
-#                         battery = sensor.get('battery')
-#                         if battery:
-#                             data_dict.update({f'{key}batt': self.parse_value(battery)})
-#
-#                 elif entry in ['co2']:
-#                     for sensor in data[entry]:
-#                         key = 'co2'
-#                         co2_temp = self.parse_value_w_unit(sensor.get('temp'), sensor.get('unit'))
-#                         data_dict.update({f'{key}_temp': co2_temp})
-#
-#                         for e in ["humidity", "PM25", "PM25_RealAQI", "PM25_24HAQI", "PM10", "PM10_RealAQI",
-#                                   "PM10_24HAQI", "CO2", "CO2_24H"]:
-#                             data_dict.update({f"{key}_{e.lower()}": self.parse_value(sensor.get(e))})
-#
-#                         battery = sensor.get('battery')
-#                         if battery:
-#                             data_dict.update({f"{key}_batt": self.parse_value(battery)})
-#
-#                 elif entry in ['ch_pm25']:
-#                     for sensor in data[entry]:
-#                         channel = self.parse_value(sensor.get("channel"))
-#                         key = f'pm25_{channel}'
-#
-#                         for e in ["PM25", "PM25_RealAQI", "PM25_24HAQI"]:
-#                             data_dict.update({f"{key}_{e.lower()}": self.parse_value(sensor.get(e))})
-#
-#                         battery = sensor.get('battery')
-#                         if battery:
-#                             data_dict.update({f"{key}_batt": self.parse_value(battery)})
-#
-#                 elif entry in ['ch_leak']:
-#                     for sensor in data[entry]:
-#                         channel = self.parse_value(sensor.get("channel"))
-#                         key = f'leak_{channel}'
-#
-#                         for e in ["name", "status"]:
-#                             data_dict.update({f"{key}_{e.lower()}": self.parse_value(sensor.get(e))})
-#
-#                         battery = sensor.get('battery')
-#                         if battery:
-#                             data_dict.update({f"{key}_batt": self.parse_value(battery)})
-#                 elif entry in ['ch_aisle']:
-#                     for sensor in data[entry]:
-#                         channel = self.parse_value(sensor.get("channel"))
-#                         key = f'aisle_{channel}'
-#
-#                         temp = self.parse_value_w_unit(sensor.get('temp'), sensor.get('unit'))
-#                         data_dict.update({f'{key}_temp': temp})
-#
-#                         for e in ["name", "humidity"]:
-#                             data_dict.update({f"{key}_{e.lower()}": self.parse_value(sensor.get(e))})
-#
-#                         battery = sensor.get('battery')
-#                         if battery:
-#                             data_dict.update({f"{key}_batt": self.parse_value(battery)})
-#                 elif entry in ['ch_soil']:
-#                     for sensor in data[entry]:
-#                         channel = self.parse_value(sensor.get("channel"))
-#                         key = f'aisle_{channel}'
-#
-#                         for e in ["name", "humidity"]:
-#                             data_dict.update({f"{key}_{e.lower()}": self.parse_value(sensor.get(e))})
-#
-#                         battery = sensor.get('battery')
-#                         if battery:
-#                             data_dict.update({f"{key}_batt": self.parse_value(battery)})
-#
-#                 elif entry in ['ch_temp']:
-#                     for sensor in data[entry]:
-#                         channel = self.parse_value(sensor.get("channel"))
-#                         key = f'temp_{channel}'
-#
-#                         temp = self.parse_value_w_unit(sensor.get('temp'), sensor.get('unit'))
-#                         data_dict.update({f'{key}_temp': temp})
-#
-#                         for e in ["name"]:
-#                             data_dict.update({f"{key}_{e.lower()}": self.parse_value(sensor.get(e))})
-#
-#                         battery = sensor.get('battery')
-#                         if battery:
-#                             data_dict.update({f"{key}_batt": self.parse_value(battery)})
-#
-#                 elif entry in ['ch_leaf']:
-#                     for sensor in data[entry]:
-#                         channel = self.parse_value(sensor.get("channel"))
-#                         key = f'leaf_{channel}'
-#
-#                         for e in ["name", 'humidity']:
-#                             data_dict.update({f"{key}_{e.lower()}": self.parse_value(sensor.get(e))})
-#                         battery = sensor.get('battery')
-#
-#                         if battery:
-#                             data_dict.update({f"{key}_batt": self.parse_value(battery)})
-#
-#             return data_dict
-#
-#         def parse_value_w_unit(self, value: str, unit: str = None):
-#             if unit:
-#                 return self.parse_value(f"{value} {unit}")
-#             else:
-#                 return self.parse_value(value)
-#
-#         def parse_value(self, val: str):
-#             try:
-#                 value = float(val)
-#                 if value % 1 == 0:
-#                     value = int(value)
-#             except ValueError:
-#                 value = val.lstrip()
-#                 if value == 'None':
-#                     return
-#                 elif value.endswith('%'):
-#                     value = self.parse_value(value[:-1])
-#                 elif ' ' in value:
-#                     value_var = value.split(' ')
-#                     value = self.parse_value(value_var[0])
-#                     unit = value_var[1].lower()
-#                     if unit == 'mph':
-#                         value = mph_to_ms(value)
-#                     elif unit == 'in':
-#                         value = in_to_mm(value)
-#                     elif unit == 'inHg':
-#                         value = in_to_hpa(value)
-#                     elif unit == 'f':
-#                         value = f_to_c(value)
-#                     elif unit == 'mph':
-#                         value = mph_to_ms(value)
-#             return value
-#
-#     class Sensors(object):
-#         """
-#         Class to manage Ecowitt Gateway sensor ID data.
-#
-#         Class Sensors allows access to various elements of sensor ID data via a number of properties and methods when the class is initialised with the
-#         Ecowitt Gateway API response to a CMD_READ_SENSOR_ID_NEW or CMD_READ_SENSOR_ID command.
-#
-#         A Sensors object can be initialised with sensor ID data on instantiation or an existing Sensors object can be updated by calling
-#         the set_sensor_id_data() method passing the sensor ID data to be used as the only parameter.
-#         """
-#
-#         # Tuple of sensor ID values for sensors that are not registered with the Ecowitt Gateway. 'fffffffe' means the sensor is disabled, 'ffffffff' means the sensor is registering.
-#         not_registered = ('fffffffe', 'ffffffff')
-#
-#         def __init__(self, sensor_id_data=None, show_battery=False, debug_sensors=False, plugin_instance=None):
-#
-#             # get instance
-#             self._plugin_instance = plugin_instance
-#             self.logger = self._plugin_instance.logger
-#
-#             # set the show_battery property
-#             self.show_battery = show_battery
-#
-#             # initialise a dict to hold the parsed sensor data
-#             self.sensor_data = {}
-#
-#             # parse the raw sensor ID data and store the results in my parsed sensor data dict
-#             self.set_sensor_id_data(sensor_id_data)
-#
-#             # debug sensors
-#             self.debug_sensors = debug_sensors
-#
-#         def set_sensor_id_data(self, id_data):
-#             """Parse the raw sensor ID data and store the results."""
-#
-#             # initialise our parsed sensor ID data dict
-#             self.sensor_data = {}
-#             # do we have any raw sensor ID data
-#             if id_data is not None and len(id_data) > 0:
-#                 # determine the size of the sensor id data, it's a big endian
-#                 # short (two byte) integer at bytes 4 and 5
-#                 data_size = struct.unpack(">H", id_data[3:5])[0]
-#                 # extract the actual sensor id data
-#                 data = id_data[5:5 + data_size - 4]
-#                 # initialise a counter
-#                 index = 0
-#                 # iterate over the data
-#                 while index < len(data):
-#                     # get the sensor address
-#                     address = data[index:index + 1]
-#                     # do we know how to decode this address
-#                     if address in GatewayApiClient.sensor_ids.keys():
-#                         # get the sensor ID
-#                         sensor_id = bytes_to_hex(data[index + 1: index + 5], separator='', caps=False)
-#                         # get the method to be used to decode the battery state data
-#                         batt_fn = GatewayApiClient.sensor_ids[data[index:index + 1]]['batt_fn']
-#                         # get the raw battery state data
-#                         batt = data[index + 5]
-#                         # if we are not showing all battery state data then the battery state for any sensor with signal == 0 must be set to None, otherwise parse the raw battery state data as applicable
-#                         if not self.show_battery and data[index + 6] == 0:
-#                             batt_state = None
-#                         else:
-#                             # parse the raw battery state data
-#                             batt_state = getattr(self, batt_fn)(batt)
-#                         # now add the sensor to our sensor data dict
-#                         self.sensor_data[address] = {'id': sensor_id, 'battery': batt_state, 'signal': data[index + 6]}
-#                     else:
-#                         if self.debug_sensors:
-#                             self.logger.info("Unknown sensor ID '%s'" % bytes_to_hex(address))
-#                     # each sensor entry is seven bytes in length so skip to the
-#                     # start of the next sensor
-#                     index += 7
-#
-#         @property
-#         def addresses(self):
-#             """
-#             Obtain a list of sensor addresses.
-#
-#             This includes all sensor addresses reported by the Ecowitt Gateway, this includes:
-#             - sensors that are actually connected to the Ecowitt Gateway
-#             - sensors that are attempting to connect to the Ecowitt Gateway
-#             - Ecowitt Gateway sensor addresses that are searching for a sensor
-#             - Ecowitt Gateway sensor addresses that are disabled
-#             """
-#
-#             # this is simply the list of keys to our sensor data dict
-#             return self.sensor_data.keys()
-#
-#         @property
-#         def connected_addresses(self):
-#             """
-#             Obtain a list of sensor addresses for connected sensors only.
-#
-#             Sometimes we only want a list of addresses for sensors that are actually connected to the Ecowitt Gateway. We can filter out those
-#             addresses that do not have connected sensors by looking at the sensor ID. If the sensor ID is 'fffffffe' either the sensor is
-#             connecting to the Ecowitt Gateway or the Ecowitt Gateway is searching for a sensor for that address. If the sensor ID is 'ffffffff' the
-#             Ecowitt Gateway sensor address is disabled.
-#             """
-#
-#             # initialise a list to hold our connected sensor addresses
-#             connected_list = list()
-#             # iterate over all sensors
-#             for address, data in self.sensor_data.items():
-#                 # if the sensor ID is neither 'fffffffe' or 'ffffffff' then it must be connected
-#                 if data['id'] not in self.not_registered:
-#                     connected_list.append(address)
-#             return connected_list
-#
-#         @property
-#         def connected_sensors(self):
-#             """
-#             Obtain a list of sensor types for connected sensors only.
-#
-#             Sometimes we only want a list of sensors that are actually connected to the Ecowitt Gateway.
-#             """
-#
-#             # initialise a list to hold our connected sensors
-#             connected_list = list()
-#             # iterate over our connected sensors
-#             for sensor in self.connected_addresses:
-#                 # get the sensor name
-#                 connected_list.append(GatewayApiClient.sensor_ids[sensor]['name'])
-#             return connected_list
-#
-#         @property
-#         def data(self):
-#             """Obtain the data dict for all known sensors."""
-#
-#             return self.sensor_data
-#
-#         def id(self, address):
-#             """Obtain the sensor ID for a given sensor address."""
-#
-#             return self.sensor_data[address]['id']
-#
-#         def battery_state(self, address):
-#             """Obtain the sensor battery state for a given sensor address."""
-#
-#             return self.sensor_data[address]['battery']
-#
-#         def signal_level(self, address):
-#             """Obtain the sensor signal level for a given sensor address."""
-#
-#             return self.sensor_data[address]['signal']
-#
-#         @property
-#         def battery_and_signal_data(self):
-#             """
-#             Obtain a dict of sensor battery state and signal level data.
-#
-#             Iterate over the list of connected sensors and obtain a dict of sensor battery state data for each connected sensor.
-#             """
-#
-#             # initialise a dict to hold the battery state data
-#             data = {}
-#             # iterate over our connected sensors
-#             for sensor in self.connected_addresses:
-#                 # get the sensor name
-#                 sensor_name = GatewayApiClient.sensor_ids[sensor]['name']
-#                 # create the sensor battery state field for this sensor
-#                 data[f"{sensor_name}_batt"] = self.battery_state(sensor)
-#                 # create the sensor signal level field for this sensor
-#                 data[f"{sensor_name}_sig"] = self.signal_level(sensor)
-#
-#             # return our data
-#             return data
-#
-#         @property
-#         def battery_description_data(self):
-#             """
-#             Obtain a dict of sensor battery state description data.
-#
-#             Iterate over the list of connected sensors and obtain a dict of sensor battery state description data for each connected sensor.
-#             """
-#
-#             # initialise a dict to hold the battery state description data
-#             data = {}
-#             for sensor in self.connected_addresses:
-#                 # get the sensor name
-#                 sensor_name = GatewayApiClient.sensor_ids[sensor]['name']
-#                 # create the sensor battery state description field for this sensor
-#                 data[sensor_name] = self.battery_desc(sensor, self.battery_state(sensor))
-#
-#             # return our data
-#             return data
-#
-#         @staticmethod
-#         def battery_desc(address, value):
-#             """
-#             Determine the battery state description for a given sensor.
-#
-#             Given the address...
-#             """
-#
-#             if value is not None:
-#                 batt_fn = GatewayApiClient.sensor_ids[address].get('batt_fn')
-#                 if batt_fn == 'batt_binary':
-#                     if value == 0:
-#                         return "OK"
-#                     elif value == 1:
-#                         return "low"
-#                     else:
-#                         return 'Unknown'
-#                 elif batt_fn == 'batt_int':
-#                     if value <= 1:
-#                         return "low"
-#                     elif value == 6:
-#                         return "DC"
-#                     elif value <= 5:
-#                         return "OK"
-#                     else:
-#                         return 'Unknown'
-#                 elif batt_fn == 'batt_volt' or batt_fn == 'batt_volt_tenth':
-#                     if value <= 1.2:
-#                         return "low"
-#                     else:
-#                         return "OK"
-#             else:
-#                 return 'Unknown'
-#
-#         @staticmethod
-#         def batt_binary(batt):
-#             """
-#             Decode a binary battery state.
-#
-#             Battery state is stored in bit 0 as either 0 or 1. If 1 the battery is low, if 0 the battery is normal. We need to mask off bits 1 to 7 as
-#             they are not guaranteed to be set in any particular way.
-#             """
-#
-#             return batt & 1
-#
-#         @staticmethod
-#         def batt_int(batt):
-#             """
-#             Decode a integer battery state.
-#
-#             According to the API documentation battery state is stored as an integer from 0 to 5 with <=1 being considered low. Experience with
-#             WH43 has shown that battery state 6 also exists when the device is run from DC. This does not appear to be documented in the API
-#             documentation.
-#             """
-#
-#             return batt
-#
-#         @staticmethod
-#         def batt_volt(batt):
-#             """
-#             Decode a voltage battery state in 2mV increments.
-#
-#             Battery state is stored as integer values of battery voltage/0.02 with <=1.2V considered low.
-#             """
-#
-#             return round(0.02 * batt, 2)
-#
-#         @staticmethod
-#         def batt_volt_tenth(batt):
-#             """
-#             Decode a voltage battery state in 100mV increments.
-#
-#             Battery state is stored as integer values of battery voltage/0.1
-#             with <=1.2V considered low.
-#             """
-#
-#             return round(0.1 * batt, 1)
-
-# ============================================================================
 #                             Utility functions
 # ============================================================================
 
 
-def natural_sort_keys(source_dict) -> list:
-    """Return a naturally sorted list of keys for a dict."""
-
-    def atoi(text):
-        return int(text) if text.isdigit() else text
-
-    def natural_keys(text):
-        """Natural key sort.
-
-        Allows use of key=natural_keys to sort a list in human order, eg:
-            alist.sort(key=natural_keys)
-
-        http://nedbatchelder.com/blog/200712/human_sorting.html (See
-        Toothy's implementation in the comments)
-        """
-
-        return [atoi(c) for c in re.split(r'(\d+)', text.lower())]
-
-    # create a list of keys in the dict
-    keys_list = list(source_dict.keys())
-    # naturally sort the list of keys where, for example, xxxxx16 appears in the correct order
-    keys_list.sort(key=natural_keys)
-    # return the sorted list
-    return keys_list
-
-
-def natural_sort_dict(source_dict) -> str:
+def natural_sort_dict(source_dict) -> dict:
     """
-    Return a string representation of a dict sorted naturally by key.
-
-    When represented as a string a dict is displayed in the format:
-        {key a:value a, key b: value b ... key z: value z}
-    but the order of the key:value pairs is unlikely to be alphabetical.
-    Displaying dicts of key:value pairs in logs or on the console in
-    alphabetical order by key assists in the analysis of the the dict data.
-    Where keys are strings with leading digits a natural sort is useful.
+    Return a dict sorted naturally by key.
     """
-
-    # first obtain a list of key:value pairs as string sorted naturally by key
-    sorted_dict_fields = ["'%s': '%s'" % (k, source_dict[k]) for k in natural_sort_keys(source_dict)]
-    # return as a string of comma separated key:value pairs in braces
-    return "{%s}" % ", ".join(sorted_dict_fields)
+    return dict(sorted(source_dict.items()))
 
 
 def bytes_to_hex(iterable: bytes, separator: str = ' ', caps: bool = True) -> str:
@@ -6926,17 +5703,11 @@ def timestamp_to_string(ts, format_str="%Y-%m-%d %H:%M:%S %Z") -> str:
     >>> print(timestamp_to_string(None))
     ******* N/A *******     (    N/A   )
     """
+    # ToDo: Use shtime
     if ts is not None:
         return "%s (%d)" % (time.strftime(format_str, time.localtime(ts)), ts)
     else:
         return "******* N/A *******     (    N/A   )"
-
-
-def to_sorted_string(rec: dict) -> str:
-    """Return a sorted string """
-
-    import locale
-    return ", ".join(["%s: %s" % (k, rec.get(k)) for k in sorted(rec, key=locale.strxfrm)])
 
 
 def c_to_f(temp_c: float, n: int = 0) -> float:
@@ -7042,6 +5813,7 @@ def is_port_in_use(port: int) -> bool:
 
 def str_to_datetimeutc(datetimestr: str) -> Union[datetime, None]:
     """Decodes string in datetime format to datetime object"""
+    # ToDo: Use shtime
     try:
         dt = datetime.strptime(datetimestr, "%Y-%m-%d+%H:%M:%S").replace(tzinfo=timezone.utc)
     except ValueError:
@@ -7056,6 +5828,7 @@ def datetime_to_string(dt: datetime) -> str:
 
 
 def utc_to_local(utc_dt: datetime) -> datetime:
+    # ToDo: Use shtime
     return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=Shtime.tz())
 
 
