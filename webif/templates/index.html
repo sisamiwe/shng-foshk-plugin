@@ -93,10 +93,10 @@
 		</tr>
 		<tr>
 			<td class="py-1"><strong>Connected Sensors</strong></td>
-			<td class="py-1">{{ len(p.api_driver.collector.device.api.sensors.connected_addresses) }}</td>
+			<td class="py-1">{{ len(p.gateway.api.sensors.get_connected_addresses()) }}</td>
 			<td></td>
 			<td class="py-1"><strong>Gateway Model</strong></td>
-			<td class="py-1">{{ p.api_driver.collector.device.model }}</td>
+			<td class="py-1">{{ p.gateway.model }}</td>
 			<td></td>
 		</tr>
 	</tbody>
@@ -124,7 +124,7 @@
 
 {% set tab1title = "<strong>" ~ p.get_shortname() ~ " Items</strong>" %}
 {% set tab2title = "<strong>" ~ p.get_shortname() ~ "Data</strong> " %}
-{% if p.api_driver %}{% set tab3title = "<strong>" ~ p.get_shortname() ~ " Settings</strong> " %}{% else %}{% set tab4title = "hidden" %}{% endif %}
+{% if p.gateway %}{% set tab3title = "<strong>" ~ p.get_shortname() ~ " Settings</strong> " %}{% else %}{% set tab3title = "hidden" %}{% endif %}
 {% if maintenance %}{% set tab4title = "<strong>" ~ p.get_shortname() ~ " Maintenance</strong> " %}{% else %}{% set tab4title = "hidden" %}{% endif %}
 
 
@@ -171,12 +171,12 @@
 		</tr>
 	</thead>
 	<tbody>
-		{% for entry in p.data_dict['api'] %}
+		{% for entry in p.data_dict %}
 			<tr>
 				<td></td>
 				<td class="py-1">{{ entry }}</td>
-				<td class="py-1" id="{{ entry }}_tcp_data_value" style="text-align: right">.{{ p.data_dict['tcp'][entry] }}</td>
-				<td class="py-1" id="{{ entry }}_api_data_value" style="text-align: right">.{{ p.data_dict['api'][entry] }}</td>
+				<td class="py-1" id="{{ entry }}_tcp_data_value" style="text-align: right">.{{ p.data_dict[entry]['tcp'] }}</td>
+				<td class="py-1" id="{{ entry }}_api_data_value" style="text-align: right">.{{ p.data_dict[entry]['api'] }}</td>
 			</tr>
 		{% endfor %}
 	</tbody>
@@ -202,22 +202,22 @@
 			<tbody>
 				<tr>
 					<td class="py-1">{{ _('Model') }}</td>
-					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.model }}</td>
+					<td class="py-1" style="text-align:right">{{ p.gateway.model }}</td>
 					<td></td>
 				</tr>
 				<tr>
 					<td class="py-1">{{ _('MAC') }}</td>
-					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.mac_address }}</td>
+					<td class="py-1" style="text-align:right">{{ p.gateway.mac_address }}</td>
 					<td></td>
 				</tr>
 				<tr>
 					<td class="py-1">{{ _('IP') }}</td>
-					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.ip_address}}</td>
+					<td class="py-1" style="text-align:right">{{ p.gateway.ip_address}}</td>
 					<td></td>
 				</tr>
 				<tr>
 					<td class="py-1">{{ _('Firmware') }}</td>
-					<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.firmware_version }}</td>
+					<td class="py-1" style="text-align:right">{{ p.gateway.firmware_version }}</td>
 					<td></td>
 				</tr>
 			</tbody>
@@ -235,7 +235,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% for entry in p.api_driver.collector.device.api.device_list %}
+				{% for entry in p.gateway.api.device_list %}
 					<tr>
 						<td class="py-1" colspan=3> <b>{{ _('GATEWAY: ') }} {{ loop.index }}</b></td>
 					</tr>
@@ -275,10 +275,10 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% for entry in p.api_driver.collector.device.system_params %}
+				{% for entry in p.gateway.get_system_params() %}
 					<tr>
 						<td class="py-1">{{ entry }}</td>
-						<td class="py-1" style="text-align:right">{{ p.api_driver.collector.device.system_params[entry] }}</td>
+						<td class="py-1" style="text-align:right">{{  p.gateway.get_system_params()[entry] }}</td>
 						<td></td>
 					</tr>
 				{% endfor %}
@@ -297,7 +297,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{%set custom = p.api_driver.collector.device.custom_params%}
+				{% set custom = p.gateway.get_custom_params() %}
 				<tr>
 					<td class="py-1">{{ _('Server ID') }}</td>
 					<td class="py-1" style="text-align:right">{% if 'id' in custom and custom['id'] != '' %} {{ custom['id'] }} {% else %} {{ ('-') }} {% endif %} </td>
@@ -352,7 +352,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set calibration = p.api_driver.collector.device.calibration_coefficient %}
+				{% set calibration = p.gateway.get_calibration_coefficient() %}
 				{% for entry in calibration %}
 					<tr>
 						<td class="py-1">{{ entry }}</td>
@@ -385,7 +385,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set mulch_offset = p.api_driver.collector.device.mulch_offset %}
+				{% set mulch_offset = p.gateway.get_mulch_offset() %}
 				{% for sensor in mulch_offset %}
 					<tr>
 						<td class="py-1" colspan=3> <b>{{ _('SENSOR CHANNEL: ') }} {{ sensor +1 }}</b></td>
@@ -414,7 +414,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set soil_calibration = p.api_driver.collector.device.soil_calibration %}
+				{% set soil_calibration = p.gateway.get_soil_calibration() %}
 				{% for sensor in soil_calibration %}
 					<tr>
 						<td class="py-1" colspan=3> <b>{{ _('SENSOR CHANNEL: ') }} {{ sensor +1 }}</b></td>
@@ -459,7 +459,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set pm25_offset = p.api_driver.collector.device.pm25_offset %}
+				{% set pm25_offset = p.gateway.get_pm25_offset() %}
 
 					<tr>
 						<td class="py-1">{{ ('PM25 Channel 1') }}</td>
@@ -495,7 +495,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set co2_offset = p.api_driver.collector.device.co2_offset %}
+				{% set co2_offset = p.gateway.get_co2_offset() %}
 					<tr>
 						<td class="py-1">{{ ('CO2 Offset') }}</td>
 						<td class="py-1" style="text-align:right">{{ co2_offset['co2'] }}</td>
@@ -522,7 +522,7 @@
 <div class="table-responsive, row" style="margin-left: 3px; margin-right: 3px;">
     <div class="col-sm-12">
 
-	{% if p.api_driver %}
+	{% if p.gateway %}
 		<h3><br></h3>
         <h3 style="color:#A9A9A9;">FOSHK PLUGIN API PARAMETERS</h3>
 		<table id="" class="table table-striped table-hover pluginList display">
@@ -535,35 +535,35 @@
 			<tbody>
 				<tr>
 					<td>{{ _('last_lightning') }}</td>
-					<td class="py-1">{{ p.api_driver.last_lightning}}</td>
+					<td class="py-1">{{ p.gateway.last_lightning}}</td>
 				</tr>
 				<tr>
 					<td>{{ _('last_rain') }}</td>
-					<td class="py-1">{{ p.api_driver.last_rain}}</td>
+					<td class="py-1">{{ p.gateway.last_rain}}</td>
 				</tr>
 				<tr>
 					<td>{{ _('rain_mapping_confirmed') }}</td>
-					<td class="py-1">{{ p.api_driver.rain_mapping_confirmed}}</td>
+					<td class="py-1">{{ p.gateway.rain_mapping_confirmed}}</td>
 				</tr>
 				<tr>
 					<td>{{ _('rain_total_field') }}</td>
-					<td class="py-1">{{ p.api_driver.rain_total_field}}</td>
+					<td class="py-1">{{ p.gateway.rain_total_field}}</td>
 				</tr>
 				<tr>
 					<td>{{ _('debug_rain') }}</td>
-					<td class="py-1">{{ p.api_driver.debug_rain}}</td>
+					<td class="py-1">{{ p.gateway.debug_rain}}</td>
 				</tr>
 				<tr>
 					<td>{{ _('debug_wind') }}</td>
-					<td class="py-1">{{ p.api_driver.debug_wind}}</td>
+					<td class="py-1">{{ p.gateway.debug_wind}}</td>
 				</tr>
 				<tr>
 					<td>{{ _('debug_loop') }}</td>
-					<td class="py-1">{{ p.api_driver.debug_loop}}</td>
+					<td class="py-1">{{ p.gateway.debug_loop}}</td>
 				</tr>
 				<tr>
 					<td>{{ _('debug_sensors') }}</td>
-					<td class="py-1">{{ p.api_driver.debug_sensors}}</td>
+					<td class="py-1">{{ p.gateway.debug_sensors}}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -578,7 +578,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.battery_description_data }}</td>
+				  <td class="py-1">{{ p.gateway.api.sensors.get_battery_description_data() }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -593,7 +593,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.battery_and_signal_data }}</td>
+				  <td class="py-1">{{ p.gateway.api.sensors.get_battery_and_signal_data() }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -608,7 +608,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.wind_avg10m }}</td>
+				  <td class="py-1">{{ p.gateway.wind_avg10m }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -623,7 +623,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.connected_sensors }}</td>
+				  <td class="py-1">{{ p.gateway.api.sensors.get_connected_addresses() }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -638,7 +638,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.data}}</td>
+				  <td class="py-1">{{ p.gateway.api.sensors.data}}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -653,7 +653,7 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensors.connected_addresses }}</td>
+				  <td class="py-1">{{ p.gateway.api.sensors.get_connected_addresses() }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -668,103 +668,13 @@
 			</thead>
 			<tbody>
 				<tr>
-				  <td class="py-1">{{ p.api_driver.collector.device.api.sensor_ids }}</td>
+				  <td class="py-1">{{ p.gateway.api.sensor_ids }}</td>
 				</tr>
 			</tbody>
 		</table>
 	{% endif %}
 
-	{% if p.tcp_driver %}
-		<h3><br></h3>
-        <h3 style="color:#A9A9A9;">FOSHK PLUGIN TCP PARAMETERS</h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('Param') }}</th>
-				  <th>{{ _('Value') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-					<td>{{ _('last_lightning') }}</td>
-					<td class="py-1">{{ p.tcp_driver.last_lightning}}</td>
-				</tr>
-				<tr>
-					<td>{{ _('last_rain') }}</td>
-					<td class="py-1">{{ p.tcp_driver.last_rain}}</td>
-				</tr>
-				<tr>
-					<td>{{ _('rain_mapping_confirmed') }}</td>
-					<td class="py-1">{{ p.tcp_driver.rain_mapping_confirmed}}</td>
-				</tr>
-				<tr>
-					<td>{{ _('rain_total_field') }}</td>
-					<td class="py-1">{{ p.tcp_driver.rain_total_field}}</td>
-				</tr>
-				<tr>
-					<td>{{ _('debug_rain') }}</td>
-					<td class="py-1">{{ p.tcp_driver.debug_rain}}</td>
-				</tr>
-				<tr>
-					<td>{{ _('debug_wind') }}</td>
-					<td class="py-1">{{ p.tcp_driver.debug_wind}}</td>
-				</tr>
-				<tr>
-					<td>{{ _('debug_loop') }}</td>
-					<td class="py-1">{{ p.tcp_driver.debug_loop}}</td>
-				</tr>
-				<tr>
-					<td>{{ _('debug_sensors') }}</td>
-					<td class="py-1">{{ p.tcp_driver.debug_sensors}}</td>
-				</tr>
-			</tbody>
-		</table>
 
-		<h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('dict TCP "collector.battery_desc"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.tcp_driver.client.sensors.battery_description_data }}</td>
-				</tr>
-			</tbody>
-		</table>
-
-		<h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('deque TCP "wind_avg10m"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.tcp_driver.wind_avg10m }}</td>
-				</tr>
-			</tbody>
-		</table>
-
-		<h3><br></h3>
-        <h3 style="color:#A9A9A9;"></h3>
-		<table id="" class="table table-striped table-hover pluginList display">
-			<thead>
-				<tr>
-				  <th>{{ _('dict TCP "connected_sensors"') }}</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-				  <td class="py-1">{{ p.tcp_driver.client.sensors.connected_sensors }}</td>
-				</tr>
-			</tbody>
-		</table>
-	{% endif %}
 
 	</div>
 </div>
