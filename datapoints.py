@@ -24,213 +24,437 @@
 #
 #########################################################################
 
-# MASTER KEYS
-KEY_TEMP = 'temp'
-KEY_HUMID = 'humid'
-KEY_DEWPT = 'dewpt'
-KEY_FROSTPT = 'frostpt'
-KEY_SOILTEMP = 'soiltemp'
-KEY_SOILMOISTURE = 'soilmoist'
-KEY_ABSHUM = 'abshum'
-KEY_PM25 = 'pm25'
-KEY_PM25_AVG = f'{KEY_PM25}_24h_avg'
-KEY_LEAK = 'leak'
-KEY_LEAF_WETNESS = 'leafwet'
-KEY_CO2 = 'co2'
-KEY_PM10 = 'pm10'
-KEY_SEPARATOR = ''
+from dataclasses import dataclass, fields
 
-# SUB KEYS
-KEY_SENSOR_CO2_TEMP = f'{KEY_TEMP}17'
-KEY_SENSOR_CO2_HUM = f'{KEY_HUMID}17'
-KEY_SENSOR_CO2_PM10 = KEY_PM10
-KEY_SENSOR_CO2_PM10_24 = f'{KEY_PM10}_24h_avg'
-KEY_SENSOR_CO2_PM255 = f'{KEY_PM25}5'
-KEY_SENSOR_CO2_PM255_24 = f'{KEY_PM25}5_24h_avg'
-KEY_SENSOR_CO2_CO2 = KEY_CO2
-KEY_SENSOR_CO2_CO2_24 = f'{KEY_CO2}_24h_avg'
+# ToDo: add timestamp
 
-# API KEYS
-KEY_INTEMP = f'in{KEY_TEMP}'                            # 0x01 // 2 // Indoor Temperature (°C)
-KEY_OUTTEMP = f'out{KEY_TEMP}'                          # 0x02 // 2 // Outdoor Temperature (°C)
-KEY_DEWPOINT = KEY_DEWPT                                # 0x03 // 2 // Dew point (°C)
-KEY_WINDCHILL = 'windchill'                             # 0x04 // 2 // Wind chill (°C)
-KEY_HEATINDEX = 'heatindex'                             # 0x05 // 2 // Heat index (°C)
-KEY_INHUMI = f'in{KEY_HUMID}'                           # 0x06 // 1 // Indoor Humidity (%)
-KEY_OUTHUMI = f'out{KEY_HUMID}'                         # 0x07 // 1 // Outdoor Humidity (%)
-KEY_ABSBARO = 'absbarometer'                            # 0x08 // 2 // Absolutely Barometric (hpa)
-KEY_RELBARO = 'relbarometer'                            # 0x09 // 2 // Relative Barometric (hpa)
-KEY_WINDDIRECTION = 'winddir'                           # 0x0A // 2 // Wind Direction (360°)
-KEY_WINDSPEED = 'windspeed'                             # 0x0B // 2 // Wind Speed (m/s)
-KEY_GUSTSPEED = 'gustspeed'                             # 0x0C // 2 // Gust Speed (m/s)
-KEY_RAINEVENT = 'rainevent'                             # 0x0D // 2 // Rain Event (mm)
-KEY_RAINRATE = 'rainrate'                               # 0x0E // 2 // Rain Rate (mm/h)
-KEY_RAINHOUR = 'raingain'                               # 0x0F // 2 // Rain hour (mm)
-KEY_RAINDAY = 'rainday'                                 # 0x10 // 2 // Rain Day (mm)
-KEY_RAINWEEK = 'rainweek'                               # 0x11 // 2 // Rain Week (mm)
-KEY_RAINMONTH = 'rainmonth'                             # 0x12 // 4 // Rain Month (mm)
-KEY_RAINYEAR = 'rainyear'                               # 0x13 // 4 // Rain Year (mm)
-KEY_RAINTOTALS = 'raintotals'                           # 0x14 // 4 // Rain Totals (mm)
-KEY_LIGHT = 'light'                                     # 0x15 // 4 // Light (lux)
-KEY_UV = 'solarradiation'                               # 0x16 // 2 // UV (uW/m2)
-KEY_UVI = 'uvi'                                         # 0x17 // 1 // UVI (0-15 index)
-KEY_TIME = 'datetime'                                   # 0x18 // 6 // Date and time
-KEY_DAYLWINDMAX = 'winddaymax'                          # 0X19 // 2 // Day max wind(m/s)
-KEY_TEMP1 = f'{KEY_TEMP}1'                              # 0x1A // 2 // Temperature 1(°C)
-KEY_TEMP2 = f'{KEY_TEMP}2'                              # 0x1B // 2 // Temperature 2(°C)
-KEY_TEMP3 = f'{KEY_TEMP}3'                              # 0x1C // 2 // Temperature 3(°C)
-KEY_TEMP4 = f'{KEY_TEMP}4'                              # 0x1D // 2 // Temperature 4(°C)
-KEY_TEMP5 = f'{KEY_TEMP}5'                              # 0x1E // 2 // Temperature 5(°C)
-KEY_TEMP6 = f'{KEY_TEMP}6'                              # 0x1F // 2 // Temperature 6(°C)
-KEY_TEMP7 = f'{KEY_TEMP}7'                              # 0x20 // 2 // Temperature 7(°C)
-KEY_TEMP8 = f'{KEY_TEMP}8'                              # 0x21 // 2 // Temperature 8(°C)
-KEY_TF_USR1 = f'{KEY_TEMP}9'                            # 0x63 // 3 // Temperature(°C)
-KEY_TF_USR2 = f'{KEY_TEMP}10'                           # 0x64 // 3 // Temperature(°C)
-KEY_TF_USR3 = f'{KEY_TEMP}11'                           # 0x65 // 3 // Temperature(°C)
-KEY_TF_USR4 = f'{KEY_TEMP}12'                           # 0x66 // 3 // Temperature(°C)
-KEY_TF_USR5 = f'{KEY_TEMP}13'                           # 0x67 // 3 // Temperature(°C)
-KEY_TF_USR6 = f'{KEY_TEMP}14'                           # 0x68 // 3 // Temperature(°C)
-KEY_TF_USR7 = f'{KEY_TEMP}15'                           # 0x69 // 3 // Temperature(°C)
-KEY_TF_USR8 = f'{KEY_TEMP}16'                           # 0x6A // 3 // Temperature(°C)
-KEY_HUMI1 = f'{KEY_HUMID}1'                             # 0x22 // 1 // Humidity 1, 0-100%
-KEY_HUMI2 = f'{KEY_HUMID}2'                             # 0x23 // 1 // Humidity 2, 0-100%
-KEY_HUMI3 = f'{KEY_HUMID}3'                             # 0x24 // 1 // Humidity 3, 0-100%
-KEY_HUMI4 = f'{KEY_HUMID}4'                             # 0x25 // 1 // Humidity 4, 0-100%
-KEY_HUMI5 = f'{KEY_HUMID}5'                             # 0x26 // 1 // Humidity 5, 0-100%
-KEY_HUMI6 = f'{KEY_HUMID}6'                             # 0x27 // 1 // Humidity 6, 0-100%
-KEY_HUMI7 = f'{KEY_HUMID}7'                             # 0x28 // 1 // Humidity 7, 0-100%
-KEY_HUMI8 = f'{KEY_HUMID}8'                             # 0x29 // 1 // Humidity 8, 0-100%
-KEY_SOILTEMP1 = f'{KEY_SOILTEMP}1'                      # 0x2B // 2 // Soil Temperature(°C)
-KEY_SOILTEMP2 = f'{KEY_SOILTEMP}2'                      # 0x2D // 2 // Soil Temperature(°C)
-KEY_SOILTEMP3 = f'{KEY_SOILTEMP}3'                      # 0x2F // 2 // Soil Temperature(°C)
-KEY_SOILTEMP4 = f'{KEY_SOILTEMP}4'                      # 0x31 // 2 // Soil Temperature(°C)
-KEY_SOILTEMP5 = f'{KEY_SOILTEMP}5'                      # 0x33 // 2 // Soil Temperature(°C)
-KEY_SOILTEMP6 = f'{KEY_SOILTEMP}6'                      # 0x35 // 2 // Soil Temperature(°C)
-KEY_SOILTEMP7 = f'{KEY_SOILTEMP}7'                      # 0x37 // 2 // Soil Temperature(°C)
-KEY_SOILTEMP8 = f'{KEY_SOILTEMP}8'                      # 0x39 // 2 // Soil Temperature(°C)
-KEY_SOILTEMP9 = f'{KEY_SOILTEMP}9'                      # 0x3B // 2 // Soil Temperature(°C)
-KEY_SOILTEMP10 = f'{KEY_SOILTEMP}10'                    # 0x3D // 2 // Soil Temperature(°C)
-KEY_SOILTEMP11 = f'{KEY_SOILTEMP}11'                    # 0x3F // 2 // Soil Temperature(°C)
-KEY_SOILTEMP12 = f'{KEY_SOILTEMP}12'                    # 0x41 // 2 // Soil Temperature(°C)
-KEY_SOILTEMP13 = f'{KEY_SOILTEMP}13'                    # 0x43 // 2 // Soil Temperature(°C)
-KEY_SOILTEMP14 = f'{KEY_SOILTEMP}14'                    # 0x45 // 2 // Soil Temperature(°C)
-KEY_SOILTEMP15 = f'{KEY_SOILTEMP}15'                    # 0x47 // 2 // Soil Temperature(°C)
-KEY_SOILTEMP16 = f'{KEY_SOILTEMP}16'                    # 0x49 // 2 // Soil Temperature(°C)
-KEY_SOILMOISTURE1 = f'{KEY_SOILMOISTURE}1'              # 0x2C // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE2 = f'{KEY_SOILMOISTURE}2'              # 0x2E // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE3 = f'{KEY_SOILMOISTURE}3'              # 0x30 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE4 = f'{KEY_SOILMOISTURE}4'              # 0x32 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE5 = f'{KEY_SOILMOISTURE}5'              # 0x34 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE6 = f'{KEY_SOILMOISTURE}6'              # 0x36 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE7 = f'{KEY_SOILMOISTURE}7'              # 0x38 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE8 = f'{KEY_SOILMOISTURE}8'              # 0x3A // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE9 = f'{KEY_SOILMOISTURE}9'              # 0x3C // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE10 = f'{KEY_SOILMOISTURE}10'            # 0x3E // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE11 = f'{KEY_SOILMOISTURE}11'            # 0x40 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE12 = f'{KEY_SOILMOISTURE}12'            # 0x42 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE13 = f'{KEY_SOILMOISTURE}13'            # 0x44 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE14 = f'{KEY_SOILMOISTURE}14'            # 0x46 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE15 = f'{KEY_SOILMOISTURE}15'            # 0x48 // 1 // Soil Moisture(%)
-KEY_SOILMOISTURE16 = f'{KEY_SOILMOISTURE}16'            # 0x4A // 1 // Soil Moisture(%)
-KEY_LOWBATT = 'lowbatt'                                 # 0x4C // 16 // All sensor lowbatt 16 char
-KEY_PM25_CH1 = f'{KEY_PM25}1'                           # 0x2A // 2 // PM2.5 Air Quality Sensor(μg/m3)
-KEY_PM25_CH2 = f'{KEY_PM25}2'                           # 0x51 // 2 // PM2.5 Air Quality Sensor(μg/m3)
-KEY_PM25_CH3 = f'{KEY_PM25}3'                           # 0x52 // 2 // PM2.5 Air Quality Sensor(μg/m3)
-KEY_PM25_CH4 = f'{KEY_PM25}4'                           # 0x53 // 2 // PM2.5 Air Quality Sensor(μg/m3)
-KEY_PM25_24HAVG1 = f'{KEY_PM25_AVG}1'               # 0x4D // 2 // for pm25_ch1
-KEY_PM25_24HAVG2 = f'{KEY_PM25_AVG}2'               # 0x4E // 2 // for pm25_ch2
-KEY_PM25_24HAVG3 = f'{KEY_PM25_AVG}3'               # 0x4F // 2 // for pm25_ch3
-KEY_PM25_24HAVG4 = f'{KEY_PM25_AVG}4'               # 0x50 // 2 // for pm25_ch4
-KEY_LEAK_CH1 = f'{KEY_LEAK}1'                           # 0x58 // 1 // for Leak_ch1
-KEY_LEAK_CH2 = f'{KEY_LEAK}2'                           # 0x59 // 1 // for Leak_ch2
-KEY_LEAK_CH3 = f'{KEY_LEAK}3'                           # 0x5A // 1 // for Leak_ch3
-KEY_LEAK_CH4 = f'{KEY_LEAK}4'                           # 0x5B // 1 // for Leak_ch4
-KEY_LIGHTNING_DIST = 'lightningdist'                         # 0x60 // 1 // lightning distance （1~40KM)
-KEY_LIGHTNING_TIME = 'lightningdettime'                 # 0x61 // 4 // lightning happened time(UTC)
-KEY_LIGHTNING_COUNT = 'lightningcount'                  # 0x62 // 4 // lightning counter for the day
-KEY_SENSOR_CO2 = (KEY_SENSOR_CO2_TEMP,
-                   KEY_SENSOR_CO2_HUM,
-                   KEY_SENSOR_CO2_PM10,
-                   KEY_SENSOR_CO2_PM10_24,
-                   KEY_SENSOR_CO2_PM255,
-                   KEY_SENSOR_CO2_PM255_24,
-                   KEY_SENSOR_CO2_CO2,
-                   KEY_SENSOR_CO2_CO2_24)               # 0x70 // 16 // CO2
-KEY_PM25_AQI = None                                     # 0x71 //   // only for amb
-KEY_LEAF_WETNESS_CH1 = f'{KEY_LEAF_WETNESS}1'           # 0x72 // 1 //
-KEY_LEAF_WETNESS_CH2 = f'{KEY_LEAF_WETNESS}2'           # 0x73 // 1 //
-KEY_LEAF_WETNESS_CH3 = f'{KEY_LEAF_WETNESS}3'           # 0x74 // 1 //
-KEY_LEAF_WETNESS_CH4 = f'{KEY_LEAF_WETNESS}4'           # 0x75 // 1 //
-KEY_LEAF_WETNESS_CH5 = f'{KEY_LEAF_WETNESS}5'           # 0x76 // 1 //
-KEY_LEAF_WETNESS_CH6 = f'{KEY_LEAF_WETNESS}6'           # 0x77 // 1 //
-KEY_LEAF_WETNESS_CH7 = f'{KEY_LEAF_WETNESS}7'           # 0x78 // 1 //
-KEY_LEAF_WETNESS_CH8 = f'{KEY_LEAF_WETNESS}8'           # 0x79 // 1 //
-KEY_RAIN_PRIO = 'rain_priority'                         # 0x7A // 1 // rain priority (classical or piezo) - 1 = classical, 2 = piezo
-KEY_RAD_COMP = 'rad_comp'                               # 0x7B // 1 // radiation compensation - on/off
-KEY_PIEZO_RAIN_RATE = 'p_rainrate'                      # 0x80 // 2 //
-KEY_PIEZO_EVENT_RAIN = 'p_rainevent'                    # 0x81 // 2 //
-KEY_PIEZO_HOURLY_RAIN = 'p_rainhour'                    # 0x82 // 2 //
-KEY_PIEZO_DAILY_RAIN = 'p_rainday'                      # 0x83 // 4 //
-KEY_PIEZO_WEEKLY_RAIN = 'p_rainweek'                    # 0x84 // 4 //
-KEY_PIEZO_MONTHLY_RAIN = 'p_rainmonth'                  # 0x85 // 4 //
-KEY_PIEZO_YEARLY_RAIN = 'p_rainyear'                    # 0x86 // 4 //
-KEY_PIEZO_GAIN10 = None                                 # 0x87 // 2*10 //
-KEY_RST_RAINTIME = None                                 # 0x88 // 3 //
-KEY_RAIN_RESET_DAY = 'day_reset'
-KEY_RAIN_RESET_WEEK = 'week_reset'
-KEY_RAIN_RESET_ANNUAL = 'annual_reset'
+@dataclass
+class MasterKeys:
+    # MASTER KEYS
+    TEMP = 'temp'
+    HUMID = 'humid'
+    DEWPT = 'dewpt'
+    FROSTPT = 'frostpt'
+    SOILTEMP = 'soiltemp'
+    SOILMOISTURE = 'soilmoist'
+    ABSHUM = 'abshum'
+    PM25 = 'pm25'
+    LEAK = 'leak'
+    LEAF_WETNESS = 'leafwet'
+    CO2 = 'co2'
+    PM10 = 'pm10'
+    ABSBARO = 'absbarometer'
+    RELBARO = 'relbarometer'
+    WINDDIRECTION = 'winddir'
+    WINDSPEED = 'windspeed'
+    GUSTSPEED = 'gustspeed'
+    RAINEVENT = 'rainevent'
+    RAINRATE = 'rainrate'
+    RAINHOUR = 'rainhour'
+    RAINDAY = 'rainday'
+    RAINWEEK = 'rainweek'
+    RAINMONTH = 'rainmonth'
+    RAINYEAR = 'rainyear'
+    RAINTOTALS = 'raintotals'
+    RAIN_RESET_DAY = 'day_reset'
+    RAIN_RESET_WEEK = 'week_reset'
+    RAIN_RESET_ANNUAL = 'annual_reset'
+    RAIN = 'rain'
+    LIGHT = 'light'
+    UV = 'solarradiation'
+    UVI = 'uvi'
+    TIME = 'datetime'
+    DAYLWINDMAX = 'winddaymax'
+    WINDCHILL = 'windchill'
+    HEATINDEX = 'heatindex'
+    LOWBATT = 'lowbatt'
+    LIGHTNING_DIST = 'lightningdist'
+    LIGHTNING_TIME = 'lightningdettime'
+    LIGHTNING_COUNT = 'lightningcount'
+    RAIN_PRIO = 'rain_priority'
+    RAD_COMP = 'rad_comp'
+    PIEZO = 'p_'
+    SEPARATOR = '_'
+    CHANNEL = 'ch'
+    BATTERY_EXTENTION = '_batt'
+    SIGNAL_EXTENTION = '_sig'
+    PM25_AVG = f'{PM25}_24h_avg'
+    RAIN_GAIN = 'rain_gain'
+    WH65 = 'wh65'
+    WS68 = 'wh68'
+    WS80 = 'ws80'
+    WH40 = 'wh40'
+    WH25 = 'wh25'
+    WN26 = 'wn26'
+    WH31 = 'wh31'
+    WH51 = 'wh51'
+    WH41 = 'wh41'
+    WH57 = 'wh57'
+    WH55 = 'wh55'
+    WN34 = 'wn34'
+    WH45 = 'wh45'
+    WN35 = 'wn35'
+    WS90 = 'ws90'
+    WH32 = 'wh32'
+    WH24 = 'wh24'
+    WN30 = 'wn30'
 
-# ADDITIONAL TCP DATA_POINTS
-KEY_CLIENT_IP = 'client_ip'
-KEY_PASSKEY = None
-KEY_FIRMWARE = 'firmware'
-KEY_FREQ = 'frequency'
-KEY_MODEL = 'model'
-KEY_RUNTIME = 'runtime'
-KEY_INTERVAL = 'interval'
 
-# PLUGIN DATA_POINTS
-KEY_INDEWPPOINT = f'in{KEY_DEWPT}'
-KEY_INABSHUM = f'in{KEY_ABSHUM}'
-KEY_OUTDEWPT = f'out{KEY_DEWPT}'
-KEY_OUTFROSTPT = f'out{KEY_FROSTPT}'
-KEY_OUTABSHUM = f'out{KEY_ABSHUM}'
-KEY_RESET = 'reset'
-KEY_REBOOT = 'reboot'
-KEY_FEELS_LIKE = 'feelslike'
-KEY_SENSOR_WARNING = 'sensor_warning'
-KEY_BATTERY_WARNING = 'battery_warning'
-KEY_STORM_WARNING = 'storm_warning'
-KEY_THUNDERSTORM_WARNING = 'thunderstorm_warning'
-KEY_WEATHERSTATION_WARNING = 'weatherstation_warning'
-KEY_FIRMWARE_UPDATE_AVAILABLE = 'firmware_update_available'
-KEY_FIRMWARE_UPDATE_TEXT = 'firmware_update_text'
-KEY_CLOUD_CEILING = 'cloud_ceiling'
-KEY_WINDDIR_TEXT = 'winddir_txt'
-KEY_WINDSPEED_BFT = 'windspeed_bft'
-KEY_WINDSPEED_BFT_TEXT= 'windspeed_bft_txt'
-KEY_WEATHER_TEXT = 'weather_txt'
-KEY_WINDSPEED_AVG10M = 'windspeed_avg10m'
-KEY_WINDDIR_AVG10M = 'winddir_avg10m'
-KEY_GUSTSPEED_AVG10M = 'gustspeed_avg10m'
+@dataclass
+class DataPoints:
+    SENSOR_CO2_TEMP: tuple = (f'{MasterKeys.TEMP}17', 'Temperatur am CO2 Sensor', '°C')
+    SENSOR_CO2_HUM: tuple = (f'{MasterKeys.HUMID}17', 'Luftfeuchtigkeit am CO2 Sensor', '%')
+    SENSOR_CO2_PM10: tuple = (MasterKeys.PM10, '', '')
+    SENSOR_CO2_PM10_24: tuple = (f'{MasterKeys.PM10}_24h_avg', '', '')
+    SENSOR_CO2_PM255: tuple = (f'{MasterKeys.PM25}5', '', '')
+    SENSOR_CO2_PM255_24: tuple = (f'{MasterKeys.PM25}5_24h_avg', '', '')
+    SENSOR_CO2_CO2: tuple = (MasterKeys.CO2, '', '')
+    SENSOR_CO2_CO2_24: tuple = (f'{MasterKeys.CO2}_24h_avg', '', '')
+    INTEMP: tuple = (f'in{MasterKeys.TEMP}', 'Indoor Temperature', '°C')
+    OUTTEMP: tuple = (f'out{MasterKeys.TEMP}', 'Outdoor Temperature', '°C')                                         # 0x02 // 2 //
+    DEWPOINT: tuple = (MasterKeys.DEWPT, 'Dew Point', '°C')                                                         # 0x03 // 2 //
+    WINDCHILL: tuple = (MasterKeys.WINDCHILL, 'Wind Chill', '°C')                                                   # 0x04 // 2 //
+    HEATINDEX: tuple = (MasterKeys.HEATINDEX, 'Heat Index', '')                                                     # 0x05 // 2 //
+    INHUMI: tuple = (f'in{MasterKeys.HUMID}', 'Indoor Humidity', '%')                                               # 0x06 // 1 //
+    OUTHUMI: tuple = (f'out{MasterKeys.HUMID}', 'Outdoor Humidity', '%')                                            # 0x07 // 1 //
+    ABSBARO: tuple = (MasterKeys.ABSBARO, 'Absolutely Barometric', 'hpa')                                           # 0x08 // 2 //
+    RELBARO: tuple = (MasterKeys.RELBARO, 'Relative Barometric', 'hpa')                                             # 0x09 // 2 //
+    WINDDIRECTION: tuple = (MasterKeys.WINDDIRECTION, 'Wind Direction', '360°')                                     # 0x0A // 2 //
+    WINDSPEED: tuple = (MasterKeys.WINDSPEED, 'Wind Speed', 'm/s')                                                  # 0x0B // 2 //
+    GUSTSPEED: tuple = (MasterKeys.GUSTSPEED, 'Gust Speed', 'm/s')                                                  # 0x0C // 2 //
+    RAINEVENT: tuple = (MasterKeys.RAINEVENT, 'Rain Event', 'mm')                                                   # 0x0D // 2 //
+    RAINRATE: tuple = (MasterKeys.RAINRATE, 'Rain Rate', 'mm')                                                      # 0x0E // 2 //
+    RAINHOUR: tuple = (MasterKeys.RAINHOUR, 'Rain hour', 'mm')                                                      # 0x0F // 2 //
+    RAINDAY: tuple = (MasterKeys.RAINDAY, 'Rain Day', 'mm')                                                         # 0x10 // 2 //
+    RAINWEEK: tuple = (MasterKeys.RAINWEEK, 'Rain Week', 'mm')                                                      # 0x11 // 2 //
+    RAINMONTH: tuple = (MasterKeys.RAINMONTH, 'Rain Month', 'mm')                                                   # 0x12 // 4 //
+    RAINYEAR: tuple = (MasterKeys.RAINYEAR, 'Rain Year', 'mm')                                                      # 0x13 // 4 //
+    RAINTOTALS: tuple = (MasterKeys.RAINTOTALS, 'Rain Totals', 'mm')                                                # 0x14 // 4 //
+    LIGHT: tuple = (MasterKeys.LIGHT, 'Light', 'lux')                                                               # 0x15 // 4 //
+    UV: tuple = (MasterKeys.UV, 'UV', 'uW/m2')                                                                      # 0x16 // 2 //
+    UVI: tuple = (MasterKeys.UVI, 'UVI', '0-15')                                                                    # 0x17 // 1 //
+    TIME: tuple = (MasterKeys.TIME, 'Datetime', None)                                                               # 0x18 // 6 //
+    DAYLWINDMAX: tuple = (MasterKeys.DAYLWINDMAX, '', '')                                                           # 0X19 // 2 //
+    TEMP1: tuple = (f'{MasterKeys.TEMP}01', 'Temperature', '°C')                                                    # 0x1A // 2 //
+    TEMP2: tuple = (f'{MasterKeys.TEMP}02', 'Temperature', '°C')                                                    # 0x1B // 2 //
+    TEMP3: tuple = (f'{MasterKeys.TEMP}03', 'Temperature', '°C')                                                    # 0x1C // 2 //
+    TEMP4: tuple = (f'{MasterKeys.TEMP}04', 'Temperature', '°C')                                                    # 0x1D // 2 //
+    TEMP5: tuple = (f'{MasterKeys.TEMP}05', 'Temperature', '°C')                                                    # 0x1E // 2 //
+    TEMP6: tuple = (f'{MasterKeys.TEMP}06', 'Temperature', '°C')                                                    # 0x1F // 2 //
+    TEMP7: tuple = (f'{MasterKeys.TEMP}07', 'Temperature', '°C')                                                    # 0x20 // 2 //
+    TEMP8: tuple = (f'{MasterKeys.TEMP}08', 'Temperature', '°C')                                                    # 0x21 // 2 //
+    TF_USR1: tuple = (f'{MasterKeys.TEMP}09', 'Temperature', '°C')                                                  # 0x63 // 3 //
+    TF_USR2: tuple = (f'{MasterKeys.TEMP}10', 'Temperature', '°C')                                                  # 0x64 // 3 //
+    TF_USR3: tuple = (f'{MasterKeys.TEMP}11', 'Temperature', '°C')                                                  # 0x65 // 3 //
+    TF_USR4: tuple = (f'{MasterKeys.TEMP}12', 'Temperature', '°C')                                                  # 0x66 // 3 //
+    TF_USR5: tuple = (f'{MasterKeys.TEMP}13', 'Temperature', '°C')                                                  # 0x67 // 3 //
+    TF_USR6: tuple = (f'{MasterKeys.TEMP}14', 'Temperature', '°C')                                                  # 0x68 // 3 //
+    TF_USR7: tuple = (f'{MasterKeys.TEMP}15', 'Temperature', '°C')                                                  # 0x69 // 3 //
+    TF_USR8: tuple = (f'{MasterKeys.TEMP}16', 'Temperature', '°C')                                                  # 0x6A // 3 //
+    HUMI1: tuple = (f'{MasterKeys.HUMID}1', 'Humidity', '%')                                                        # 0x22 // 1 //
+    HUMI2: tuple = (f'{MasterKeys.HUMID}2', 'Humidity', '%')                                                        # 0x23 // 1 //
+    HUMI3: tuple = (f'{MasterKeys.HUMID}3', 'Humidity', '%')                                                        # 0x24 // 1 //
+    HUMI4: tuple = (f'{MasterKeys.HUMID}4', 'Humidity', '%')                                                        # 0x25 // 1 //
+    HUMI5: tuple = (f'{MasterKeys.HUMID}5', 'Humidity', '%')                                                        # 0x26 // 1 //
+    HUMI6: tuple = (f'{MasterKeys.HUMID}6', 'Humidity', '%')                                                        # 0x27 // 1 //
+    HUMI7: tuple = (f'{MasterKeys.HUMID}7', 'Humidity', '%')                                                        # 0x28 // 1 //
+    HUMI8: tuple = (f'{MasterKeys.HUMID}8', 'Humidity', '%')                                                        # 0x29 // 1 //
+    SOILTEMP1: tuple = (f'{MasterKeys.SOILTEMP}01', 'Soil Temperature', '°C')                                       # 0x2B // 2 //
+    SOILTEMP2: tuple = (f'{MasterKeys.SOILTEMP}02', 'Soil Temperature', '°C')                                       # 0x2D // 2 //
+    SOILTEMP3: tuple = (f'{MasterKeys.SOILTEMP}03', 'Soil Temperature', '°C')                                       # 0x2F // 2 //
+    SOILTEMP4: tuple = (f'{MasterKeys.SOILTEMP}04', 'Soil Temperature', '°C')                                       # 0x31 // 2 //
+    SOILTEMP5: tuple = (f'{MasterKeys.SOILTEMP}05', 'Soil Temperature', '°C')                                       # 0x33 // 2 //
+    SOILTEMP6: tuple = (f'{MasterKeys.SOILTEMP}06', 'Soil Temperature', '°C')                                       # 0x35 // 2 //
+    SOILTEMP7: tuple = (f'{MasterKeys.SOILTEMP}07', 'Soil Temperature', '°C')                                       # 0x37 // 2 //
+    SOILTEMP8: tuple = (f'{MasterKeys.SOILTEMP}08', 'Soil Temperature', '°C')                                       # 0x39 // 2 //
+    SOILTEMP9: tuple = (f'{MasterKeys.SOILTEMP}09', 'Soil Temperature', '°C')                                       # 0x3B // 2 //
+    SOILTEMP10: tuple = (f'{MasterKeys.SOILTEMP}10', 'Soil Temperature', '°C')                                      # 0x3D // 2 //
+    SOILTEMP11: tuple = (f'{MasterKeys.SOILTEMP}11', 'Soil Temperature', '°C')                                      # 0x3F // 2 //
+    SOILTEMP12: tuple = (f'{MasterKeys.SOILTEMP}12', 'Soil Temperature', '°C')                                      # 0x41 // 2 //
+    SOILTEMP13: tuple = (f'{MasterKeys.SOILTEMP}13', 'Soil Temperature', '°C')                                      # 0x43 // 2 //
+    SOILTEMP14: tuple = (f'{MasterKeys.SOILTEMP}14', 'Soil Temperature', '°C')                                      # 0x45 // 2 //
+    SOILTEMP15: tuple = (f'{MasterKeys.SOILTEMP}15', 'Soil Temperature', '°C')                                      # 0x47 // 2 //
+    SOILTEMP16: tuple = (f'{MasterKeys.SOILTEMP}16', 'Soil Temperature', '°C')                                      # 0x49 // 2 //
+    SOILMOISTURE1: tuple = (f'{MasterKeys.SOILMOISTURE}01', 'Soil Moisture', '%')                                   # 0x2C // 1 //
+    SOILMOISTURE2: tuple = (f'{MasterKeys.SOILMOISTURE}02', 'Soil Moisture', '%')                                   # 0x2E // 1 //
+    SOILMOISTURE3: tuple = (f'{MasterKeys.SOILMOISTURE}03', 'Soil Moisture', '%')                                   # 0x30 // 1 //
+    SOILMOISTURE4: tuple = (f'{MasterKeys.SOILMOISTURE}04', 'Soil Moisture', '%')                                   # 0x32 // 1 //
+    SOILMOISTURE5: tuple = (f'{MasterKeys.SOILMOISTURE}05', 'Soil Moisture', '%')                                   # 0x34 // 1 //
+    SOILMOISTURE6: tuple = (f'{MasterKeys.SOILMOISTURE}06', 'Soil Moisture', '%')                                   # 0x36 // 1 //
+    SOILMOISTURE7: tuple = (f'{MasterKeys.SOILMOISTURE}07', 'Soil Moisture', '%')                                   # 0x38 // 1 //
+    SOILMOISTURE8: tuple = (f'{MasterKeys.SOILMOISTURE}08', 'Soil Moisture', '%')                                   # 0x3A // 1 //
+    SOILMOISTURE9: tuple = (f'{MasterKeys.SOILMOISTURE}09', 'Soil Moisture', '%')                                   # 0x3C // 1 //
+    SOILMOISTURE10: tuple = (f'{MasterKeys.SOILMOISTURE}10', 'Soil Moisture', '%')                                  # 0x3E // 1 //
+    SOILMOISTURE11: tuple = (f'{MasterKeys.SOILMOISTURE}11', 'Soil Moisture', '%')                                  # 0x40 // 1 //
+    SOILMOISTURE12: tuple = (f'{MasterKeys.SOILMOISTURE}12', 'Soil Moisture', '%')                                  # 0x42 // 1 //
+    SOILMOISTURE13: tuple = (f'{MasterKeys.SOILMOISTURE}13', 'Soil Moisture', '%')                                  # 0x44 // 1 //
+    SOILMOISTURE14: tuple = (f'{MasterKeys.SOILMOISTURE}14', 'Soil Moisture', '%')                                  # 0x46 // 1 //
+    SOILMOISTURE15: tuple = (f'{MasterKeys.SOILMOISTURE}15', 'Soil Moisture', '%')                                  # 0x48 // 1 //
+    SOILMOISTURE16: tuple = (f'{MasterKeys.SOILMOISTURE}16', 'Soil Moisture', '%')                                  # 0x4A // 1 //
+    LOWBATT: tuple = (MasterKeys.LOWBATT, 'All sensor lowbatt', '16 char')                                          # 0x4C // 16 //
+    PM251: tuple = (f'{MasterKeys.PM25}1', 'PM2.5 Air Quality', 'μg/m3')                                            # 0x2A // 2 //
+    PM252: tuple = (f'{MasterKeys.PM25}2', 'PM2.5 Air Quality', 'μg/m3')                                            # 0x51 // 2 //
+    PM253: tuple = (f'{MasterKeys.PM25}3', 'PM2.5 Air Quality', 'μg/m3')                                            # 0x52 // 2 //
+    PM254: tuple = (f'{MasterKeys.PM25}4', 'PM2.5 Air Quality', 'μg/m3')                                            # 0x53 // 2 //
+    PM25_24H_AVG1: tuple = (f'{MasterKeys.PM25_AVG}1', 'PM2.5 Air Quality 24h average', 'μg/m3')                    # 0x4D // 2 //
+    PM25_24H_AVG2: tuple = (f'{MasterKeys.PM25_AVG}2', 'PM2.5 Air Quality 24h average', 'μg/m3')                    # 0x4E // 2 //
+    PM25_24H_AVG3: tuple = (f'{MasterKeys.PM25_AVG}3', 'PM2.5 Air Quality 24h average', 'μg/m3')                    # 0x4F // 2 //
+    PM25_24H_AVG4: tuple = (f'{MasterKeys.PM25_AVG}4', 'PM2.5 Air Quality 24h average', 'μg/m3')                    # 0x50 // 2 //
+    LEAK1: tuple = (f'{MasterKeys.LEAK}1', 'Leakage', 'True/False')                                                 # 0x58 // 1 //
+    LEAK2: tuple = (f'{MasterKeys.LEAK}2', 'Leakage', 'True/False')                                                 # 0x59 // 1 //
+    LEAK3: tuple = (f'{MasterKeys.LEAK}3', 'Leakage', 'True/False')                                                 # 0x5A // 1 //
+    LEAK4: tuple = (f'{MasterKeys.LEAK}4', 'Leakage', 'True/False')                                                 # 0x5B // 1 //
+    LIGHTNING_DIST: tuple = (MasterKeys.LIGHTNING_DIST, 'lightning distance', '1~40KM')                             # 0x60 // 1 //
+    LIGHTNING_TIME: tuple = (MasterKeys.LIGHTNING_TIME, 'lightning happened time', None)                            # 0x61 // 4 //
+    LIGHTNING_COUNT: tuple = (MasterKeys.LIGHTNING_COUNT, 'lightning counter for the day', None)                    # 0x62 // 4 //
+    SENSOR_CO2: tuple = ((SENSOR_CO2_TEMP[0],                                                                       # see first entries of dataclass
+                          SENSOR_CO2_HUM[0],                                                                        # see first entries of dataclass
+                          SENSOR_CO2_PM10[0],                                                                       # see first entries of dataclass
+                          SENSOR_CO2_PM10_24[0],                                                                    # see first entries of dataclass
+                          SENSOR_CO2_PM255[0],                                                                      # see first entries of dataclass
+                          SENSOR_CO2_PM255_24[0],                                                                   # see first entries of dataclass
+                          SENSOR_CO2_CO2[0],                                                                        # see first entries of dataclass
+                          SENSOR_CO2_CO2_24[0]), None, None)                                                        # 0x70 // 16 // CO2
+    PM25_AQI: tuple = (None, None, None)                                                                            # 0x71 //   // only for amb
+    LEAF_WETNESS1: tuple = (f'{MasterKeys.LEAF_WETNESS}1', 'Leaf Wetness', '%')                                     # 0x72 // 1 //
+    LEAF_WETNESS2: tuple = (f'{MasterKeys.LEAF_WETNESS}2', 'Leaf Wetness', '%')                                     # 0x73 // 1 //
+    LEAF_WETNESS3: tuple = (f'{MasterKeys.LEAF_WETNESS}3', 'Leaf Wetness', '%')                                     # 0x74 // 1 //
+    LEAF_WETNESS4: tuple = (f'{MasterKeys.LEAF_WETNESS}4', 'Leaf Wetness', '%')                                     # 0x75 // 1 //
+    LEAF_WETNESS5: tuple = (f'{MasterKeys.LEAF_WETNESS}5', 'Leaf Wetness', '%')                                     # 0x76 // 1 //
+    LEAF_WETNESS6: tuple = (f'{MasterKeys.LEAF_WETNESS}6', 'Leaf Wetness', '%')                                     # 0x77 // 1 //
+    LEAF_WETNESS7: tuple = (f'{MasterKeys.LEAF_WETNESS}7', 'Leaf Wetness', '%')                                     # 0x78 // 1 //
+    LEAF_WETNESS8: tuple = (f'{MasterKeys.LEAF_WETNESS}8', 'Leaf Wetness', '%')                                     # 0x79 // 1 //
+    RAIN_PRIO: tuple = (MasterKeys.RAIN_PRIO, 'rain priority (classical or piezo)', '1: classical, 2: piezo')       # 0x7A // 1 //
+    RAD_COMP: tuple = (MasterKeys.RAD_COMP, 'radiation compensation', 'on/off')                                     # 0x7B // 1 //
+    PIEZO_RAINRATE: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINRATE}', 'Rain Rate', 'mm')                         # 0x80 // 2 //
+    PIEZO_RAINEVENT: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINEVENT}', 'Rain Event', 'mm')                      # 0x81 // 2 //
+    PIEZO_RAINHOUR: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINHOUR}', 'Rain Hour', 'mm')                         # 0x82 // 2 //
+    PIEZO_RAINDAY: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINDAY}', 'Rain Day', 'mm')                            # 0x83 // 4 //
+    PIEZO_RAINWEEK: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINWEEK}', 'Rain Week', 'mm')                         # 0x84 // 4 //
+    PIEZO_RAINMONTH: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINMONTH}', 'Rain Month', 'mm')                      # 0x85 // 4 //
+    PIEZO_RAINYEAR: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINYEAR}', 'Rain Year', 'mm')                         # 0x86 // 4 //
+    PIEZO_GAIN10: tuple = (None, None, None)                                                                        # 0x87 // 2*10 //
+    RST_RAINTIME: tuple = (None, None, None)                                                                        # 0x88 // 3 //
+    RAIN_RESET_DAY: tuple = (MasterKeys.RAIN_RESET_DAY, 'Reset Rain Day', '')
+    RAIN_RESET_WEEK: tuple = (MasterKeys.RAIN_RESET_WEEK, 'Reset Rain Week', '')
+    RAIN_RESET_ANNUAL: tuple = (MasterKeys.RAIN_RESET_ANNUAL, 'Reset Rain Year', '')
+    CLIENT_IP: tuple = ('client_ip', 'Client IP', None)
+    PASSKEY: tuple = (None, 'Passkey', None)
+    FIRMWARE: tuple = ('firmware', 'Firmware Version', None)
+    FREQ: tuple = ('frequency', 'Frequency of Transmitter', None)
+    MODEL: tuple = ('model', 'Gateway Model', None)
+    RUNTIME: tuple = ('runtime', 'Runtime', 's')
+    INTERVAL: tuple = ('interval', 'Data Inteval', 's')
+    INDEWPPOINT: tuple = (f'in{MasterKeys.DEWPT}', 'Dew Point Indoor', '°C')
+    INABSHUM: tuple = (f'in{MasterKeys.ABSHUM}', 'Absolute Humidity Indoor', '')
+    OUTDEWPT: tuple = (f'out{MasterKeys.DEWPT}', 'Dew Point Outdoor', '°C')
+    OUTFROSTPT: tuple = (f'out{MasterKeys.FROSTPT}', 'Frost Point Outdoor', '°C')
+    OUTABSHUM: tuple = (f'out{MasterKeys.ABSHUM}', 'Absolute Humidity Outdoor', '')
+    RESET: tuple = ('reset', 'Reset', None)
+    REBOOT: tuple = ('reboot', 'Reboot', None)
+    FEELS_LIKE: tuple = ('feelslike', 'Feels Like Temperature', '°C')
+    SENSOR_WARNING: tuple = ('sensor_warning', 'Warning of any Sensor', 'True/False')
+    BATTERY_WARNING: tuple = ('battery_warning', 'Warning of any Battery', 'True/False')
+    STORM_WARNING: tuple = ('storm_warning', 'Storm Warning', 'True/False')
+    THUNDERSTORM_WARNING: tuple = ('thunderstorm_warning', 'Thunderstorm Warning', 'True/False')
+    WEATHERSTATION_WARNING: tuple = ('weatherstation_warning', 'Weatherstation Warning', 'True/False')
+    FIRMWARE_UPDATE_AVAILABLE: tuple = ('firmware_update_available', 'Firmware Update available', 'True/False')
+    FIRMWARE_UPDATE_TEXT: tuple = ('firmware_update_text', 'Firmware Update Description', None)
+    CLOUD_CEILING: tuple = ('cloud_ceiling', 'Cloud Ceiling', 'm')
+    WINDDIR_TEXT: tuple = ('winddir_txt', 'Wind Direction Desctiption', None)
+    WINDSPEED_BFT: tuple = ('windspeed_bft', 'Wind Speed in Beautford', None)
+    WINDSPEED_BFT_TEXT: tuple = ('windspeed_bft_txt', 'Wind Speed in Beautford Text', None)
+    WEATHER_TEXT: tuple = ('weather_txt', 'Weather Description', None)
+    WINDSPEED_AVG10M: tuple = ('windspeed_avg10m', 'Average Windspeed 10min', 'm/s')
+    WINDDIR_AVG10M: tuple = ('winddir_avg10m', 'Average Wind Direction 10min', '360°')
+    GUSTSPEED_AVG10M: tuple = ('gustspeed_avg10m', 'Average Gust Speed 10min', 'm/s')
+    PIEZO_RAIN: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN}', 'Rain', 'mm')
+    RAIN: tuple = (MasterKeys.RAIN, 'Rain', 'mm')
 
-# OTHERS
-BATTERY_EXTENTION = '_batt'
-SIGNAL_EXTENTION = '_sig'
 
-# ATTRIBUTE_GROUPS
-META_ATTRIBUTES = [KEY_MODEL,
-                   KEY_FREQ,
-                   KEY_SENSOR_WARNING,
-                   KEY_BATTERY_WARNING,
-                   KEY_STORM_WARNING,
-                   KEY_THUNDERSTORM_WARNING,
-                   KEY_WEATHERSTATION_WARNING,
-                   KEY_FIRMWARE,
-                   KEY_FIRMWARE_UPDATE_AVAILABLE,
-                   KEY_FIRMWARE_UPDATE_TEXT,
+@dataclass
+class SensorKeys:
+    WH65: tuple = (MasterKeys.WH65, MasterKeys.WH65.upper(), 'Außensensor WH65')
+    WS68: tuple = (MasterKeys.WS68, MasterKeys.WS68.upper(), 'Wetterstation WS68')
+    WS80: tuple = (MasterKeys.WS80, MasterKeys.WS80.upper(), 'Wetterstation WS80')
+    WH40: tuple = (MasterKeys.WH40, MasterKeys.WH40.upper(), 'Regensensor')
+    WH25: tuple = (MasterKeys.WH25, MasterKeys.WH25.upper(), 'Temperatur-, Feuchtigkeits- und Drucksensor')
+    WN26: tuple = (MasterKeys.WN26, MasterKeys.WN26.upper(), 'Pool Thermometer')
+    WH32: tuple = (MasterKeys.WH32, MasterKeys.WH32.upper(), 'Temperatur- und Feuchtigkeitssensor WH32')
+    WH24: tuple = (MasterKeys.WH24, MasterKeys.WH24.upper(), 'Temperatur- und Feuchtigkeitssensor Außen WH24')
+    WH57: tuple = (MasterKeys.WH57, MasterKeys.WH57.upper(), 'Blitzsensor WH57')
+    WH45: tuple = (MasterKeys.WH45, MasterKeys.WH45.upper(), 'Partikel- und CO2 Sensor WH45')
+    WS90: tuple = (MasterKeys.WS90, MasterKeys.WS90.upper(), 'Wetterstation 7in1 WS90')
+    WH31: tuple = (f'{MasterKeys.WH31}{MasterKeys.SEPARATOR}{MasterKeys.CHANNEL}', f'{MasterKeys.WH31.upper()} {MasterKeys.CHANNEL}', None)
+    WH31_1: tuple = (f'{WH31[0]}1', f'{WH31[1]}1', 'Thermo-Hygrometer Kanal 1')
+    WH31_2: tuple = (f'{WH31[0]}2', f'{WH31[1]}2', 'Thermo-Hygrometer Kanal 2')
+    WH31_3: tuple = (f'{WH31[0]}3', f'{WH31[1]}3', 'Thermo-Hygrometer Kanal 3')
+    WH31_4: tuple = (f'{WH31[0]}4', f'{WH31[1]}4', 'Thermo-Hygrometer Kanal 4')
+    WH31_5: tuple = (f'{WH31[0]}5', f'{WH31[1]}5', 'Thermo-Hygrometer Kanal 5')
+    WH31_6: tuple = (f'{WH31[0]}6', f'{WH31[1]}6', 'Thermo-Hygrometer Kanal 6')
+    WH31_7: tuple = (f'{WH31[0]}7', f'{WH31[1]}7', 'Thermo-Hygrometer Kanal 7')
+    WH31_8: tuple = (f'{WH31[0]}8', f'{WH31[1]}8', 'Thermo-Hygrometer Kanal 8')
+    WH51: tuple = (f'{MasterKeys.WH51}{MasterKeys.SEPARATOR}{MasterKeys.CHANNEL}', f'{MasterKeys.WH51.upper()} {MasterKeys.CHANNEL}', None)
+    WH51_1: tuple = (f'{WH51[0]}1', f'{WH51[1]}1', 'Bodenfeuchtesensor Kanal 1')
+    WH51_2: tuple = (f'{WH51[0]}2', f'{WH51[1]}2', 'Bodenfeuchtesensor Kanal 2')
+    WH51_3: tuple = (f'{WH51[0]}3', f'{WH51[1]}3', 'Bodenfeuchtesensor Kanal 3')
+    WH51_4: tuple = (f'{WH51[0]}4', f'{WH51[1]}4', 'Bodenfeuchtesensor Kanal 4')
+    WH51_5: tuple = (f'{WH51[0]}5', f'{WH51[1]}5', 'Bodenfeuchtesensor Kanal 5')
+    WH51_6: tuple = (f'{WH51[0]}6', f'{WH51[1]}6', 'Bodenfeuchtesensor Kanal 6')
+    WH51_7: tuple = (f'{WH51[0]}7', f'{WH51[1]}7', 'Bodenfeuchtesensor Kanal 7')
+    WH51_8: tuple = (f'{WH51[0]}8', f'{WH51[1]}8', 'Bodenfeuchtesensor Kanal 8')
+    WH41: tuple = (f'{MasterKeys.WH41}{MasterKeys.SEPARATOR}{MasterKeys.CHANNEL}', f'{MasterKeys.WH41.upper()} {MasterKeys.CHANNEL}', None)
+    WH41_1: tuple = (f'{WH41[0]}1', f'{WH41[1]}1', 'Partikelsensor PM2.5 WH41 Kanal 1')
+    WH41_2: tuple = (f'{WH41[0]}2', f'{WH41[1]}2', 'Partikelsensor PM2.5 WH41 Kanal 2')
+    WH41_3: tuple = (f'{WH41[0]}3', f'{WH41[1]}3', 'Partikelsensor PM2.5 WH41 Kanal 3')
+    WH41_4: tuple = (f'{WH41[0]}4', f'{WH41[1]}4', 'Partikelsensor PM2.5 WH41 Kanal 4')
+    WH55: tuple = (f'{MasterKeys.WH55}{MasterKeys.SEPARATOR}{MasterKeys.CHANNEL}', f'{MasterKeys.WH55.upper()} {MasterKeys.CHANNEL}', None)
+    WH55_1: tuple = (f'{WH55[0]}1', f'{WH55[1]}1', 'Leckagesensor Kanal 1')
+    WH55_2: tuple = (f'{WH55[0]}2', f'{WH55[1]}2', 'Leckagesensor Kanal 2')
+    WH55_3: tuple = (f'{WH55[0]}3', f'{WH55[1]}3', 'Leckagesensor Kanal 3')
+    WH55_4: tuple = (f'{WH55[0]}4', f'{WH55[1]}4', 'Leckagesensor Kanal 4')
+    WN34: tuple = (f'{MasterKeys.WN34}{MasterKeys.SEPARATOR}{MasterKeys.CHANNEL}', f'{MasterKeys.WN34.upper()} {MasterKeys.CHANNEL}', None)
+    WN34_1: tuple = (f'{WN34[0]}1', f'{WN34[1]}1', 'Thermometer mit wasserdichtem Sensor WN34 Kanal 1')
+    WN34_2: tuple = (f'{WN34[0]}2', f'{WN34[1]}2', 'Thermometer mit wasserdichtem Sensor WN34 Kanal 2')
+    WN34_3: tuple = (f'{WN34[0]}3', f'{WN34[1]}3', 'Thermometer mit wasserdichtem Sensor WN34 Kanal 3')
+    WN34_4: tuple = (f'{WN34[0]}4', f'{WN34[1]}4', 'Thermometer mit wasserdichtem Sensor WN34 Kanal 4')
+    WN34_5: tuple = (f'{WN34[0]}5', f'{WN34[1]}5', 'Thermometer mit wasserdichtem Sensor WN34 Kanal 5')
+    WN34_6: tuple = (f'{WN34[0]}6', f'{WN34[1]}6', 'Thermometer mit wasserdichtem Sensor WN34 Kanal 6')
+    WN34_7: tuple = (f'{WN34[0]}7', f'{WN34[1]}7', 'Thermometer mit wasserdichtem Sensor WN34 Kanal 7')
+    WN34_8: tuple = (f'{WN34[0]}8', f'{WN34[1]}8', 'Thermometer mit wasserdichtem Sensor WN34 Kanal 8')
+    WN35: tuple = (f'{MasterKeys.WN35}{MasterKeys.SEPARATOR}{MasterKeys.CHANNEL}', f'{MasterKeys.WN35.upper()} {MasterKeys.CHANNEL}', None)
+    WN35_1: tuple = (f'{WN35[0]}1', f'{WN35[1]}1', 'Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 1')
+    WN35_2: tuple = (f'{WN35[0]}2', f'{WN35[1]}2', 'Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 2')
+    WN35_3: tuple = (f'{WN35[0]}3', f'{WN35[1]}3', 'Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 3')
+    WN35_4: tuple = (f'{WN35[0]}4', f'{WN35[1]}4', 'Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 4')
+    WN35_5: tuple = (f'{WN35[0]}5', f'{WN35[1]}5', 'Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 5')
+    WN35_6: tuple = (f'{WN35[0]}6', f'{WN35[1]}6', 'Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 6')
+    WN35_7: tuple = (f'{WN35[0]}7', f'{WN35[1]}7', 'Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 7')
+    WN35_8: tuple = (f'{WN35[0]}8', f'{WN35[1]}8', 'Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 8')
+    WN30: tuple = (f'{MasterKeys.WN30}{MasterKeys.SEPARATOR}{MasterKeys.CHANNEL}', f'{MasterKeys.WN30.upper()} {MasterKeys.CHANNEL}', None)
+    WN30_1: tuple = (f'{WN30[0]}1', f'{WN30[1]}1', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 1')
+    WN30_2: tuple = (f'{WN30[0]}2', f'{WN30[1]}2', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 2')
+    WN30_3: tuple = (f'{WN30[0]}3', f'{WN30[1]}3', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 3')
+    WN30_4: tuple = (f'{WN30[0]}4', f'{WN30[1]}4', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 4')
+    WN30_5: tuple = (f'{WN30[0]}5', f'{WN30[1]}5', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 5')
+    WN30_6: tuple = (f'{WN30[0]}6', f'{WN30[1]}6', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 6')
+    WN30_7: tuple = (f'{WN30[0]}7', f'{WN30[1]}7', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 7')
+    WN30_8: tuple = (f'{WN30[0]}8', f'{WN30[1]}8', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 8')
+
+
+@dataclass
+class GainKeys:
+    RAIN: tuple = (MasterKeys.RAIN_GAIN, None)
+    RAIN_1: tuple = (f'{RAIN[0]}01', 'Kalibrierfaktor für Regensensor Kanal 1')
+    RAIN_2: tuple = (f'{RAIN[0]}02', 'Kalibrierfaktor für Regensensor Kanal 2')
+    RAIN_3: tuple = (f'{RAIN[0]}03', 'Kalibrierfaktor für Regensensor Kanal 3')
+    RAIN_4: tuple = (f'{RAIN[0]}04', 'Kalibrierfaktor für Regensensor Kanal 4')
+    RAIN_5: tuple = (f'{RAIN[0]}05', 'Kalibrierfaktor für Regensensor Kanal 5')
+    RAIN_6: tuple = (f'{RAIN[0]}06', 'Kalibrierfaktor für Regensensor Kanal 6')
+    RAIN_7: tuple = (f'{RAIN[0]}07', 'Kalibrierfaktor für Regensensor Kanal 7')
+    RAIN_8: tuple = (f'{RAIN[0]}08', 'Kalibrierfaktor für Regensensor Kanal 8')
+    RAIN_9: tuple = (f'{RAIN[0]}09', 'Kalibrierfaktor für Regensensor Kanal 9')
+    RAIN_10: tuple = (f'{RAIN[0]}10', 'Kalibrierfaktor für Regensensor Kanal 10')
+
+
+META_ATTRIBUTES = [DataPoints.MODEL,
+                   DataPoints.FREQ,
+                   DataPoints.SENSOR_WARNING,
+                   DataPoints.BATTERY_WARNING,
+                   DataPoints.STORM_WARNING,
+                   DataPoints.THUNDERSTORM_WARNING,
+                   DataPoints.WEATHERSTATION_WARNING,
+                   DataPoints.FIRMWARE,
+                   DataPoints.FIRMWARE_UPDATE_AVAILABLE,
+                   DataPoints.FIRMWARE_UPDATE_TEXT,
                    ]
 
-TCP_ATTRIBUTES = [KEY_RUNTIME]
+
+POST_ATTRIBUTES = [DataPoints.RUNTIME]
+
 
 FW_UPDATE_URL = 'http://download.ecowitt.net/down/filewave?v=FirwaveReadme.txt'.replace("\"", "")
+
+
+if __name__ == '__main__':
+
+    import ruamel.yaml
+
+    FILENAME_PLUGIN = 'plugin.yaml'
+    attribute = 'foshk_attribute'
+    data_points = DataPoints()
+    sensor_keys = SensorKeys()
+    gain_keys = GainKeys()
+    attributs_dict = dict()
+
+    # Iterate over the attributes of the dataclass DataPoints and create dict
+    for field in fields(data_points):
+        field_name = field.name
+        field_value = getattr(data_points, field_name)
+        fosk_attr = field_value[0]
+        fosk_attr_desc = field_value[1]
+        fosk_attr_unit = field_value[2]
+
+        # Wenn Beschreibung, dann zum Dict hinzu
+        if fosk_attr is not None and fosk_attr_desc is not None:
+            attributs_dict.update({fosk_attr: (fosk_attr_desc, fosk_attr_unit)})
+
+    # Iterate over the attributes of the dataclass SensorKeys and update dict
+    for field in fields(sensor_keys):
+        field_name = field.name
+        field_value = getattr(sensor_keys, field_name)
+        sensor_short = field_value[0]
+        sensor_desc = field_value[2]
+
+        # Wenn Beschreibung, dann zum Dict hinzu
+        if sensor_short is not None and sensor_desc is not None:
+            attributs_dict.update({f"{sensor_short}{MasterKeys.BATTERY_EXTENTION}": (f"Batteriestatus für {sensor_desc}",)})
+            attributs_dict.update({f"{sensor_short}{MasterKeys.SIGNAL_EXTENTION}": (f"Signalstärke für {sensor_desc}",)})
+
+    # Iterate over the attributes of the dataclass GainKeys and update dict
+    for field in fields(gain_keys):
+        field_name = field.name
+        field_value = getattr(gain_keys, field_name)
+        gain_short = field_value[0]
+        gain_desc = field_value[1]
+
+        # Wenn Beschreibung, dann zum Dict hinzu
+        if gain_short is not None and gain_desc is not None:
+            attributs_dict.update({gain_short: (gain_desc,)})
+
+
+    # sort dict by key
+    attributs_dict_sorted = dict(sorted(attributs_dict.items()))
+
+    # interate over dict and create strings
+    valid_list_str =         """        # NOTE: valid_list is automatically created by using datapoints.py"""
+    valid_list_desc_str =    """        # NOTE: valid_list_description is automatically created by using datapoints.py"""
+
+    for key in attributs_dict_sorted:
+        valid_list_str = f"""{valid_list_str}\n\
+              - {key!r:<40}"""
+
+        valid_list_desc_str = f"""{valid_list_desc_str}\n\
+              - {attributs_dict_sorted[key][0]:<}"""
+
+    valid_list_desc_str = f"""{valid_list_desc_str}\n\r"""
+
+    # open plugin.yaml and update
+    yaml = ruamel.yaml.YAML()
+    yaml.indent(mapping=4, sequence=4, offset=4)
+    yaml.width = 200
+    yaml.allow_unicode = True
+    yaml.preserve_quotes = False
+
+    with open(FILENAME_PLUGIN, 'r', encoding="utf-8") as f:
+        data = yaml.load(f)
+
+    if data.get('item_attributes', {}).get(attribute):
+        data['item_attributes'][attribute]['valid_list'] = yaml.load(valid_list_str)
+        data['item_attributes'][attribute]['valid_list_description'] = yaml.load(valid_list_desc_str)
+
+        with open(FILENAME_PLUGIN, 'w', encoding="utf-8") as f:
+            yaml.dump(data, f)
+        print(f"Successfully updated Attribute '{attribute}' in {FILENAME_PLUGIN}!")
+    else:
+        print(f"Attribute '{attribute}' not defined in {FILENAME_PLUGIN}!")

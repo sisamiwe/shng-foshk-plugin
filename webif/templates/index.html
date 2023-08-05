@@ -80,12 +80,12 @@
 			<td class="py-1">{{ p.interface_config.ip_address }}</td>
 			<td class="py-1" width="50px"></td>
 			<td class="py-1"><strong>Gateway-Port</strong></td>
-			<td class="py-1">{{p.interface_config.ip_address.port}}</td>
+			<td class="py-1">{{p.interface_config.port}}</td>
 			<td class="py-1" width="50px"></td>
 		</tr>
 		<tr>
 			<td class="py-1"><strong>Data Poll Cycle [s]</strong></td>
-			<td class="py-1">{{ p.gateway_poll_cycle }}</td>
+			<td class="py-1">{{ p.interface_config.api_data_cycle }}</td>
 			<td></td>
 			<td class="py-1"><strong>Gateway Connected</strong></td>
 			<td class="py-1">{{ p.gateway_connected }}</td>
@@ -275,10 +275,11 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% for entry in p.gateway.get_system_params() %}
+				{% set system = p.gateway.api.get_system_params() %}
+				{% for entry in system %}
 					<tr>
 						<td class="py-1">{{ entry }}</td>
-						<td class="py-1" style="text-align:right">{{  p.gateway.get_system_params()[entry] }}</td>
+						<td class="py-1" style="text-align:right">{{ system[entry] }}</td>
 						<td></td>
 					</tr>
 				{% endfor %}
@@ -297,7 +298,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set custom = p.gateway.get_custom_params() %}
+				{% set custom = p.gateway.api.get_custom_params() %}
 				<tr>
 					<td class="py-1">{{ _('Server ID') }}</td>
 					<td class="py-1" style="text-align:right">{% if 'id' in custom and custom['id'] != '' %} {{ custom['id'] }} {% else %} {{ ('-') }} {% endif %} </td>
@@ -352,7 +353,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set calibration = p.gateway.get_calibration_coefficient() %}
+				{% set calibration = p.gateway.api.get_calibration_coefficient() %}
 				{% for entry in calibration %}
 					<tr>
 						<td class="py-1">{{ entry }}</td>
@@ -385,7 +386,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set mulch_offset = p.gateway.get_mulch_offset() %}
+				{% set mulch_offset = p.gateway.api.get_mulch_offset() %}
 				{% for sensor in mulch_offset %}
 					<tr>
 						<td class="py-1" colspan=3> <b>{{ _('SENSOR CHANNEL: ') }} {{ sensor +1 }}</b></td>
@@ -414,7 +415,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set soil_calibration = p.gateway.get_soil_calibration() %}
+				{% set soil_calibration = p.gateway.api.get_soil_calibration() %}
 				{% for sensor in soil_calibration %}
 					<tr>
 						<td class="py-1" colspan=3> <b>{{ _('SENSOR CHANNEL: ') }} {{ sensor +1 }}</b></td>
@@ -459,7 +460,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set pm25_offset = p.gateway.get_pm25_offset() %}
+				{% set pm25_offset = p.gateway.api.get_pm25_offset() %}
 
 					<tr>
 						<td class="py-1">{{ ('PM25 Channel 1') }}</td>
@@ -495,7 +496,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{% set co2_offset = p.gateway.get_co2_offset() %}
+				{% set co2_offset = p.gateway.api.get_co2_offset() %}
 					<tr>
 						<td class="py-1">{{ ('CO2 Offset') }}</td>
 						<td class="py-1" style="text-align:right">{{ co2_offset['co2'] }}</td>

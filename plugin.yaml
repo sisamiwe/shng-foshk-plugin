@@ -3,8 +3,8 @@ plugin:
     # Global plugin attributes
     type: gateway                   # plugin type (gateway, interface, protocol, system, web)
     description:
-        de: 'Anbindung eines Gateways für Foshk Wetterstationen wie bspw. GW1000, GW2000 mit entsprechender API'
-        en: 'Connect to a gateway for Foshk weather stations like GW1000, GW2000 using their API'
+        de: Anbindung eines Gateways für Foshk Wetterstationen wie bspw. GW1000, GW2000 mit entsprechender API
+        en: Connect to a gateway for Foshk weather stations like GW1000, GW2000 using their API
     maintainer: sisamiwe
     tester: bmxp                    # Who tests this plugin?
     state: develop                  # change to ready when done with development
@@ -23,17 +23,17 @@ plugin:
 parameters:
     Gateway_IP:
         type: ipv4
-        default: '0.0.0.0'
+        default: 0.0.0.0
         description:
-            de: 'IP-Adresse des Gateways'
-            en: 'IP-Address of the gateway'
+            de: IP-Adresse des Gateways
+            en: IP-Address of the gateway
 
     Gateway_Port:
         type: int
         default: 45000
         description:
-            de: 'UDP Port des Gateways'
-            en: 'UDP Port of the Gateway'
+            de: UDP Port des Gateways
+            en: UDP Port of the Gateway
 
     Gateway_Poll_Cycle:
         type: int
@@ -41,8 +41,8 @@ parameters:
         valid_min: 16
         valid_max: 600
         description:
-            de: 'Zyklus, in dem die Daten via API abgerufen werden'
-            en: 'Cycle in which the data will be pulled via API'
+            de: Zyklus, in dem die Daten via API abgerufen werden
+            en: Cycle in which the data will be pulled via API
 
     FW_Update_Check_Cycle:
         type: int
@@ -50,36 +50,36 @@ parameters:
         valid_min: 0
         valid_max: 90
         description:
-            de: 'Interval in Tagen, in dem nach neuer Firmware gesucht wird. 0 bedeutet aus.'
-            en: 'Cycle in days in which a check for newer firmware will be performed. 0 means no periodical check'
+            de: Interval in Tagen, in dem nach neuer Firmware gesucht wird. 0 bedeutet aus.
+            en: Cycle in days in which a check for newer firmware will be performed. 0 means no periodical check
 
     Battery_Warning:
         type: bool
         default: true
         description:
-            de: 'Erzeugt ein separates Datenfeld für eine Batteriewarnung.'
-            en: 'Creates a separate Data field für battery warning'
+            de: Erzeugt ein separates Datenfeld für eine Batteriewarnung.
+            en: Creates a separate Data field für battery warning
 
     Sensor_Warning:
         type: bool
         default: true
         description:
-            de: 'Erzeugt ein separates Datenfeld für eine Sensorwarnung.'
-            en: 'Creates a separate Data field für sensor warning'
+            de: Erzeugt ein separates Datenfeld für eine Sensorwarnung.
+            en: Creates a separate Data field für sensor warning
 
     Use_of_WH32:
         type: bool
         default: true
         description:
-            de: 'Wird ein WH32 Außen-Sensor mit Temperatur und Luftfeuchtemessung genutzt?'
-            en: 'Is a WH32 Outdoor sensor for temperature and humidity in use?'
+            de: Wird ein WH32 Außen-Sensor mit Temperatur und Luftfeuchtemessung genutzt?
+            en: Is a WH32 Outdoor sensor for temperature and humidity in use?
 
     Ignore_WH40_Battery:
         type: bool
         default: true
         description:
-            de: 'Soll eine Batterie-Warnung für WH40 ignoriert werden?'
-            en: 'Should a battery warning be ignored for a WH40?'
+            de: Soll eine Batterie-Warnung für WH40 ignoriert werden?
+            en: Should a battery warning be ignored for a WH40?
 
     Ecowitt_Data_Cycle:
         type: int
@@ -88,109 +88,36 @@ parameters:
         valid_max: 600
         description:
             de: 'Intervall, in dem das Gateway die Daten bereitstellt, bzw. hochlädt; (Wert 0: Aus, ECOWITT Daten werden nicht geladen; Wert 1-16: Datenzyklus 16s;  Wert >16 :  Datenzyklus s)'
-            en: 'Interval the gateway provides the data'
+            en: Interval the gateway provides the data
 
 item_attributes:
     foshk_attribute:
         type: str
         description:
-            de: 'Datenattribut des Foshk-Gerätes'
-            en: 'Data attribute of Foshk device'
+            de: Datenattribut des Foshk-Gerätes
+            en: Data attribute of Foshk device
         valid_list:
-            # Gateway
-            - gateway_model
-            - frequency
-            - datetime
-            - runtime                       # nur über TCP verfügbar
-            - sensor_warning
+        # NOTE: valid_list is automatically created by using datapoints.py
+            - absbarometer
+            - annual_reset
             - battery_warning
-            - storm_warning                 # noch nicht implementiert
-            - thunderstorm_warning          # noch nicht implementiert
-            - weatherstation_warning        # noch nicht implementiert
-            - firmware_version
+            - client_ip
+            - cloud_ceiling
+            - co2
+            - co2_24h_avg
+            - datetime
+            - day_reset
+            - dewpt
+            - feelslike
+            - firmware
             - firmware_update_available
             - firmware_update_text
-            - interval
-            - reset                         # set
-            - reboot                        # set
-            # indoor
-            - intemp                        # Innentemperatur
-            - inhumid                       # Innenluftfeuchtigkeit
-            - absbarometer                  # absoluter Luftdruck
-            - relbarometer                  # relativer Luftdruck
-            - indewpt                       # Taupunkt
-            - inabshum                      # absolute Luftfeuchte
-            # WH65 / WH24
-            - outtemp                       # Außentemperatur
-            - outhumid                      # Außenluftfeuchtigkeit
-            - solarradiation                # Sonneneinstrahlung
-            - uvi                           # UV Index
-            - light                         # Helligkeit
-            - cloud_ceiling                 # Wolkenhöhe basierend auf Temp und Dewpoint *Berechnung im Plugin
-            - heatindex                     # to be implemented
-            - outdewpt                      # Taupunkt außen
-            - outfrostpt                    # Frostpunkt außen
-            - outabshum                     # absolute Luftfeuchte
-            - feels_like                    # gefühlte Außentemperatur
-            - wh24_batt                     # Batteriewarnung Wetterstation WH24
-            - wh65_batt                     # Batteriewarnung Wetterstation WH65
-            - wh24_sig                      # Signalstärke Wetterstation WH24
-            - wh65_sig                      # Signalstärke Wetterstation WH24
-            # nur WS90
-            - ws90_batt                     # Batteriewarnung Wetterstation WS90
-            - ws90_sig                      # Signalstärke Wetterstation WS90
-            - gain0                         # for calibration purposes
-            - gain1                         # for calibration purposes
-            - gain2                         # for calibration purposes
-            - gain3                         # for calibration purposes
-            - gain4                         # for calibration purposes
-            - gain5                         # for calibration purposes
-            - gain6                         # for calibration purposes
-            - gain7                         # for calibration purposes
-            - gain8                         # for calibration purposes
-            - gain9                         # for calibration purposes
-            # rain
-            - rain
-            - rainevent                     # kumulierte Regenmenge in mm des aktuellen Regenevents
-            - rainrate                      # Regenmenge pro Zeit in mm/h des aktuellen Regenevents
-            - rainhour                      # kumulierte Regenmenge der aktuellen Stunde
-            - rainday                       # kumulierte Regenmenge des aktuellen Tages
-            - rainweek                      # kumulierte Regenmenge der aktuellen Woche
-            - rainmonth                     # kumulierte Regenmenge des aktuellen Monats
-            - rainyear                      # kumulierte Regenmenge des aktuellen Jahres
-            - raintotals                    # kumulierte Regenmenge seit Inbetriebnahme bzw. Reset
-            - rain_priority                 #
-            - rad_comp                      #
-            # nur WS90
-            - p_rainrate                    # Regenmenge pro Zeit in mm/h des aktuellen Regenevents (WS90)
-            - p_rainevent                   # kumulierte Regenmenge in mm des aktuellen Regenevents (WS90)
-            - p_rainhour                    # kumulierte Regenmenge der aktuellen Stunde (WS90)
-            - p_rainday                     # kumulierte Regenmenge des aktuellen Tages (WS90)
-            - p_rainweek                    # kumulierte Regenmenge der aktuellen Woche (WS90)
-            - p_rainmonth                   # kumulierte Regenmenge des aktuellen Monats (WS90)
-            - p_rainyear                    # kumulierte Regenmenge des aktuellen Jahres (WS90)
-            # wind
-            - winddir                       # Windrichtung in °
-            - windspeed                     # Windgeschwindigkeit in m/s
-            - gustspeed                     # Windböengeschwindigkeit in m/s
-            - winddaymax                    # max. Windböengeschwindigkeit des Tages in m/s
-            - winddir_text                  # Windrichtung als Richtungstext *Berechnung im Plugin
-            - windspeed_bft                 # Windgeschwindingkeit auf der Beauford Skala *Berechnung im Plugin
-            - windspeed_bft_text            # Windgeschwindingkeit auf der Beauford Skala als Text *Berechnung im Plugin
-            - weather_text                  # Beschreibung des aktuellen Wetters als Text *Berechnung im Plugin
-            - windspeed_avg10m              # Durchschnittliche Windgeschwindigkeit der letzten 10min *Berechnung im Plugin
-            - winddir_avg10m                # Durchschnittliche Windrichtung der letzten 10min *Berechnung im Plugin
-            - gustspeed_avg10m              # Durchschnittliche Windboeen der letzten 10min *Berechnung im Plugin
-            # WH31
-            - temp1
-            - temp2
-            - temp3
-            - temp4
-            - temp5
-            - temp6
-            - temp7
-            - temp8
+            - frequency
+            - gustspeed
+            - gustspeed_avg10m
+            - heatindex
             - humid1
+            - humid17
             - humid2
             - humid3
             - humid4
@@ -198,154 +125,11 @@ item_attributes:
             - humid6
             - humid7
             - humid8
-            - dewpt1
-            - dewpt2
-            - dewpt3
-            - dewpt4
-            - dewpt5
-            - dewpt6
-            - dewpt7
-            - dewpt8
-            - abshum1
-            - abshum2
-            - abshum3
-            - abshum4
-            - abshum5
-            - abshum6
-            - abshum7
-            - abshum8
-            - wh31_ch1_batt
-            - wh31_ch2_batt
-            - wh31_ch3_batt
-            - wh31_ch4_batt
-            - wh31_ch5_batt
-            - wh31_ch6_batt
-            - wh31_ch7_batt
-            - wh31_ch8_batt
-            - wh31_ch1_sig
-            - wh31_ch2_sig
-            - wh31_ch3_sig
-            - wh31_ch4_sig
-            - wh31_ch5_sig
-            - wh31_ch6_sig
-            - wh31_ch7_sig
-            - wh31_ch8_sig
-            # WH34
-            - temp_tf_ch1
-            - temp_tf_ch2
-            - temp_tf_ch3
-            - temp_tf_ch4
-            - temp_tf_ch5
-            - temp_tf_ch6
-            - temp_tf_ch7
-            - temp_tf_ch8
-            - wh34_ch1_batt
-            - wh34_ch2_batt
-            - wh34_ch3_batt
-            - wh34_ch4_batt
-            - wh34_ch5_batt
-            - wh34_ch6_batt
-            - wh34_ch7_batt
-            - wh34_ch8_batt
-            - wh34_ch1_sig
-            - wh34_ch2_sig
-            - wh34_ch3_sig
-            - wh34_ch4_sig
-            - wh34_ch5_sig
-            - wh34_ch6_sig
-            - wh34_ch7_sig
-            - wh34_ch8_sig
-            # WH51
-            - soilmoist1
-            - soilmoist2
-            - soilmoist3
-            - soilmoist4
-            - soilmoist5
-            - soilmoist6
-            - soilmoist7
-            - soilmoist8
-            - soilmoist9
-            - soilmoist10
-            - soilmoist11
-            - soilmoist12
-            - soilmoist13
-            - soilmoist14
-            - soilmoist15
-            - soilmoist16
-            - wh51_ch1_batt
-            - wh51_ch2_batt
-            - wh51_ch3_batt
-            - wh51_ch4_batt
-            - wh51_ch5_batt
-            - wh51_ch6_batt
-            - wh51_ch7_batt
-            - wh51_ch8_batt
-            - wh51_ch9_batt
-            - wh51_ch10_batt
-            - wh51_ch11_batt
-            - wh51_ch12_batt
-            - wh51_ch13_batt
-            - wh51_ch14_batt
-            - wh51_ch15_batt
-            - wh51_ch16_batt
-            - wh51_ch1_sig
-            - wh51_ch2_sig
-            - wh51_ch3_sig
-            - wh51_ch4_sig
-            - wh51_ch5_sig
-            - wh51_ch6_sig
-            - wh51_ch7_sig
-            - wh51_ch8_sig
-            - wh51_ch9_sig
-            - wh51_ch10_sig
-            - wh51_ch11_sig
-            - wh51_ch12_sig
-            - wh51_ch13_sig
-            - wh51_ch14_sig
-            - wh51_ch15_sig
-            - wh51_ch16_sig
-            # WH45
-            - temp17
-            - humid17
-            - pm10
-            - pm10_24h_avg
-            - pm255
-            - pm255_24h_avg
-            - co2
-            - co2_24h_avg
-            - wh45_batt
-            # WH41 / WH43
-            - wh41_ch1_batt
-            - wh41_ch2_batt
-            - wh41_ch3_batt
-            - wh41_ch4_batt
-            - wh45_batt
-            - wh41_ch1_sig
-            - wh41_ch2_sig
-            - wh41_ch3_sig
-            - wh41_ch4_sig
-            - wh45_sig
-            # WH55
-            - leak_ch1
-            - leak_ch2
-            - leak_ch3
-            - leak_ch4
-            - wh55_ch1_batt
-            - wh55_ch2_batt
-            - wh55_ch3_batt
-            - wh55_ch4_batt
-            - wh55_ch1_sig
-            - wh55_ch2_sig
-            - wh55_ch3_sig
-            - wh55_ch4_sig
-            # WH57
-            - lightningdist
-            - lightningdettime
-            - lightningcount
-            - lightning_strike_count
-            - wh57_batt
-            - wh57_sig
-            # WN35 Leaf Wetness Sensor
+            - inabshum
+            - indewpt
+            - inhumid
+            - intemp
+            - interval
             - leafwet1
             - leafwet2
             - leafwet3
@@ -354,275 +138,542 @@ item_attributes:
             - leafwet6
             - leafwet7
             - leafwet8
-            # self calculated keys
-            - weather_text
+            - leak1
+            - leak2
+            - leak3
+            - leak4
+            - light
+            - lightningcount
+            - lightningdettime
+            - lightningdist
+            - lowbatt
+            - model
+            - outabshum
+            - outdewpt
+            - outfrostpt
+            - outhumid
+            - outtemp
+            - p_rain
+            - p_rainday
+            - p_rainevent
+            - p_rainhour
+            - p_rainmonth
+            - p_rainrate
+            - p_rainweek
+            - p_rainyear
+            - pm10
+            - pm10_24h_avg
+            - pm251
+            - pm252
+            - pm253
+            - pm254
+            - pm255
+            - pm255_24h_avg
+            - pm25_24h_avg1
+            - pm25_24h_avg2
+            - pm25_24h_avg3
+            - pm25_24h_avg4
+            - rad_comp
+            - rain
+            - rain_gain01
+            - rain_gain02
+            - rain_gain03
+            - rain_gain04
+            - rain_gain05
+            - rain_gain06
+            - rain_gain07
+            - rain_gain08
+            - rain_gain09
+            - rain_gain10
+            - rain_priority
+            - rainday
+            - rainevent
+            - rainhour
+            - rainmonth
+            - rainrate
+            - raintotals
+            - rainweek
+            - rainyear
+            - reboot
+            - relbarometer
+            - reset
+            - runtime
+            - sensor_warning
+            - soilmoist01
+            - soilmoist02
+            - soilmoist03
+            - soilmoist04
+            - soilmoist05
+            - soilmoist06
+            - soilmoist07
+            - soilmoist08
+            - soilmoist09
+            - soilmoist10
+            - soilmoist11
+            - soilmoist12
+            - soilmoist13
+            - soilmoist14
+            - soilmoist15
+            - soilmoist16
+            - soiltemp01
+            - soiltemp02
+            - soiltemp03
+            - soiltemp04
+            - soiltemp05
+            - soiltemp06
+            - soiltemp07
+            - soiltemp08
+            - soiltemp09
+            - soiltemp10
+            - soiltemp11
+            - soiltemp12
+            - soiltemp13
+            - soiltemp14
+            - soiltemp15
+            - soiltemp16
+            - solarradiation
+            - storm_warning
+            - temp01
+            - temp02
+            - temp03
+            - temp04
+            - temp05
+            - temp06
+            - temp07
+            - temp08
+            - temp09
+            - temp10
+            - temp11
+            - temp12
+            - temp13
+            - temp14
+            - temp15
+            - temp16
+            - temp17
+            - thunderstorm_warning
+            - uvi
+            - weather_txt
+            - weatherstation_warning
+            - week_reset
+            - wh24_batt
+            - wh24_sig
+            - wh25_batt
+            - wh25_sig
+            - wh31_ch1_batt
+            - wh31_ch1_sig
+            - wh31_ch2_batt
+            - wh31_ch2_sig
+            - wh31_ch3_batt
+            - wh31_ch3_sig
+            - wh31_ch4_batt
+            - wh31_ch4_sig
+            - wh31_ch5_batt
+            - wh31_ch5_sig
+            - wh31_ch6_batt
+            - wh31_ch6_sig
+            - wh31_ch7_batt
+            - wh31_ch7_sig
+            - wh31_ch8_batt
+            - wh31_ch8_sig
+            - wh32_batt
+            - wh32_sig
+            - wh40_batt
+            - wh40_sig
+            - wh41_ch1_batt
+            - wh41_ch1_sig
+            - wh41_ch2_batt
+            - wh41_ch2_sig
+            - wh41_ch3_batt
+            - wh41_ch3_sig
+            - wh41_ch4_batt
+            - wh41_ch4_sig
+            - wh45_batt
+            - wh45_sig
+            - wh51_ch1_batt
+            - wh51_ch1_sig
+            - wh51_ch2_batt
+            - wh51_ch2_sig
+            - wh51_ch3_batt
+            - wh51_ch3_sig
+            - wh51_ch4_batt
+            - wh51_ch4_sig
+            - wh51_ch5_batt
+            - wh51_ch5_sig
+            - wh51_ch6_batt
+            - wh51_ch6_sig
+            - wh51_ch7_batt
+            - wh51_ch7_sig
+            - wh51_ch8_batt
+            - wh51_ch8_sig
+            - wh55_ch1_batt
+            - wh55_ch1_sig
+            - wh55_ch2_batt
+            - wh55_ch2_sig
+            - wh55_ch3_batt
+            - wh55_ch3_sig
+            - wh55_ch4_batt
+            - wh55_ch4_sig
+            - wh57_batt
+            - wh57_sig
+            - wh65_batt
+            - wh65_sig
+            - wh68_batt
+            - wh68_sig
+            - windchill
+            - winddaymax
+            - winddir
+            - winddir_avg10m
+            - winddir_txt
+            - windspeed
+            - windspeed_avg10m
+            - windspeed_bft
+            - windspeed_bft_txt
+            - wn26_batt
+            - wn26_sig
+            - wn30_ch1_batt
+            - wn30_ch1_sig
+            - wn30_ch2_batt
+            - wn30_ch2_sig
+            - wn30_ch3_batt
+            - wn30_ch3_sig
+            - wn30_ch4_batt
+            - wn30_ch4_sig
+            - wn30_ch5_batt
+            - wn30_ch5_sig
+            - wn30_ch6_batt
+            - wn30_ch6_sig
+            - wn30_ch7_batt
+            - wn30_ch7_sig
+            - wn30_ch8_batt
+            - wn30_ch8_sig
+            - wn34_ch1_batt
+            - wn34_ch1_sig
+            - wn34_ch2_batt
+            - wn34_ch2_sig
+            - wn34_ch3_batt
+            - wn34_ch3_sig
+            - wn34_ch4_batt
+            - wn34_ch4_sig
+            - wn34_ch5_batt
+            - wn34_ch5_sig
+            - wn34_ch6_batt
+            - wn34_ch6_sig
+            - wn34_ch7_batt
+            - wn34_ch7_sig
+            - wn34_ch8_batt
+            - wn34_ch8_sig
+            - wn35_ch1_batt
+            - wn35_ch1_sig
+            - wn35_ch2_batt
+            - wn35_ch2_sig
+            - wn35_ch3_batt
+            - wn35_ch3_sig
+            - wn35_ch4_batt
+            - wn35_ch4_sig
+            - wn35_ch5_batt
+            - wn35_ch5_sig
+            - wn35_ch6_batt
+            - wn35_ch6_sig
+            - wn35_ch7_batt
+            - wn35_ch7_sig
+            - wn35_ch8_batt
+            - wn35_ch8_sig
+            - ws80_batt
+            - ws80_sig
+            - ws90_batt
+            - ws90_sig
         valid_list_description:
-            de:
-                # Gateway
-                - Modell des Gateways
-                - benutzte Sende- und Empfangsfrequenz der Sensoren
-                - Datum und Uhrzeit des Gateways
-                - Laufzeit, nur über TCP verfügbar
-                - Sensor Warnung
-                - Batterie Warnung
-                - Sturmwarnung (noch nicht implementiert)
-                - Gewitter-Warnung (noch nicht implementiert)
-                - Wetterstation Warnung (noch nicht implementiert)
-                - Firmware Version
-                - Firmware Update verfügbar
-                - Textmitteilung zum Firmware Update
-                - Intervalv
-                - Reset
-                - Neustart
-                # indoor
-                - Innentemperatur
-                - Innenluftfeuchtigkeit
-                - absoluter Luftdruck
-                - relativer Luftdruck
-                - Taupunkt
-                - absolute Luftfeuchte
-                # WH65 / WH24
-                - Außentemperatur
-                - Außenluftfeuchtigkeit
-                - Sonneneinstrahlung
-                - UV Index
-                - Helligkeit
-                - Wolkenhöhe basierend auf Temp und Dewpoint *Berechnung im Plugin
-                - to be implemented
-                - Taupunkt außen
-                - Frostpunkt außen
-                - absolute Luftfeuchte
-                - gefühlte Außentemperatur
-                - Batteriewarnung Wetterstation WH24
-                - Batteriewarnung Wetterstation WH65
-                - Signalstärke Wetterstation WH24
-                - Signalstärke Wetterstation WH24
-                # nur WS90
-                - Batteriewarnung Wetterstation WS90
-                - Signalstärke Wetterstation WS90
-                - Kalibration 0
-                - Kalibration 1
-                - Kalibration 2
-                - Kalibration 3
-                - Kalibration 4
-                - Kalibration 5
-                - Kalibration 6
-                - Kalibration 7
-                - Kalibration 8
-                - Kalibration 9
-                # rain
-                - Regen
-                - kumulierte Regenmenge in mm des aktuellen Regenevents
-                - Regenmenge pro Zeit in mm/h des aktuellen Regenevents
-                - kumulierte Regenmenge der aktuellen Stunde
-                - kumulierte Regenmenge des aktuellen Tages
-                - kumulierte Regenmenge der aktuellen Woche
-                - kumulierte Regenmenge des aktuellen Monats
-                - kumulierte Regenmenge des aktuellen Jahres
-                - kumulierte Regenmenge seit Inbetriebnahme bzw. Reset
-                - rain_priority                 #
-                - rad_comp                      #
-                # nur WS90
-                - Piezo-Sensor, Regenmenge pro Zeit in mm/h des aktuellen Regenevents (WS90)
-                - Piezo-Sensor, kumulierte Regenmenge in mm des aktuellen Regenevents (WS90)
-                - Piezo-Sensor, kumulierte Regenmenge der aktuellen Stunde (WS90)
-                - Piezo-Sensor, kumulierte Regenmenge des aktuellen Tages (WS90)
-                - Piezo-Sensor, kumulierte Regenmenge der aktuellen Woche (WS90)
-                - Piezo-Sensor, kumulierte Regenmenge des aktuellen Monats (WS90)
-                - Piezo-Sensor, kumulierte Regenmenge des aktuellen Jahres (WS90)
-                # wind
-                - Windrichtung in °
-                - Windgeschwindigkeit in m/s
-                - Windböengeschwindigkeit in m/s
-                - max. Windböengeschwindigkeit des Tages in m/s
-                - Windrichtung als Richtungstext *Berechnung im Plugin
-                - Windgeschwindingkeit auf der Beauford Skala *Berechnung im Plugin
-                - Windgeschwindingkeit auf der Beauford Skala als Text *Berechnung im Plugin
-                - Beschreibung des aktuellen Wetters als Text *Berechnung im Plugin
-                - Durchschnittliche Windgeschwindigkeit der letzten 10min *Berechnung im Plugin
-                - Durchschnittliche Windrichtung der letzten 10min *Berechnung im Plugin
-                - Durchschnittliche Windboeen der letzten 10min *Berechnung im Plugin
-                # WH31
-                - temp1
-                - temp2
-                - temp3
-                - temp4
-                - temp5
-                - temp6
-                - temp7
-                - temp8
-                - humid1
-                - humid2
-                - humid3
-                - humid4
-                - humid5
-                - humid6
-                - humid7
-                - humid8
-                - dewpt1
-                - dewpt2
-                - dewpt3
-                - dewpt4
-                - dewpt5
-                - dewpt6
-                - dewpt7
-                - dewpt8
-                - abshum1
-                - abshum2
-                - abshum3
-                - abshum4
-                - abshum5
-                - abshum6
-                - abshum7
-                - abshum8
-                - wh31_ch1_batt
-                - wh31_ch2_batt
-                - wh31_ch3_batt
-                - wh31_ch4_batt
-                - wh31_ch5_batt
-                - wh31_ch6_batt
-                - wh31_ch7_batt
-                - wh31_ch8_batt
-                - wh31_ch1_sig
-                - wh31_ch2_sig
-                - wh31_ch3_sig
-                - wh31_ch4_sig
-                - wh31_ch5_sig
-                - wh31_ch6_sig
-                - wh31_ch7_sig
-                - wh31_ch8_sig
-                # WH34
-                - temp_tf_ch1
-                - temp_tf_ch2
-                - temp_tf_ch3
-                - temp_tf_ch4
-                - temp_tf_ch5
-                - temp_tf_ch6
-                - temp_tf_ch7
-                - temp_tf_ch8
-                - wh34_ch1_batt
-                - wh34_ch2_batt
-                - wh34_ch3_batt
-                - wh34_ch4_batt
-                - wh34_ch5_batt
-                - wh34_ch6_batt
-                - wh34_ch7_batt
-                - wh34_ch8_batt
-                - wh34_ch1_sig
-                - wh34_ch2_sig
-                - wh34_ch3_sig
-                - wh34_ch4_sig
-                - wh34_ch5_sig
-                - wh34_ch6_sig
-                - wh34_ch7_sig
-                - wh34_ch8_sig
-                # WH51
-                - soilmoist1
-                - soilmoist2
-                - soilmoist3
-                - soilmoist4
-                - soilmoist5
-                - soilmoist6
-                - soilmoist7
-                - soilmoist8
-                - soilmoist9
-                - soilmoist10
-                - soilmoist11
-                - soilmoist12
-                - soilmoist13
-                - soilmoist14
-                - soilmoist15
-                - soilmoist16
-                - wh51_ch1_batt
-                - wh51_ch2_batt
-                - wh51_ch3_batt
-                - wh51_ch4_batt
-                - wh51_ch5_batt
-                - wh51_ch6_batt
-                - wh51_ch7_batt
-                - wh51_ch8_batt
-                - wh51_ch9_batt
-                - wh51_ch10_batt
-                - wh51_ch11_batt
-                - wh51_ch12_batt
-                - wh51_ch13_batt
-                - wh51_ch14_batt
-                - wh51_ch15_batt
-                - wh51_ch16_batt
-                - wh51_ch1_sig
-                - wh51_ch2_sig
-                - wh51_ch3_sig
-                - wh51_ch4_sig
-                - wh51_ch5_sig
-                - wh51_ch6_sig
-                - wh51_ch7_sig
-                - wh51_ch8_sig
-                - wh51_ch9_sig
-                - wh51_ch10_sig
-                - wh51_ch11_sig
-                - wh51_ch12_sig
-                - wh51_ch13_sig
-                - wh51_ch14_sig
-                - wh51_ch15_sig
-                - wh51_ch16_sig
-                # WH45
-                - temp17
-                - humid17
-                - pm10
-                - pm10_24h_avg
-                - pm255
-                - pm255_24h_avg
-                - co2
-                - co2_24h_avg
-                - wh45_batt
-                # WH41 / WH43
-                - wh41_ch1_batt
-                - wh41_ch2_batt
-                - wh41_ch3_batt
-                - wh41_ch4_batt
-                - wh45_batt
-                - wh41_ch1_sig
-                - wh41_ch2_sig
-                - wh41_ch3_sig
-                - wh41_ch4_sig
-                - wh45_sig
-                # WH55
-                - leak_ch1
-                - leak_ch2
-                - leak_ch3
-                - leak_ch4
-                - wh55_ch1_batt
-                - wh55_ch2_batt
-                - wh55_ch3_batt
-                - wh55_ch4_batt
-                - wh55_ch1_sig
-                - wh55_ch2_sig
-                - wh55_ch3_sig
-                - wh55_ch4_sig
-                # WH57
-                - Blitzentfernung
-                - Blitzerkennungszeit
-                - Blitz Zähler
-                - Blitzeinschlag Zähler
-                - wh57_batt
-                - wh57_sig
-                # WN35 Leaf Wetness Sensor
-                - leafwet1
-                - leafwet2
-                - leafwet3
-                - leafwet4
-                - leafwet5
-                - leafwet6
-                - leafwet7
-                - leafwet8
-                # self calculated keys
-                - weather_text
+        # NOTE: valid_list_description is automatically created by using datapoints.py
+            - Absolutely Barometric
+            - Reset Rain Year
+            - Warning of any Battery
+            - Client IP
+            - Cloud Ceiling
+            -
+            -
+            - Datetime
+            - Reset Rain Day
+            - Dew Point
+            - Feels Like Temperature
+            - Firmware Version
+            - Firmware Update available
+            - Firmware Update Description
+            - Frequency of Transmitter
+            - Gust Speed
+            - Average Gust Speed 10min
+            - Heat Index
+            - Humidity
+            - Humidity of CO2 Sensor
+            - Humidity
+            - Humidity
+            - Humidity
+            - Humidity
+            - Humidity
+            - Humidity
+            - Humidity
+            - Absolute Humidity Indoor
+            - Dew Point Indoor
+            - Indoor Humidity
+            - Indoor Temperature
+            - Data Inteval
+            - Leaf Wetness
+            - Leaf Wetness
+            - Leaf Wetness
+            - Leaf Wetness
+            - Leaf Wetness
+            - Leaf Wetness
+            - Leaf Wetness
+            - Leaf Wetness
+            - Leakage
+            - Leakage
+            - Leakage
+            - Leakage
+            - Light
+            - lightning counter for the day
+            - lightning happened time
+            - lightning distance
+            - All sensor lowbatt
+            - Gateway Model
+            - Absolute Humidity Outdoor
+            - Dew Point Outdoor
+            - Frost Point Outdoor
+            - Outdoor Humidity
+            - Outdoor Temperature
+            - Rain
+            - Rain Day
+            - Rain Event
+            - Rain Hour
+            - Rain Month
+            - Rain Rate
+            - Rain Week
+            - Rain Year
+            -
+            -
+            - PM2.5 Air Quality
+            - PM2.5 Air Quality
+            - PM2.5 Air Quality
+            - PM2.5 Air Quality
+            -
+            -
+            - PM2.5 Air Quality 24h average
+            - PM2.5 Air Quality 24h average
+            - PM2.5 Air Quality 24h average
+            - PM2.5 Air Quality 24h average
+            - radiation compensation
+            - Rain
+            - Kalibrierfaktor für Regensensor Kanal 1
+            - Kalibrierfaktor für Regensensor Kanal 2
+            - Kalibrierfaktor für Regensensor Kanal 3
+            - Kalibrierfaktor für Regensensor Kanal 4
+            - Kalibrierfaktor für Regensensor Kanal 5
+            - Kalibrierfaktor für Regensensor Kanal 6
+            - Kalibrierfaktor für Regensensor Kanal 7
+            - Kalibrierfaktor für Regensensor Kanal 8
+            - Kalibrierfaktor für Regensensor Kanal 9
+            - Kalibrierfaktor für Regensensor Kanal 10
+            - rain priority (classical or piezo)
+            - Rain Day
+            - Rain Event
+            - Rain hour
+            - Rain Month
+            - Rain Rate
+            - Rain Totals
+            - Rain Week
+            - Rain Year
+            - Reboot
+            - Relative Barometric
+            - Reset
+            - Runtime
+            - Warning of any Sensor
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Moisture
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - Soil Temperature
+            - UV
+            - Storm Warning
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature
+            - Temperature of CO2 Sensor
+            - Thunderstorm Warning
+            - UVI
+            - Weather Description
+            - Weatherstation Warning
+            - Reset Rain Week
+            - Batteriestatus für Temperatur- und Feuchtigkeitssensor Außen WH24
+            - Signalstärke für Temperatur- und Feuchtigkeitssensor Außen WH24
+            - Batteriestatus für Temperatur-, Feuchtigkeits- und Drucksensor
+            - Signalstärke für Temperatur-, Feuchtigkeits- und Drucksensor
+            - Batteriestatus für Thermo-Hygrometer Kanal 1
+            - Signalstärke für Thermo-Hygrometer Kanal 1
+            - Batteriestatus für Thermo-Hygrometer Kanal 2
+            - Signalstärke für Thermo-Hygrometer Kanal 2
+            - Batteriestatus für Thermo-Hygrometer Kanal 3
+            - Signalstärke für Thermo-Hygrometer Kanal 3
+            - Batteriestatus für Thermo-Hygrometer Kanal 4
+            - Signalstärke für Thermo-Hygrometer Kanal 4
+            - Batteriestatus für Thermo-Hygrometer Kanal 5
+            - Signalstärke für Thermo-Hygrometer Kanal 5
+            - Batteriestatus für Thermo-Hygrometer Kanal 6
+            - Signalstärke für Thermo-Hygrometer Kanal 6
+            - Batteriestatus für Thermo-Hygrometer Kanal 7
+            - Signalstärke für Thermo-Hygrometer Kanal 7
+            - Batteriestatus für Thermo-Hygrometer Kanal 8
+            - Signalstärke für Thermo-Hygrometer Kanal 8
+            - Batteriestatus für Temperatur- und Feuchtigkeitssensor WH32
+            - Signalstärke für Temperatur- und Feuchtigkeitssensor WH32
+            - Batteriestatus für Regensensor
+            - Signalstärke für Regensensor
+            - Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 1
+            - Signalstärke für Partikelsensor PM2.5 WH41 Kanal 1
+            - Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 2
+            - Signalstärke für Partikelsensor PM2.5 WH41 Kanal 2
+            - Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 3
+            - Signalstärke für Partikelsensor PM2.5 WH41 Kanal 3
+            - Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 4
+            - Signalstärke für Partikelsensor PM2.5 WH41 Kanal 4
+            - Batteriestatus für Partikel- und CO2 Sensor WH45
+            - Signalstärke für Partikel- und CO2 Sensor WH45
+            - Batteriestatus für Bodenfeuchtesensor Kanal 1
+            - Signalstärke für Bodenfeuchtesensor Kanal 1
+            - Batteriestatus für Bodenfeuchtesensor Kanal 2
+            - Signalstärke für Bodenfeuchtesensor Kanal 2
+            - Batteriestatus für Bodenfeuchtesensor Kanal 3
+            - Signalstärke für Bodenfeuchtesensor Kanal 3
+            - Batteriestatus für Bodenfeuchtesensor Kanal 4
+            - Signalstärke für Bodenfeuchtesensor Kanal 4
+            - Batteriestatus für Bodenfeuchtesensor Kanal 5
+            - Signalstärke für Bodenfeuchtesensor Kanal 5
+            - Batteriestatus für Bodenfeuchtesensor Kanal 6
+            - Signalstärke für Bodenfeuchtesensor Kanal 6
+            - Batteriestatus für Bodenfeuchtesensor Kanal 7
+            - Signalstärke für Bodenfeuchtesensor Kanal 7
+            - Batteriestatus für Bodenfeuchtesensor Kanal 8
+            - Signalstärke für Bodenfeuchtesensor Kanal 8
+            - Batteriestatus für Leckagesensor Kanal 1
+            - Signalstärke für Leckagesensor Kanal 1
+            - Batteriestatus für Leckagesensor Kanal 2
+            - Signalstärke für Leckagesensor Kanal 2
+            - Batteriestatus für Leckagesensor Kanal 3
+            - Signalstärke für Leckagesensor Kanal 3
+            - Batteriestatus für Leckagesensor Kanal 4
+            - Signalstärke für Leckagesensor Kanal 4
+            - Batteriestatus für Blitzsensor WH57
+            - Signalstärke für Blitzsensor WH57
+            - Batteriestatus für Außensensor WH65
+            - Signalstärke für Außensensor WH65
+            - Batteriestatus für Wetterstation WS68
+            - Signalstärke für Wetterstation WS68
+            - Wind Chill
+            -
+            - Wind Direction
+            - Average Wind Direction 10min
+            - Wind Direction Desctiption
+            - Wind Speed
+            - Average Windspeed 10min
+            - Wind Speed in Beautford
+            - Wind Speed in Beautford Text
+            - Batteriestatus für Pool Thermometer
+            - Signalstärke für Pool Thermometer
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 1
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 1
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 2
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 2
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 3
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 3
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 4
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 4
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 5
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 5
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 6
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 6
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 7
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 7
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 8
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 8
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 1
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 1
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 2
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 2
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 3
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 3
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 4
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 4
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 5
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 5
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 6
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 6
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 7
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 7
+            - Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 8
+            - Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 8
+            - Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 1
+            - Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 1
+            - Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 2
+            - Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 2
+            - Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 3
+            - Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 3
+            - Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 4
+            - Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 4
+            - Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 5
+            - Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 5
+            - Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 6
+            - Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 6
+            - Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 7
+            - Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 7
+            - Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 8
+            - Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 8
+            - Batteriestatus für Wetterstation WS80
+            - Signalstärke für Wetterstation WS80
+            - Batteriestatus für Wetterstation 7in1 WS90
+            - Signalstärke für Wetterstation 7in1 WS90
 
     foshk_datasource:
         type: str
         description:
-            de: 'Datenquelle der Werte für Items; API vs. ECOWITT'
-            en: 'Data source for item values; API vs. ECOWITT'
+            de: Datenquelle der Werte für Items; API vs. ECOWITT
+            en: Data source for item values; API vs. ECOWITT
         valid_list_ci:
             - api
             - ecowitt
@@ -632,7 +683,7 @@ item_structs:
         gateway_model:
             type: str
             visu_acl: ro
-            foshk_attribute: gateway_model
+            foshk_attribute: model
 
         datetime:
             type: foo
@@ -652,7 +703,7 @@ item_structs:
         firmware:
             type: str
             visu_acl: ro
-            foshk_attribute: firmware_version
+            foshk_attribute: firmware
 
             update_available:
                 type: bool
@@ -733,7 +784,7 @@ item_structs:
             database: yes
         winddir_text:
             type: str
-            foshk_attribute: winddir_text
+            foshk_attribute: winddir_txt
         winddir_avg10m:
             type: num
             foshk_attribute: winddir_avg10m
@@ -747,7 +798,7 @@ item_structs:
             foshk_attribute: windspeed_bft
         windspeed_bft_text:
             type: str
-            foshk_attribute: windspeed_bft_text
+            foshk_attribute: windspeed_bft_txt
         windspdkmh_avg10m:
             type: num
             foshk_attribute: windspeed_avg10m
@@ -759,9 +810,9 @@ item_structs:
         windgustkmh_max10m:
             type: num
             foshk_attribute: gustspeed_avg10m
-#        winddaymax:
-#            type: num
-#            foshk_attribute: winddaymax
+        winddaymax:
+            type: num
+            foshk_attribute: winddaymax
 
     indoor: # GW2000
         intemp:                        # Innentemperatur
@@ -876,80 +927,80 @@ plugin_functions:
     firmware_update:
         type: bool
         description:
-            de: 'Firmware update'
-            en: 'command firmware update'
+            de: Firmware update
+            en: command firmware update
 
     reboot:
         type: bool
         description:
-            de: 'Reboot'
-            en: 'command reboot'
+            de: Reboot
+            en: command reboot
 
     reset:
         type: bool
         description:
-            de: 'Reset'
-            en: 'command reset'
+            de: Reset
+            en: command reset
 
     set_usr_path:
         type: foo
         description:
-            de: 'Setzen des UserPath für Ecowitt und WU Daten upload'
-            en: 'set user path for Ecowitt and WU data upload'
+            de: Setzen des UserPath für Ecowitt und WU Daten upload
+            en: set user path for Ecowitt and WU data upload
         parameters:
             custom_ecowitt_pathpath:
                 type: str
                 description:
-                    de: 'UserPath für Ecowitt'
-                    en: 'User path for Ecowitt'
+                    de: UserPath für Ecowitt
+                    en: User path for Ecowitt
             custom_wu_path:
                 type: str
                 description:
-                    de: 'UserPath für WU'
-                    en: 'User path for WU'
+                    de: UserPath für WU
+                    en: User path for WU
 
     set_custom_params:
         type: foo
         description:
-            de: 'Setzen der Parameter für customized Data Upload'
-            en: 'Set paramaters for customized data Upload'
+            de: Setzen der Parameter für customized Data Upload
+            en: Set paramaters for customized data Upload
         parameters:
             custom_server_id:
                 type: str
                 description:
-                    de: 'Server ID'
-                    en: 'server id'
+                    de: Server ID
+                    en: server id
             custom_password:
                 type: str
                 description:
-                    de: 'Passwort'
-                    en: 'password'
+                    de: Passwort
+                    en: password
             custom_host:
                 type: ipv4
                 description:
-                    de: 'IP Adresse des Servers, auf den die Daten geladen werden sollen'
-                    en: 'ip address of the server the data should be uploaded to'
+                    de: IP Adresse des Servers, auf den die Daten geladen werden sollen
+                    en: ip address of the server the data should be uploaded to
             custom_port:
                 type: num
                 description:
-                    de: 'Port des Servers, auf den die Daten geladen werden sollen'
-                    en: 'port address of the server the data should be uploaded to'
+                    de: Port des Servers, auf den die Daten geladen werden sollen
+                    en: port address of the server the data should be uploaded to
             custom_interval:
                 type: num
                 description:
-                    de: 'Zyklus, in dem die Daten auf den Server geladen werden'
-                    en: 'Cycle, in which the the data will be uploaded'
+                    de: Zyklus, in dem die Daten auf den Server geladen werden
+                    en: Cycle, in which the the data will be uploaded
                 valid_min: 16
                 valid_max: 300
             custom_type:
                 type: bool
                 description:
-                    de: 'WU (=True) oder Ecowitt (=False) Protokoll'
-                    en: 'WU (=True) or Ecowitt (=False) protocol'
+                    de: WU (=True) oder Ecowitt (=False) Protokoll
+                    en: WU (=True) or Ecowitt (=False) protocol
             custom_enabled:
                 type: bool
                 description:
-                    de: 'AN/AUS für das benutzerdefinierte Hochladen der Daten'
-                    en: 'ON/OFF of customized data upload'
+                    de: AN/AUS für das benutzerdefinierte Hochladen der Daten
+                    en: ON/OFF of customized data upload
 
 logic_parameters: NONE

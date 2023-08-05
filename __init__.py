@@ -46,7 +46,7 @@ from lib.model.smartplugin import SmartPlugin
 from lib.utils import Utils as utils
 from lib.shtime import Shtime
 from .webif import WebInterface
-from .datapoints import *
+from .datapoints import DataPoints, MasterKeys, SensorKeys, GainKeys, META_ATTRIBUTES, POST_ATTRIBUTES, FW_UPDATE_URL
 
 import re
 import socket
@@ -203,7 +203,7 @@ class Foshk(SmartPlugin):
             if foshk_attribute in META_ATTRIBUTES:
                 source = 'meta'
 
-            elif foshk_attribute in TCP_ATTRIBUTES:
+            elif foshk_attribute in POST_ATTRIBUTES:
                 source = 'ecowitt'
 
             elif self.has_iattr(item.conf, 'foshk_datasource'):
@@ -244,9 +244,9 @@ class Foshk(SmartPlugin):
                 self.logger.debug(f"update_item was called with item {item.property.path} from caller {caller}, source {source} and dest {dest}")
                 foshk_attribute = (self.get_iattr_value(item.conf, 'foshk_attribute')).lower()
 
-                if foshk_attribute == KEY_RESET:
+                if foshk_attribute == DataPoints.RESET[0]:
                     self.reset()
-                elif foshk_attribute == KEY_REBOOT:
+                elif foshk_attribute == DataPoints.REBOOT[0]:
                     self.reboot()
 
     #############################################################
@@ -257,9 +257,9 @@ class Foshk(SmartPlugin):
         """Generates as paket with meta information of connected gateway and starts item update"""
 
         data = dict()
-        data[KEY_MODEL] = self.station_model
-        data[KEY_FREQ] = self.system_parameters.get('frequency')
-        data[KEY_FIRMWARE] = self.firmware_version
+        data[DataPoints.MODEL[0]] = self.station_model
+        data[DataPoints.FREQ[0]] = self.system_parameters.get('frequency')
+        data[DataPoints.FIRMWARE[0]] = self.firmware_version
         self.logger.debug(f"meta_data {data=}")
         self._update_data_dict(data=data, source='api')
         self._update_item_values(data=data, source='meta')
@@ -421,7 +421,7 @@ class Foshk(SmartPlugin):
 
     @property
     def system_parameters(self) -> dict:
-        return self.gateway.get_system_params()
+        return self.gateway.api.get_system_params()
 
     @property
     def log_level(self) -> int:
@@ -599,28 +599,28 @@ class Gateway(object):
         :param data: dict of parsed Ecowitt Gateway data
         """
 
-        if KEY_OUTTEMP in data:
+        if DataPoints.OUTTEMP[0] in data:
 
-            if KEY_WINDSPEED in data:
-                data[KEY_FEELS_LIKE] = self.get_windchill_index_metric(data[KEY_OUTTEMP], data[KEY_WINDSPEED])
-                if data.keys() >= {KEY_OUTHUMI}:
-                    data[KEY_FEELS_LIKE] = self.calculate_feels_like(data[KEY_OUTTEMP], data[KEY_WINDSPEED])
+            if DataPoints.WINDSPEED[0] in data:
+                data[DataPoints.FEELS_LIKE[0]] = self.get_windchill_index_metric(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]])
+                if data.keys() >= {DataPoints.OUTHUMI[0]}:
+                    data[DataPoints.FEELS_LIKE[0]] = self.calculate_feels_like(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]])
 
-            if KEY_OUTHUMI in data:
-                dewpt_c = self.get_dew_point_c(data[KEY_OUTTEMP], data[KEY_OUTHUMI])
-                data[KEY_OUTDEWPT] = dewpt_c
-                data[KEY_OUTFROSTPT] = self.get_frost_point_c(data[KEY_OUTTEMP], dewpt_c)
-                data[KEY_CLOUD_CEILING] = self.get_cloud_ceiling(data[KEY_OUTTEMP], dewpt_c)
-                data[KEY_OUTABSHUM] = self.get_abs_hum_c(data[KEY_OUTTEMP], data[KEY_OUTHUMI])
+            if DataPoints.OUTHUMI[0] in data:
+                dewpt_c = self.get_dew_point_c(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]])
+                data[DataPoints.OUTDEWPT[0]] = dewpt_c
+                data[DataPoints.OUTFROSTPT[0]] = self.get_frost_point_c(data[DataPoints.OUTTEMP[0]], dewpt_c)
+                data[DataPoints.CLOUD_CEILING[0]] = self.get_cloud_ceiling(data[DataPoints.OUTTEMP[0]], dewpt_c)
+                data[DataPoints.OUTABSHUM[0]] = self.get_abs_hum_c(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]])
 
-        if KEY_INTEMP in data and KEY_INHUMI in data:
-            data[KEY_INDEWPPOINT] = self.get_dew_point_c(data[KEY_INTEMP], data[KEY_INHUMI])
-            data[KEY_INABSHUM] = self.get_abs_hum_c(data[KEY_INTEMP], data[KEY_INHUMI])
+        if DataPoints.INTEMP[0] in data and DataPoints.INHUMI[0] in data:
+            data[DataPoints.INDEWPPOINT[0]] = self.get_dew_point_c(data[DataPoints.INTEMP[0]], data[DataPoints.INHUMI[0]])
+            data[DataPoints.INABSHUM[0]] = self.get_abs_hum_c(data[DataPoints.INTEMP[0]], data[DataPoints.INHUMI[0]])
 
         for i in range(1, 9):
-            if f'{KEY_TEMP}{i}' in data and f'{KEY_HUMID}{i}' in data:
-                data[f'{KEY_DEWPT}{i}'] = self.get_dew_point_c(data[f'{KEY_TEMP}{i}'], data[f'{KEY_HUMID}{i}'])
-                data[f'{KEY_ABSHUM}{i}'] = self.get_abs_hum_c(data[f'{KEY_TEMP}{i}'], data[f'{KEY_HUMID}{i}'])
+            if f'{MasterKeys.TEMP}{i}' in data and f'{MasterKeys.HUMID}{i}' in data:
+                data[f'{MasterKeys.DEWPT}{i}'] = self.get_dew_point_c(data[f'{MasterKeys.TEMP}{i}'], data[f'{MasterKeys.HUMID}{i}'])
+                data[f'{MasterKeys.ABSHUM}{i}'] = self.get_abs_hum_c(data[f'{MasterKeys.TEMP}{i}'], data[f'{MasterKeys.HUMID}{i}'])
 
     def add_wind_data(self, data: dict) -> None:
         """
@@ -629,16 +629,16 @@ class Gateway(object):
         :param data: dict of parsed Ecowitt Gateway data
         """
         
-        if KEY_WINDDIRECTION in data:
-            data[KEY_WINDDIR_TEXT] = env.degrees_to_direction_16(data[KEY_WINDDIRECTION])
+        if DataPoints.WINDDIRECTION[0] in data:
+            data[DataPoints.WINDDIR_TEXT[0]] = env.degrees_to_direction_16(data[DataPoints.WINDDIRECTION[0]])
 
-        if KEY_WINDSPEED in data:
-            windspeed_bft = env.ms_to_bft(data[KEY_WINDSPEED])
-            data[KEY_WINDSPEED_BFT] = windspeed_bft
-            data[KEY_WINDSPEED_BFT_TEXT] = env.bft_to_text(windspeed_bft, self.language)
+        if DataPoints.WINDSPEED[0] in data:
+            windspeed_bft = env.ms_to_bft(data[DataPoints.WINDSPEED[0]])
+            data[DataPoints.WINDSPEED_BFT[0]] = windspeed_bft
+            data[DataPoints.WINDSPEED_BFT_TEXT[0]] = env.bft_to_text(windspeed_bft, self.language)
 
-        if KEY_ABSBARO in data:
-            data[KEY_WEATHER_TEXT] = self.get_weather_now(data[KEY_ABSBARO], self.language)
+        if DataPoints.ABSBARO[0] in data:
+            data[DataPoints.WEATHER_TEXT[0]] = self.get_weather_now(data[DataPoints.ABSBARO[0]], self.language)
                 
     def add_wind_avg(self, data: dict) -> None:
         """
@@ -647,17 +647,17 @@ class Gateway(object):
         :param data: dict of parsed Ecowitt Gateway data
         """
 
-        if any(k in data for k in (KEY_WINDDIRECTION, KEY_WINDSPEED, KEY_GUSTSPEED)):
-            self.wind_avg10m.append([int(time.time()), data[KEY_WINDSPEED], data[KEY_WINDDIRECTION], data[KEY_GUSTSPEED]])
+        if any(k in data for k in (DataPoints.WINDDIRECTION[0], DataPoints.WINDSPEED[0], DataPoints.GUSTSPEED[0])):
+            self.wind_avg10m.append([int(time.time()), data[DataPoints.WINDSPEED[0]], data[DataPoints.WINDDIRECTION[0]], data[DataPoints.GUSTSPEED[0]]])
 
-            if KEY_WINDSPEED_AVG10M not in data:
-                data[KEY_WINDSPEED_AVG10M] = self.get_avg_wind(self.wind_avg10m, 1)
+            if DataPoints.WINDSPEED_AVG10M[0] not in data:
+                data[DataPoints.WINDSPEED_AVG10M[0]] = self.get_avg_wind(self.wind_avg10m, 1)
 
-            if KEY_WINDDIR_AVG10M not in data:
-                data[KEY_WINDDIR_AVG10M] = self.get_avg_wind(self.wind_avg10m, 2)
+            if DataPoints.WINDDIR_AVG10M[0] not in data:
+                data[DataPoints.WINDDIR_AVG10M[0]] = self.get_avg_wind(self.wind_avg10m, 2)
 
-            if KEY_GUSTSPEED_AVG10M not in data:
-                data[KEY_GUSTSPEED_AVG10M] = self.get_max_wind(self.wind_avg10m, 3)
+            if DataPoints.GUSTSPEED_AVG10M[0] not in data:
+                data[DataPoints.GUSTSPEED_AVG10M[0]] = self.get_max_wind(self.wind_avg10m, 3)
 
     def get_cumulative_rain_field(self, data: dict) -> None:
         """Determine the cumulative rain field used to derive field 'rain'.
@@ -674,18 +674,18 @@ class Gateway(object):
         # Do we have a confirmed field to use for calculating rain? If we do we
         # can skip this otherwise we need to look for one.
         if not self.rain_mapping_confirmed:
-            # We have no field for calculating rain so look for one, if device field KEY_RAINTOTALS is present used that as our first choice.
+            # We have no field for calculating rain so look for one, if device field DataPoints.RAINTOTALS[0] is present used that as our first choice.
             # Otherwise, work down the list in order of descending period.
-            if KEY_RAINTOTALS in data:
-                self.rain_total_field = KEY_RAINTOTALS
+            if DataPoints.RAINTOTALS[0] in data:
+                self.rain_total_field = DataPoints.RAINTOTALS[0]
                 self.rain_mapping_confirmed = True
             # raintotals is not present so now try rainyear
-            elif KEY_RAINYEAR in data:
-                self.rain_total_field = KEY_RAINYEAR
+            elif DataPoints.RAINYEAR[0] in data:
+                self.rain_total_field = DataPoints.RAINYEAR[0]
                 self.rain_mapping_confirmed = True
             # rainyear is not present so now try rainmonth
-            elif KEY_RAINMONTH in data:
-                self.rain_total_field = KEY_RAINMONTH
+            elif DataPoints.RAINMONTH[0] in data:
+                self.rain_total_field = DataPoints.RAINMONTH[0]
                 self.rain_mapping_confirmed = True
             # do nothing, we can try again next packet
             else:
@@ -697,18 +697,16 @@ class Gateway(object):
                 # if debug_rain is set log that we had nothing
                 self.logger.info("No suitable field found for rain")
 
-        # now do the same for piezo rain
-
         # Do we have a confirmed field to use for calculating piezo rain? If we do we can skip this otherwise we need to look for one.
         if not self.piezo_rain_mapping_confirmed:
             # We have no field for calculating piezo rain so look for one, if device field 'p_rainyear' is present used that as our first
             # choice. Otherwise, work down the list in order of descending period.
-            if 'p_rainyear' in data:
-                self.piezo_rain_total_field = 'p_rainyear'
+            if DataPoints.PIEZO_RAINYEAR in data:
+                self.piezo_rain_total_field = DataPoints.PIEZO_RAINYEAR
                 self.piezo_rain_mapping_confirmed = True
             # rainyear is not present so now try rainmonth
-            elif 'p_rainmonth' in data:
-                self.piezo_rain_total_field = 'p_rainmonth'
+            elif DataPoints.PIEZO_RAINMONTH in data:
+                self.piezo_rain_total_field = DataPoints.PIEZO_RAINMONTH
                 self.piezo_rain_mapping_confirmed = True
             # do nothing, we can try again next packet
             else:
@@ -735,7 +733,7 @@ class Gateway(object):
             # yes on both counts, so get the new total
             new_total = data[self.rain_total_field]
             # now calculate field rain as the difference between the new and old totals
-            data['rain'] = self.delta_rain(new_total, self.last_rain)
+            data[DataPoints.RAIN[0]] = self.delta_rain(new_total, self.last_rain)
 
             self.logger.info(f"calculate_rain: last_rain={self.last_rain} new_total={new_total} calculated rain={data['rain']}")
             # save the new total as the old total for next time
@@ -749,7 +747,7 @@ class Gateway(object):
             piezo_new_total = data[self.piezo_rain_total_field]
             # now calculate field p_rain as the difference between the new and
             # old totals
-            data['p_rain'] = self.delta_rain(piezo_new_total, self.piezo_last_rain, descriptor='piezo rain')
+            data[DataPoints.PIEZO_RAIN[0]] = self.delta_rain(piezo_new_total, self.piezo_last_rain, descriptor='piezo rain')
 
             # log some pertinent values
             self.logger.info(f"calculate_rain: piezo_last_rain={self.piezo_last_rain} piezo_new_total={piezo_new_total} calculated p_rain={data['p_rain']}")
@@ -760,18 +758,18 @@ class Gateway(object):
         """
         Calculate total lightning strike count for a period.
 
-        'lightning_strike_count' is calculated as the change in field KEY_LIGHTNING_POWER between successive periods. 'lightning_strike_count'
-        is only calculated if KEY_LIGHTNING_POWER exists.
+        'lightning_strike_count' is calculated as the change in field DataPoints.LIGHTNING_POWER between successive periods. 'lightning_strike_count'
+        is only calculated if DataPoints.LIGHTNING_POWER exists.
 
         :param data: dict of parsed Ecowitt Gateway API data
         :type data: dict
         """
 
-        if KEY_LIGHTNING_COUNT in data:
+        if DataPoints.LIGHTNING_COUNT[0] in data:
             # yes, so get the new total
-            new_total = data[KEY_LIGHTNING_COUNT]
+            new_total = data[DataPoints.LIGHTNING_COUNT[0]]
             # now calculate field lightning_strike_count as the difference between the new and old totals
-            data['lightning_strike_count'] = self.delta_lightning(new_total, self.last_lightning)
+            data[DataPoints.LIGHTNING_COUNT[0]] = self.delta_lightning(new_total, self.last_lightning)
             # save the new total as the old total for next time
             self.last_lightning = new_total
 
@@ -817,7 +815,7 @@ class Gateway(object):
         # do we have a non-None current rain value
         if rain is None:
             # no, log it and return None
-            self.logger.info("skipping {descriptor} measurement: no current rain")
+            self.logger.info(f"skipping {descriptor} measurement: no current rain")
             return None
         # is the last rain value greater than the current rain value
         if rain < last_rain:
@@ -1081,11 +1079,11 @@ class Gateway(object):
         if batterycheck != "":
             data['battery_warning'] = 0
             if not self.battery_warning:
-                self.logger.warning(f"<WARNING> TCP: Battery level for sensor(s) {batterycheck} is critical - please swap battery")
+                self.logger.warning(f"<WARNING> Post: Battery level for sensor(s) {batterycheck} is critical - please swap battery")
                 self.battery_warning = True
                 data['battery_warning'] = 1
         elif self.battery_warning:
-            self.logger.info("<OK> TCP: Battery level for all sensors is ok again")
+            self.logger.info("<OK> Post: Battery level for all sensors is ok again")
             self.battery_warning = False
             data['battery_warning'] = 0
 
@@ -1198,36 +1196,38 @@ class GatewayDriver(Gateway):
         parsed_data = self.api.get_livedata()
         self.logger.debug(f"live_api_data={parsed_data}")
         # add the datetime to the data dict in case our data does not come with one
-        if KEY_TIME not in parsed_data:
-            parsed_data[KEY_TIME] = datetime.now().replace(microsecond=0)
+        if DataPoints.TIME[0] not in parsed_data:
+            parsed_data[DataPoints.TIME[0]] = datetime.now().replace(microsecond=0)
         # add the timestamp to the data dict in case our data does not come with one
         if 'timestamp' not in parsed_data:
             parsed_data['timestamp'] = int(time.time())
 
-        # Now get the parsed rain data via the API. 
+        # now update our parsed data with the parsed rain data if we have any
         try:
             parsed_rain_data = self.api.read_rain()
         except UnknownApiCommand:
             parsed_rain_data = None
         except GatewayIOError:
-            raise
+            parsed_rain_data = None
+            pass
 
-        # now update our parsed data with the parsed rain data if we have any
+        self.logger.debug(f"{parsed_rain_data=}")
         if parsed_rain_data is not None:
-            self.logger.debug(f"{parsed_rain_data=}")
             parsed_data.update(parsed_rain_data)
-
-        # log the parsed data
-        self.logger.debug(f"{parsed_data=}")
 
         # add sensor battery data
         try:
             parsed_sensor_state_data = self.api.get_current_sensor_state()
         except GatewayIOError:
-            raise
+            parsed_sensor_state_data = None
+            pass
+
+        self.logger.debug(f"{parsed_sensor_state_data=}")
         if parsed_sensor_state_data is not None:
-            self.logger.debug(f"{parsed_sensor_state_data=}")
             parsed_data.update(parsed_sensor_state_data)
+
+        # log the parsed data
+        self.logger.debug(f"{parsed_data=}")
 
         # put parsed data to queue
         self._plugin_instance.data_queue.put(('api', self._post_process_data(parsed_data, True)))
@@ -1243,8 +1243,8 @@ class GatewayDriver(Gateway):
     def get_current_tcp_data(self, parsed_data: dict) -> None:
         """callback function for already parsed live data from tcp upload and put it to queue."""
         
-        self.logger.debug(f"get_current_tcp_data: {parsed_data=}")
-        self._plugin_instance.data_queue.put(('tcp', self._post_process_data(parsed_data, True)))
+        self.logger.debug(f"TCP: {parsed_data=}")
+        self._plugin_instance.data_queue.put(('tcp', self._post_process_data(parsed_data)))
         
     def _post_process_data(self, data: dict, master: bool = False) -> dict:
 
@@ -1253,8 +1253,8 @@ class GatewayDriver(Gateway):
         # put timestamp and datetime to paket if not present
         if 'timestamp' not in data:
             packet['timestamp'] = int(time.time())
-        if KEY_TIME not in data:
-            packet[KEY_TIME] = datetime.now().replace(microsecond=0)
+        if DataPoints.TIME[0] not in data:
+            packet[DataPoints.TIME[0]] = datetime.now().replace(microsecond=0)
             
         if master:    
             # if not already determined, determine which cumulative rain field will be used to determine the per period rain field
@@ -1275,11 +1275,11 @@ class GatewayDriver(Gateway):
         self.add_wind_data(data)
 
         if self.interface_config.show_sensor_warning:
-            # add sensor warning data field and log entry
+            # add sensor warning data field
             self.check_sensors(data, self.api.sensors.get_connected_addresses())
 
         if self.interface_config.show_battery_warning:
-            # add battery warning data field and log entry
+            # add battery warning data field
             self.check_battery(data, self.api.sensors.get_battery_description_data())
 
         # add the data to the empty packet
@@ -1341,7 +1341,6 @@ class GatewayDriver(Gateway):
     #############################################################
     #  Gateway Device Methods
     #############################################################
-
 
     def get_sensor_id(self):
         """Gateway device sensor ID data."""
@@ -2378,7 +2377,6 @@ class GatewayApi(object):
         return checksum % 256
 
 
-# ToDo: Check use of KEYS
 class ApiParser(object):
     """Class to parse and decode device API response payload data.
 
@@ -2391,139 +2389,140 @@ class ApiParser(object):
     """
 
     # Dictionary of 'address' based data. Dictionary is keyed by device data field 'address' containing various parameters for each
-    # 'address'. Dictionary tuple format is:
-    #   (decode fn, size, field name)
+    # 'address'. Dictionary tuple format is: (decode fn, size, field name)
     # where:
     #   decode fn:  the decode function name to be used for the field
     #   size:       the size of field data in bytes
     #   field name: the name of the device field to be used for the decoded data
 
+    # ToDo: Decode Light liefert falschen Wert
+
     api_live_data_struct = {
-        b'\x01': ('decode_temp', 2, KEY_INTEMP),
-        b'\x02': ('decode_temp', 2, KEY_OUTTEMP),
-        b'\x03': ('decode_temp', 2, KEY_DEWPOINT),
-        b'\x04': ('decode_temp', 2, KEY_WINDCHILL),
-        b'\x05': ('decode_temp', 2, KEY_HEATINDEX),
-        b'\x06': ('decode_humid', 1, KEY_INHUMI),
-        b'\x07': ('decode_humid', 1, KEY_OUTHUMI),
-        b'\x08': ('decode_press', 2, KEY_ABSBARO),
-        b'\x09': ('decode_press', 2, KEY_RELBARO),
-        b'\x0A': ('decode_dir', 2, KEY_WINDDIRECTION),
-        b'\x0B': ('decode_speed', 2, KEY_WINDSPEED),
-        b'\x0C': ('decode_speed', 2, KEY_GUSTSPEED),
-        b'\x0D': ('decode_rain', 2, KEY_RAINEVENT),
-        b'\x0E': ('decode_rainrate', 2, KEY_RAINRATE),
-        b'\x0F': ('decode_gain_100', 2, KEY_RAINHOUR),
-        b'\x10': ('decode_rain', 2, KEY_RAINDAY),
-        b'\x11': ('decode_rain', 2, KEY_RAINWEEK),
-        b'\x12': ('decode_big_rain', 4, KEY_RAINMONTH),
-        b'\x13': ('decode_big_rain', 4, KEY_RAINYEAR),
-        b'\x14': ('decode_big_rain', 4, KEY_RAINTOTALS),
-        b'\x15': ('decode_light', 4, KEY_LIGHT),
-        b'\x16': ('decode_uv', 2, KEY_UV),
-        b'\x17': ('decode_uvi', 1, KEY_UVI),
-        b'\x18': ('decode_datetime_as_dt', 6, KEY_TIME),
-        b'\x19': ('decode_speed', 2, KEY_DAYLWINDMAX),
-        b'\x1A': ('decode_temp', 2, KEY_TEMP1),
-        b'\x1B': ('decode_temp', 2, KEY_TEMP2),
-        b'\x1C': ('decode_temp', 2, KEY_TEMP3),
-        b'\x1D': ('decode_temp', 2, KEY_TEMP4),
-        b'\x1E': ('decode_temp', 2, KEY_TEMP5),
-        b'\x1F': ('decode_temp', 2, KEY_TEMP6),
-        b'\x20': ('decode_temp', 2, KEY_TEMP7),
-        b'\x21': ('decode_temp', 2, KEY_TEMP8),
-        b'\x22': ('decode_humid', 1, KEY_HUMI1),
-        b'\x23': ('decode_humid', 1, KEY_HUMI2),
-        b'\x24': ('decode_humid', 1, KEY_HUMI3),
-        b'\x25': ('decode_humid', 1, KEY_HUMI4),
-        b'\x26': ('decode_humid', 1, KEY_HUMI5),
-        b'\x27': ('decode_humid', 1, KEY_HUMI6),
-        b'\x28': ('decode_humid', 1, KEY_HUMI7),
-        b'\x29': ('decode_humid', 1, KEY_HUMI8),
-        b'\x2A': ('decode_pm25', 2, KEY_PM25_CH1),
-        b'\x2B': ('decode_temp', 2, KEY_SOILTEMP1),
-        b'\x2C': ('decode_moist', 1, KEY_SOILMOISTURE1),
-        b'\x2D': ('decode_temp', 2, KEY_SOILTEMP2),
-        b'\x2E': ('decode_moist', 1, KEY_SOILMOISTURE2),
-        b'\x2F': ('decode_temp', 2, KEY_SOILTEMP3),
-        b'\x30': ('decode_moist', 1, KEY_SOILMOISTURE3),
-        b'\x31': ('decode_temp', 2, KEY_SOILTEMP4),
-        b'\x32': ('decode_moist', 1, KEY_SOILMOISTURE4),
-        b'\x33': ('decode_temp', 2, KEY_SOILTEMP5),
-        b'\x34': ('decode_moist', 1, KEY_SOILMOISTURE5),
-        b'\x35': ('decode_temp', 2, KEY_SOILTEMP6),
-        b'\x36': ('decode_moist', 1, KEY_SOILMOISTURE6),
-        b'\x37': ('decode_temp', 2, KEY_SOILTEMP7),
-        b'\x38': ('decode_moist', 1, KEY_SOILMOISTURE7),
-        b'\x39': ('decode_temp', 2, KEY_SOILTEMP8),
-        b'\x3A': ('decode_moist', 1, KEY_SOILMOISTURE8),
-        b'\x3B': ('decode_temp', 2, KEY_SOILTEMP9),
-        b'\x3C': ('decode_moist', 1, KEY_SOILMOISTURE9),
-        b'\x3D': ('decode_temp', 2, KEY_SOILTEMP10),
-        b'\x3E': ('decode_moist', 1, KEY_SOILMOISTURE10),
-        b'\x3F': ('decode_temp', 2, KEY_SOILTEMP11),
-        b'\x40': ('decode_moist', 1, KEY_SOILMOISTURE11),
-        b'\x41': ('decode_temp', 2, KEY_SOILTEMP12),
-        b'\x42': ('decode_moist', 1, KEY_SOILMOISTURE12),
-        b'\x43': ('decode_temp', 2, KEY_SOILTEMP13),
-        b'\x44': ('decode_moist', 1, KEY_SOILMOISTURE13),
-        b'\x45': ('decode_temp', 2, KEY_SOILTEMP14),
-        b'\x46': ('decode_moist', 1, KEY_SOILMOISTURE14),
-        b'\x47': ('decode_temp', 2, KEY_SOILTEMP15),
-        b'\x48': ('decode_moist', 1, KEY_SOILMOISTURE15),
-        b'\x49': ('decode_temp', 2, KEY_SOILTEMP16),
-        b'\x4A': ('decode_moist', 1, KEY_SOILMOISTURE16),
-        b'\x4C': ('decode_batt', 16, KEY_LOWBATT),
-        b'\x4D': ('decode_pm25', 2, KEY_PM25_24HAVG1),
-        b'\x4E': ('decode_pm25', 2, KEY_PM25_24HAVG2),
-        b'\x4F': ('decode_pm25', 2, KEY_PM25_24HAVG3),
-        b'\x50': ('decode_pm25', 2, KEY_PM25_24HAVG4),
-        b'\x51': ('decode_pm25', 2, KEY_PM25_CH2),
-        b'\x52': ('decode_pm25', 2, KEY_PM25_CH3),
-        b'\x53': ('decode_pm25', 2, KEY_PM25_CH4),
-        b'\x58': ('decode_leak', 1, KEY_LEAK_CH1),
-        b'\x59': ('decode_leak', 1, KEY_LEAK_CH2),
-        b'\x5A': ('decode_leak', 1, KEY_LEAK_CH3),
-        b'\x5B': ('decode_leak', 1, KEY_LEAK_CH4),
-        b'\x60': ('decode_distance', 1, KEY_LIGHTNING_DIST),
-        b'\x61': ('decode_utc', 4, KEY_LIGHTNING_TIME),
-        b'\x62': ('decode_count', 4, KEY_LIGHTNING_COUNT),
-        b'\x63': ('decode_wn34', 3, KEY_TF_USR1),                   # WN34 battery data is not obtained from live data rather it is obtained from sensor ID data
-        b'\x64': ('decode_wn34', 3, KEY_TF_USR2),
-        b'\x65': ('decode_wn34', 3, KEY_TF_USR3),
-        b'\x66': ('decode_wn34', 3, KEY_TF_USR4),
-        b'\x67': ('decode_wn34', 3, KEY_TF_USR5),
-        b'\x68': ('decode_wn34', 3, KEY_TF_USR6),
-        b'\x69': ('decode_wn34', 3, KEY_TF_USR7),
-        b'\x6A': ('decode_wn34', 3, KEY_TF_USR8),
-        b'\x70': ('decode_wh45', 16, KEY_SENSOR_CO2),               # WH45 battery data is not obtained from live data rather it is obtained from sensor ID data
+        b'\x01': ('decode_temp', 2, DataPoints.INTEMP[0]),
+        b'\x02': ('decode_temp', 2, DataPoints.OUTTEMP[0]),
+        b'\x03': ('decode_temp', 2, DataPoints.DEWPOINT[0]),
+        b'\x04': ('decode_temp', 2, DataPoints.WINDCHILL[0]),
+        b'\x05': ('decode_temp', 2, DataPoints.HEATINDEX[0]),
+        b'\x06': ('decode_humid', 1, DataPoints.INHUMI[0]),
+        b'\x07': ('decode_humid', 1, DataPoints.OUTHUMI[0]),
+        b'\x08': ('decode_press', 2, DataPoints.ABSBARO[0]),
+        b'\x09': ('decode_press', 2, DataPoints.RELBARO[0]),
+        b'\x0A': ('decode_dir', 2, DataPoints.WINDDIRECTION[0]),
+        b'\x0B': ('decode_speed', 2, DataPoints.WINDSPEED[0]),
+        b'\x0C': ('decode_speed', 2, DataPoints.GUSTSPEED[0]),
+        b'\x0D': ('decode_rain', 2, DataPoints.RAINEVENT[0]),
+        b'\x0E': ('decode_rainrate', 2, DataPoints.RAINRATE[0]),
+        b'\x0F': ('decode_gain_100', 2, DataPoints.RAINHOUR[0]),
+        b'\x10': ('decode_rain', 2, DataPoints.RAINDAY[0]),
+        b'\x11': ('decode_rain', 2, DataPoints.RAINWEEK[0]),
+        b'\x12': ('decode_big_rain', 4, DataPoints.RAINMONTH[0]),
+        b'\x13': ('decode_big_rain', 4, DataPoints.RAINYEAR[0]),
+        b'\x14': ('decode_big_rain', 4, DataPoints.RAINTOTALS[0]),
+        b'\x15': ('decode_light', 4, DataPoints.LIGHT[0]),
+        b'\x16': ('decode_uv', 2, DataPoints.UV[0]),
+        b'\x17': ('decode_uvi', 1, DataPoints.UVI[0]),
+        b'\x18': ('decode_datetime_as_dt', 6, DataPoints.TIME[0]),
+        b'\x19': ('decode_speed', 2, DataPoints.DAYLWINDMAX[0]),
+        b'\x1A': ('decode_temp', 2, DataPoints.TEMP1[0]),
+        b'\x1B': ('decode_temp', 2, DataPoints.TEMP2[0]),
+        b'\x1C': ('decode_temp', 2, DataPoints.TEMP3[0]),
+        b'\x1D': ('decode_temp', 2, DataPoints.TEMP4[0]),
+        b'\x1E': ('decode_temp', 2, DataPoints.TEMP5[0]),
+        b'\x1F': ('decode_temp', 2, DataPoints.TEMP6[0]),
+        b'\x20': ('decode_temp', 2, DataPoints.TEMP7[0]),
+        b'\x21': ('decode_temp', 2, DataPoints.TEMP8[0]),
+        b'\x22': ('decode_humid', 1, DataPoints.HUMI1[0]),
+        b'\x23': ('decode_humid', 1, DataPoints.HUMI2[0]),
+        b'\x24': ('decode_humid', 1, DataPoints.HUMI3[0]),
+        b'\x25': ('decode_humid', 1, DataPoints.HUMI4[0]),
+        b'\x26': ('decode_humid', 1, DataPoints.HUMI5[0]),
+        b'\x27': ('decode_humid', 1, DataPoints.HUMI6[0]),
+        b'\x28': ('decode_humid', 1, DataPoints.HUMI7[0]),
+        b'\x29': ('decode_humid', 1, DataPoints.HUMI8[0]),
+        b'\x2A': ('decode_pm25', 2, DataPoints.PM251[0]),
+        b'\x2B': ('decode_temp', 2, DataPoints.SOILTEMP1[0]),
+        b'\x2C': ('decode_moist', 1, DataPoints.SOILMOISTURE1[0]),
+        b'\x2D': ('decode_temp', 2, DataPoints.SOILTEMP2[0]),
+        b'\x2E': ('decode_moist', 1, DataPoints.SOILMOISTURE2[0]),
+        b'\x2F': ('decode_temp', 2, DataPoints.SOILTEMP3[0]),
+        b'\x30': ('decode_moist', 1, DataPoints.SOILMOISTURE3[0]),
+        b'\x31': ('decode_temp', 2, DataPoints.SOILTEMP4[0]),
+        b'\x32': ('decode_moist', 1, DataPoints.SOILMOISTURE4[0]),
+        b'\x33': ('decode_temp', 2, DataPoints.SOILTEMP5[0]),
+        b'\x34': ('decode_moist', 1, DataPoints.SOILMOISTURE5[0]),
+        b'\x35': ('decode_temp', 2, DataPoints.SOILTEMP6[0]),
+        b'\x36': ('decode_moist', 1, DataPoints.SOILMOISTURE6[0]),
+        b'\x37': ('decode_temp', 2, DataPoints.SOILTEMP7[0]),
+        b'\x38': ('decode_moist', 1, DataPoints.SOILMOISTURE7[0]),
+        b'\x39': ('decode_temp', 2, DataPoints.SOILTEMP8[0]),
+        b'\x3A': ('decode_moist', 1, DataPoints.SOILMOISTURE8[0]),
+        b'\x3B': ('decode_temp', 2, DataPoints.SOILTEMP9[0]),
+        b'\x3C': ('decode_moist', 1, DataPoints.SOILMOISTURE9[0]),
+        b'\x3D': ('decode_temp', 2, DataPoints.SOILTEMP10[0]),
+        b'\x3E': ('decode_moist', 1, DataPoints.SOILMOISTURE10[0]),
+        b'\x3F': ('decode_temp', 2, DataPoints.SOILTEMP11[0]),
+        b'\x40': ('decode_moist', 1, DataPoints.SOILMOISTURE11[0]),
+        b'\x41': ('decode_temp', 2, DataPoints.SOILTEMP12[0]),
+        b'\x42': ('decode_moist', 1, DataPoints.SOILMOISTURE12[0]),
+        b'\x43': ('decode_temp', 2, DataPoints.SOILTEMP13[0]),
+        b'\x44': ('decode_moist', 1, DataPoints.SOILMOISTURE13[0]),
+        b'\x45': ('decode_temp', 2, DataPoints.SOILTEMP14[0]),
+        b'\x46': ('decode_moist', 1, DataPoints.SOILMOISTURE14[0]),
+        b'\x47': ('decode_temp', 2, DataPoints.SOILTEMP15[0]),
+        b'\x48': ('decode_moist', 1, DataPoints.SOILMOISTURE15[0]),
+        b'\x49': ('decode_temp', 2, DataPoints.SOILTEMP16[0]),
+        b'\x4A': ('decode_moist', 1, DataPoints.SOILMOISTURE16[0]),
+        b'\x4C': ('decode_batt', 16, DataPoints.LOWBATT[0]),
+        b'\x4D': ('decode_pm25', 2, DataPoints.PM25_24H_AVG1[0]),
+        b'\x4E': ('decode_pm25', 2, DataPoints.PM25_24H_AVG2[0]),
+        b'\x4F': ('decode_pm25', 2, DataPoints.PM25_24H_AVG3[0]),
+        b'\x50': ('decode_pm25', 2, DataPoints.PM25_24H_AVG4[0]),
+        b'\x51': ('decode_pm25', 2, DataPoints.PM252[0]),
+        b'\x52': ('decode_pm25', 2, DataPoints.PM253[0]),
+        b'\x53': ('decode_pm25', 2, DataPoints.PM254[0]),
+        b'\x58': ('decode_leak', 1, DataPoints.LEAK1[0]),
+        b'\x59': ('decode_leak', 1, DataPoints.LEAK2[0]),
+        b'\x5A': ('decode_leak', 1, DataPoints.LEAK3[0]),
+        b'\x5B': ('decode_leak', 1, DataPoints.LEAK4[0]),
+        b'\x60': ('decode_distance', 1, DataPoints.LIGHTNING_DIST[0]),
+        b'\x61': ('decode_utc', 4, DataPoints.LIGHTNING_TIME[0]),
+        b'\x62': ('decode_count', 4, DataPoints.LIGHTNING_COUNT[0]),
+        b'\x63': ('decode_wn34', 3, DataPoints.TF_USR1[0]),                   # WN34 battery data is not obtained from live data rather it is obtained from sensor ID data
+        b'\x64': ('decode_wn34', 3, DataPoints.TF_USR2[0]),
+        b'\x65': ('decode_wn34', 3, DataPoints.TF_USR3[0]),
+        b'\x66': ('decode_wn34', 3, DataPoints.TF_USR4[0]),
+        b'\x67': ('decode_wn34', 3, DataPoints.TF_USR5[0]),
+        b'\x68': ('decode_wn34', 3, DataPoints.TF_USR6[0]),
+        b'\x69': ('decode_wn34', 3, DataPoints.TF_USR7[0]),
+        b'\x6A': ('decode_wn34', 3, DataPoints.TF_USR8[0]),
+        b'\x70': ('decode_wh45', 16, DataPoints.SENSOR_CO2[0]),               # WH45 battery data is not obtained from live data rather it is obtained from sensor ID data
         b'\x71': (None, None, None),                                # placeholder for unknown field 0x71
-        b'\x72': ('decode_wet', 1, KEY_LEAF_WETNESS_CH1),
-        b'\x73': ('decode_wet', 1, KEY_LEAF_WETNESS_CH2),
-        b'\x74': ('decode_wet', 1, KEY_LEAF_WETNESS_CH3),
-        b'\x75': ('decode_wet', 1, KEY_LEAF_WETNESS_CH4),
-        b'\x76': ('decode_wet', 1, KEY_LEAF_WETNESS_CH5),
-        b'\x77': ('decode_wet', 1, KEY_LEAF_WETNESS_CH6),
-        b'\x78': ('decode_wet', 1, KEY_LEAF_WETNESS_CH7),
-        b'\x79': ('decode_wet', 1, KEY_LEAF_WETNESS_CH8)
+        b'\x72': ('decode_wet', 1, DataPoints.LEAF_WETNESS1[0]),
+        b'\x73': ('decode_wet', 1, DataPoints.LEAF_WETNESS2[0]),
+        b'\x74': ('decode_wet', 1, DataPoints.LEAF_WETNESS3[0]),
+        b'\x75': ('decode_wet', 1, DataPoints.LEAF_WETNESS4[0]),
+        b'\x76': ('decode_wet', 1, DataPoints.LEAF_WETNESS5[0]),
+        b'\x77': ('decode_wet', 1, DataPoints.LEAF_WETNESS6[0]),
+        b'\x78': ('decode_wet', 1, DataPoints.LEAF_WETNESS7[0]),
+        b'\x79': ('decode_wet', 1, DataPoints.LEAF_WETNESS8[0])
     }
     rain_data_struct = {
-        b'\x0D': ('decode_rain', 2, KEY_RAINEVENT),
-        b'\x0E': ('decode_rainrate', 2, KEY_RAINRATE),
-        b'\x0F': ('decode_gain_100', 2, KEY_RAINHOUR),
-        b'\x10': ('decode_big_rain', 4, KEY_RAINDAY),
-        b'\x11': ('decode_big_rain', 4, KEY_RAINWEEK),
-        b'\x12': ('decode_big_rain', 4, KEY_RAINMONTH),
-        b'\x13': ('decode_big_rain', 4, KEY_RAINYEAR),
-        b'\x7A': ('decode_int', 1, KEY_RAIN_PRIO),
-        b'\x7B': ('decode_int', 1, KEY_RAD_COMP),
-        b'\x80': ('decode_rainrate', 2, KEY_PIEZO_RAIN_RATE),
-        b'\x81': ('decode_rain', 2, KEY_PIEZO_EVENT_RAIN),
-        b'\x82': ('decode_reserved', 2, KEY_PIEZO_HOURLY_RAIN),
-        b'\x83': ('decode_big_rain', 4, KEY_PIEZO_DAILY_RAIN),
-        b'\x84': ('decode_big_rain', 4, KEY_PIEZO_WEEKLY_RAIN),
-        b'\x85': ('decode_big_rain', 4, KEY_PIEZO_MONTHLY_RAIN),
-        b'\x86': ('decode_big_rain', 4, KEY_PIEZO_YEARLY_RAIN),
+        b'\x0D': ('decode_rain', 2, DataPoints.RAINEVENT[0]),
+        b'\x0E': ('decode_rainrate', 2, DataPoints.RAINRATE[0]),
+        b'\x0F': ('decode_gain_100', 2, DataPoints.RAINHOUR[0]),
+        b'\x10': ('decode_big_rain', 4, DataPoints.RAINDAY[0]),
+        b'\x11': ('decode_big_rain', 4, DataPoints.RAINWEEK[0]),
+        b'\x12': ('decode_big_rain', 4, DataPoints.RAINMONTH[0]),
+        b'\x13': ('decode_big_rain', 4, DataPoints.RAINYEAR[0]),
+        b'\x7A': ('decode_int', 1, DataPoints.RAIN_PRIO[0]),
+        b'\x7B': ('decode_int', 1, DataPoints.RAD_COMP[0]),
+        b'\x80': ('decode_rainrate', 2, DataPoints.PIEZO_RAINRATE[0]),
+        b'\x81': ('decode_rain', 2, DataPoints.PIEZO_RAINEVENT[0]),
+        b'\x82': ('decode_reserved', 2, DataPoints.PIEZO_RAINHOUR[0]),
+        b'\x83': ('decode_big_rain', 4, DataPoints.PIEZO_RAINDAY[0]),
+        b'\x84': ('decode_big_rain', 4, DataPoints.PIEZO_RAINWEEK[0]),
+        b'\x85': ('decode_big_rain', 4, DataPoints.PIEZO_RAINMONTH[0]),
+        b'\x86': ('decode_big_rain', 4, DataPoints.PIEZO_RAINYEAR[0]),
         b'\x87': ('decode_rain_gain', 20, None),               # field 0x87 hold device parameter data that is not included in the loop packets, hence the device field is not used (None).
         b'\x88': ('decode_rain_reset', 3, None)                # field 0x88 hold device parameter data that is not included in the loop packets, hence the device field is not used (None).
     }
@@ -2544,6 +2543,7 @@ class ApiParser(object):
         # do we log unknown fields at info or leave at debug
         self.log_unknown_fields = self.interface_config.log_unknown_fields
 
+    # ToDo: decode for UV / solarradiation is not correct. TCP value is correct
     def parse_addressed_data(self, payload, structure):
         """Parse an address structure API response payload.
 
@@ -2666,11 +2666,11 @@ class ApiParser(object):
         data = response[4:4 + size - 3]
         # initialise a dict to hold our parsed data
         data_dict = dict()
-        data_dict[KEY_RAINRATE] = self.decode_big_rain(data[0:4])
-        data_dict[KEY_RAINDAY] = self.decode_big_rain(data[4:8])
-        data_dict[KEY_RAINWEEK] = self.decode_big_rain(data[8:12])
-        data_dict[KEY_RAINMONTH] = self.decode_big_rain(data[12:16])
-        data_dict[KEY_RAINYEAR] = self.decode_big_rain(data[16:20])
+        data_dict[DataPoints.RAINRATE[0]] = self.decode_big_rain(data[0:4])
+        data_dict[DataPoints.RAINDAY[0]] = self.decode_big_rain(data[4:8])
+        data_dict[DataPoints.RAINWEEK[0]] = self.decode_big_rain(data[8:12])
+        data_dict[DataPoints.RAINMONTH[0]] = self.decode_big_rain(data[12:16])
+        data_dict[DataPoints.RAINYEAR[0]] = self.decode_big_rain(data[16:20])
         return data_dict
 
     @staticmethod
@@ -2711,13 +2711,13 @@ class ApiParser(object):
                 channel = data[index]
             offset_dict[channel] = {}
             try:
-                offset_dict[channel][KEY_HUMID] = struct.unpack("b", data[index + 1])[0]
+                offset_dict[channel][MasterKeys.HUMID] = struct.unpack("b", data[index + 1])[0]
             except TypeError:
-                offset_dict[channel][KEY_HUMID] = struct.unpack("b", int_to_bytes(data[index + 1]))[0]
+                offset_dict[channel][MasterKeys.HUMID] = struct.unpack("b", int_to_bytes(data[index + 1]))[0]
             try:
-                offset_dict[channel][KEY_TEMP] = struct.unpack("b", data[index + 2])[0] / 10.0
+                offset_dict[channel][MasterKeys.TEMP] = struct.unpack("b", data[index + 2])[0] / 10.0
             except TypeError:
-                offset_dict[channel][KEY_TEMP] = struct.unpack("b", int_to_bytes(data[index + 2]))[0] / 10.0
+                offset_dict[channel][MasterKeys.TEMP] = struct.unpack("b", int_to_bytes(data[index + 2]))[0] / 10.0
             index += 3
         return offset_dict
 
@@ -2821,11 +2821,11 @@ class ApiParser(object):
         offset_dict = dict()
         # and decode/store the offset data
         # bytes 0 and 1 hold the CO2 offset
-        offset_dict[KEY_CO2] = struct.unpack(">h", data[0:2])[0]
+        offset_dict[MasterKeys.CO2] = struct.unpack(">h", data[0:2])[0]
         # bytes 2 and 3 hold the PM2.5 offset
-        offset_dict[KEY_PM25] = struct.unpack(">h", data[2:4])[0] / 10.0
+        offset_dict[MasterKeys.PM25] = struct.unpack(">h", data[2:4])[0] / 10.0
         # bytes 4 and 5 hold the PM10 offset
-        offset_dict[KEY_PM10] = struct.unpack(">h", data[4:6])[0] / 10.0
+        offset_dict[MasterKeys.PM10] = struct.unpack(">h", data[4:6])[0] / 10.0
         return offset_dict
 
     @staticmethod
@@ -2886,19 +2886,19 @@ class ApiParser(object):
         # initialise a dict to hold our parsed data
         cal_dict = dict()
         # and decode/store the offset calibration data
-        cal_dict[KEY_INTEMP] = struct.unpack(">h", data[0:2])[0] / 10.0
+        cal_dict[DataPoints.INTEMP[0]] = struct.unpack(">h", data[0:2])[0] / 10.0
         try:
-            cal_dict[KEY_INHUMI] = struct.unpack("b", data[2])[0]
+            cal_dict[DataPoints.INHUMI[0]] = struct.unpack("b", data[2])[0]
         except TypeError:
-            cal_dict[KEY_INHUMI] = struct.unpack("b", int_to_bytes(data[2]))[0]
-        cal_dict[KEY_ABSBARO] = struct.unpack(">l", data[3:7])[0] / 10.0
-        cal_dict[KEY_RELBARO] = struct.unpack(">l", data[7:11])[0] / 10.0
-        cal_dict[KEY_OUTTEMP] = struct.unpack(">h", data[11:13])[0] / 10.0
+            cal_dict[DataPoints.INHUMI[0]] = struct.unpack("b", int_to_bytes(data[2]))[0]
+        cal_dict[DataPoints.ABSBARO[0]] = struct.unpack(">l", data[3:7])[0] / 10.0
+        cal_dict[DataPoints.RELBARO[0]] = struct.unpack(">l", data[7:11])[0] / 10.0
+        cal_dict[DataPoints.OUTTEMP[0]] = struct.unpack(">h", data[11:13])[0] / 10.0
         try:
-            cal_dict[KEY_OUTHUMI] = struct.unpack("b", data[13])[0]
+            cal_dict[DataPoints.OUTHUMI[0]] = struct.unpack("b", data[13])[0]
         except TypeError:
-            cal_dict[KEY_OUTHUMI] = struct.unpack("b", int_to_bytes(data[13]))[0]
-        cal_dict[KEY_WINDDIRECTION] = struct.unpack(">h", data[14:16])[0]
+            cal_dict[DataPoints.OUTHUMI[0]] = struct.unpack("b", int_to_bytes(data[13]))[0]
+        cal_dict[DataPoints.WINDDIRECTION[0]] = struct.unpack(">h", data[14:16])[0]
         return cal_dict
 
     @staticmethod
@@ -2979,7 +2979,7 @@ class ApiParser(object):
             13      checksum        byte            LSB of the sum of the command, size and data bytes
         """
 
-        FREQUENCIES = ['433 MHz', '866 MHz', '915 MHz', '920 MHz']
+        FREQUENCIES = ['433 MHz', '868 MHz', '915 MHz', '920 MHz']
         SENSOR_TYPES = ['WH24', 'WH65']
 
         # determine the size of the system parameters data
@@ -3610,7 +3610,7 @@ class ApiParser(object):
         if len(data) == 20:
             results = dict()
             for gain in range(10):
-                results['gain%d' % gain] = self.decode_gain_100(data[gain * 2:gain * 2 + 2])
+                results[f"{GainKeys.RAIN[0]}{gain}"] = self.decode_gain_100(data[gain * 2:gain * 2 + 2])
             return results
         return {}
 
@@ -3633,9 +3633,9 @@ class ApiParser(object):
 
         if len(data) == 3:
             results = dict()
-            results[KEY_RAIN_RESET_DAY] = struct.unpack("B", data[0:1])[0]
-            results[KEY_RAIN_RESET_WEEK] = struct.unpack("B", data[1:2])[0]
-            results[KEY_RAIN_RESET_ANNUAL] = struct.unpack("B", data[2:3])[0]
+            results[DataPoints.RAIN_RESET_DAY[0]] = struct.unpack("B", data[0:1])[0]
+            results[DataPoints.RAIN_RESET_WEEK[0]] = struct.unpack("B", data[1:2])[0]
+            results[DataPoints.RAIN_RESET_ANNUAL[0]] = struct.unpack("B", data[2:3])[0]
             return results
         return {}
 
@@ -3908,63 +3908,63 @@ class HttpParser(object):
 
     # dict to match channels to senors
     sensor_names = {
-        'common_list': {'name': 'wn34', 'long_name': 'WN34', 'batt_fn': 'batt_int'},
-        'piezoRain': {'name': 'ws90', 'long_name': 'WS90', 'batt_fn': 'batt_int'},
-        'lightning': {'name': 'wh57', 'long_name': 'WH57', 'batt_fn': 'batt_int'},
-        'co2': {'name': 'wh45', 'long_name': 'WH45', 'batt_fn': 'batt_int'},
-        'wh25': {'name': 'wh25', 'long_name': 'WH25', 'batt_fn': 'batt_int'},
-        'ch_pm25': {'name': 'wh41', 'long_name': 'WH41', 'batt_fn': 'batt_int'},
-        'ch_leak': {'name': 'wh55', 'long_name': 'WH55', 'batt_fn': 'batt_int'},
-        'ch_aisle': {'name': 'wh31', 'long_name': 'WH31', 'batt_fn': 'batt_int'},
-        'ch_soil': {'name': 'wh51', 'long_name': 'WH51', 'batt_fn': 'batt_int'},
-        'ch_temp': {'name': 'wh30', 'long_name': 'WH30', 'batt_fn': 'batt_int'},
-        'ch_leaf': {'name': 'wn35', 'long_name': 'WN35', 'batt_fn': 'batt_int'},
-        'rain': {'name': 'wh65', 'long_name': 'WH65', 'batt_fn': 'batt_int'},
+        'common_list': {'name': MasterKeys.WN34, 'batt_fn': 'batt_int'},
+        'piezoRain':   {'name': MasterKeys.WS90, 'batt_fn': 'batt_int'},
+        'lightning':   {'name': MasterKeys.WH57, 'batt_fn': 'batt_int'},
+        'co2':         {'name': MasterKeys.WH45, 'batt_fn': 'batt_int'},
+        'wh25':        {'name': MasterKeys.WH25, 'batt_fn': 'batt_int'},
+        'ch_pm25':     {'name': MasterKeys.WH41, 'batt_fn': 'batt_int'},
+        'ch_leak':     {'name': MasterKeys.WH55, 'batt_fn': 'batt_int'},
+        'ch_aisle':    {'name': MasterKeys.WH31, 'batt_fn': 'batt_int'},
+        'ch_soil':     {'name': MasterKeys.WH51, 'batt_fn': 'batt_int'},
+        'ch_temp':     {'name': MasterKeys.WN30, 'batt_fn': 'batt_int'},
+        'ch_leaf':     {'name': MasterKeys.WN35, 'batt_fn': 'batt_int'},
+        'rain':        {'name': MasterKeys.WH65, 'batt_fn': 'batt_int'},
     }
 
     http_live_data_struct = {
-        '0x01': KEY_INTEMP,
-        '0x02': KEY_OUTTEMP,
-        '0x03': KEY_DEWPOINT,
-        '0x04': KEY_WINDCHILL,
-        '0x05': KEY_HEATINDEX,
-        '0x06': KEY_INHUMI,
-        '0x07': KEY_OUTHUMI,
-        '0x08': KEY_ABSBARO,
-        '0x09': KEY_RELBARO,
-        '0x0A': KEY_WINDDIRECTION,
-        '0x0B': KEY_WINDSPEED,
-        '0x0C': KEY_GUSTSPEED,
-        '0x0D': KEY_RAINEVENT,
-        '0x0E': KEY_RAINRATE,
-        '0x0F': KEY_RAINHOUR,
-        '0x10': KEY_RAINDAY,
-        '0x11': KEY_RAINWEEK,
-        '0x12': KEY_RAINMONTH,
-        '0x13': KEY_RAINYEAR,
-        '0x14': KEY_RAINTOTALS,
-        '0x15': KEY_LIGHT,
-        '0x16': KEY_UV,
-        '0x17': KEY_UVI,
-        '0x18': KEY_TIME,
-        '0x19': KEY_DAYLWINDMAX,
-        'humidity': KEY_HUMID,
-        'temp': KEY_TEMP,
-        'status': KEY_LEAK,
-        'PM25': KEY_PM25,
-        'PM25_24HAQI': KEY_PM25_AVG,
-        'PM25_RealAQI': KEY_PM25_AQI,
-        'CO2': KEY_SENSOR_CO2_CO2,
-        'CO2_24H': KEY_SENSOR_CO2_CO2_24,
-        'PM10': KEY_SENSOR_CO2_PM10,
-        'PM10_24HAQI': KEY_SENSOR_CO2_PM10_24,
-        'count': KEY_LIGHTNING_COUNT,
-        'distance': KEY_LIGHTNING_DIST,
-        'timestamp': KEY_LIGHTNING_TIME,
-        'abs': KEY_ABSBARO,
-        'inhumi': KEY_INHUMI,
-        'intemp': KEY_INTEMP,
-        'rel': KEY_RELBARO,
+        '0x01': DataPoints.INTEMP[0],
+        '0x02': DataPoints.OUTTEMP[0],
+        '0x03': DataPoints.DEWPOINT[0],
+        '0x04': DataPoints.WINDCHILL[0],
+        '0x05': DataPoints.HEATINDEX[0],
+        '0x06': DataPoints.INHUMI[0],
+        '0x07': DataPoints.OUTHUMI[0],
+        '0x08': DataPoints.ABSBARO[0],
+        '0x09': DataPoints.RELBARO[0],
+        '0x0A': DataPoints.WINDDIRECTION[0],
+        '0x0B': DataPoints.WINDSPEED[0],
+        '0x0C': DataPoints.GUSTSPEED[0],
+        '0x0D': DataPoints.RAINEVENT[0],
+        '0x0E': DataPoints.RAINRATE[0],
+        '0x0F': DataPoints.RAINHOUR[0],
+        '0x10': DataPoints.RAINDAY[0],
+        '0x11': DataPoints.RAINWEEK[0],
+        '0x12': DataPoints.RAINMONTH[0],
+        '0x13': DataPoints.RAINYEAR[0],
+        '0x14': DataPoints.RAINTOTALS[0],
+        '0x15': DataPoints.LIGHT[0],
+        '0x16': DataPoints.UV[0],
+        '0x17': DataPoints.UVI[0],
+        '0x18': DataPoints.TIME[0],
+        '0x19': DataPoints.DAYLWINDMAX[0],
+        'humidity': MasterKeys.HUMID,
+        'temp': MasterKeys.TEMP,
+        'status': MasterKeys.LEAK,
+        'PM25': MasterKeys.PM25,
+        'PM25_24HAQI': MasterKeys.PM25_AVG,
+        'PM25_RealAQI': DataPoints.PM25_AQI[0],
+        'CO2': DataPoints.SENSOR_CO2_CO2[0],
+        'CO2_24H': DataPoints.SENSOR_CO2_CO2_24[0],
+        'PM10': DataPoints.SENSOR_CO2_PM10[0],
+        'PM10_24HAQI': DataPoints.SENSOR_CO2_PM10_24[0],
+        'count': DataPoints.LIGHTNING_COUNT[0],
+        'distance': DataPoints.LIGHTNING_DIST[0],
+        'timestamp': DataPoints.LIGHTNING_TIME[0],
+        'abs': DataPoints.ABSBARO[0],
+        'inhumi': DataPoints.INHUMI[0],
+        'intemp': DataPoints.INTEMP[0],
+        'rel': DataPoints.RELBARO[0],
         'unit': None,
         'name': None,
         'PM10_RealAQI': None,
@@ -4038,7 +4038,7 @@ class HttpParser(object):
 
                     battery = sensor.get('battery')
                     if battery:
-                        data_dict.update({f"{self.sensor_names[entry]['name']}{BATTERY_EXTENTION}": parse_value(battery)})
+                        data_dict.update({f"{self.sensor_names[entry]['name'][0]}{MasterKeys.BATTERY_EXTENTION}": parse_value(battery)})
 
             # parse wh25
             elif entry in ['wh25']:
@@ -4060,7 +4060,7 @@ class HttpParser(object):
                 for sensor in data[entry]:
                     for detail in sensor:
                         if 'battery' in detail:
-                            key = f"{self.sensor_names[entry]['name']}{BATTERY_EXTENTION}"
+                            key = f"{self.sensor_names[entry]['name'][0]}{MasterKeys.BATTERY_EXTENTION}"
                             raw_value = parse_value(sensor[detail])
                             batt_fn = self.sensor_names[entry]['batt_fn']
                             value = getattr(self, batt_fn)(raw_value)
@@ -4083,7 +4083,7 @@ class HttpParser(object):
                     for detail in sensor:
                         value = None
                         if 'battery' in detail:
-                            key = f"{self.sensor_names[entry]['name']}_ch{channel}{BATTERY_EXTENTION}"
+                            key = f"{self.sensor_names[entry]['name'][0]}{channel}{MasterKeys.BATTERY_EXTENTION}"
                             raw_value = parse_value(sensor[detail])
                             batt_fn = self.sensor_names[entry]['batt_fn']
                             value = getattr(self, batt_fn)(raw_value)
@@ -4130,6 +4130,8 @@ class GatewayTcp(object):
         # get instance
         self._plugin_instance = plugin_instance
         self.logger = self._plugin_instance.logger
+        self.parser = TcpParser(plugin_instance)
+        self.callback = callback
 
         # get interface config
         self.interface_config = self._plugin_instance.interface_config
@@ -4139,8 +4141,6 @@ class GatewayTcp(object):
 
         # log the relevant settings/parameters we are using
         self.logger.debug("Starting GatewayTcp")
-        
-        self.callback = callback
 
         # get tcp server object
         self.tcp_server = GatewayTcp.TCPServer(self.make_handler(self.parse_tcp_live_data), plugin_instance)
@@ -4177,206 +4177,10 @@ class GatewayTcp(object):
         self._server_thread = None
 
     def parse_tcp_live_data(self, data, client_ip):
-        """Parse the ecowitt data and add it to a dictionary."""
 
-        # ToDo: Harmonize freq field to XXX MHz
-        # ToDo: Harmonize datetime field to be local instead of UTC
-        # ToDo: Harmonize field solarradiation {'tcp': 272.6, 'api': 83.9}
-        # ToDo: Harmonize field 'raingain': {'tcp': 62.0, 'api': 1.0},
-        # ToDo: add field api 'raintotals': {'tcp': 465.91}
-        # ToDo: 'wh25_batt': {'tcp': False, 'api': 0},
-
-        tcp_live_data_struct = {
-            # Generic
-            'client_ip': (None, KEY_CLIENT_IP),
-            'PASSKEY': (None, None),
-            'stationtype': (None, KEY_FIRMWARE),
-            'freq': (None, KEY_FREQ),
-            'model': (None, KEY_MODEL),
-            'dateutc': (str_to_datetimeutc, KEY_TIME),
-            'runtime': (None, KEY_RUNTIME),
-            'interval': (None, KEY_INTERVAL),
-            # Indoor
-            'tempinf': (f_to_c, KEY_INTEMP),
-            'humidityin': (None, KEY_INHUMI),
-            'baromrelin': (in_to_hpa, KEY_RELBARO),
-            'baromabsin': (in_to_hpa, KEY_ABSBARO),
-            # WH 65 / WH24
-            'tempf': (f_to_c, KEY_OUTTEMP),
-            'humidity': (None, KEY_OUTHUMI),
-            'winddir': (None, KEY_WINDDIRECTION),
-            'windspeedmph': (mph_to_ms, KEY_WINDSPEED),
-            'windgustmph': (mph_to_ms, KEY_GUSTSPEED),
-            'maxdailygust': (mph_to_ms, KEY_DAYLWINDMAX),
-            'solarradiation': (None, KEY_UV),
-            'uv': (None, KEY_UVI),
-            'rainratein': (in_to_mm, KEY_RAINRATE),
-            'eventrainin': (in_to_mm, KEY_RAINEVENT),
-            'hourlyrainin': (in_to_mm, KEY_RAINHOUR),
-            'dailyrainin': (in_to_mm, KEY_RAINDAY),
-            'weeklyrainin': (in_to_mm, KEY_RAINWEEK),
-            'monthlyrainin': (in_to_mm, KEY_RAINMONTH),
-            'yearlyrainin': (in_to_mm, KEY_RAINYEAR),
-            'totalrainin': (in_to_mm, KEY_RAINTOTALS),
-            'wh65batt': (None, f'wh65{BATTERY_EXTENTION}'),
-            # WH31
-            'temp1f': (f_to_c, KEY_TEMP1),
-            'humidity1': (None, KEY_HUMI1),
-            'batt1': (None, f'wh31_ch1{BATTERY_EXTENTION}'),
-            'temp2f': (f_to_c, KEY_TEMP2),
-            'humidity2': (None, KEY_HUMI2),
-            'batt2': (None, f'wh31_ch2{BATTERY_EXTENTION}'),
-            'temp3f': (f_to_c, KEY_TEMP3),
-            'humidity3': (None, KEY_HUMI3),
-            'batt3': (None, f'wh31_ch3{BATTERY_EXTENTION}'),
-            'temp4f': (f_to_c, KEY_TEMP4),
-            'humidity4': (None, KEY_HUMI4),
-            'batt4': (None, f'wh31_ch4{BATTERY_EXTENTION}'),
-            'temp5f': (f_to_c, KEY_TEMP5),
-            'humidity5': (None, KEY_HUMI5),
-            'batt5': (None, f'wh31_ch5{BATTERY_EXTENTION}'),
-            'temp6f': (f_to_c, KEY_TEMP6),
-            'humidity6': (None, KEY_HUMI6),
-            'batt6': (None, f'wh31_ch6{BATTERY_EXTENTION}'),
-            'temp7f': (f_to_c, KEY_TEMP7),
-            'humidity7': (None, KEY_HUMI7),
-            'batt7': (None, f'wh31_ch7{BATTERY_EXTENTION}'),
-            'temp8f': (f_to_c, KEY_TEMP8),
-            'humidity8': (None, KEY_HUMI8),
-            'batt8': (None, f'wh31_ch8{BATTERY_EXTENTION}'),
-            # WN51
-            'soilmoisture1': (None, KEY_SOILMOISTURE1),
-            'soilmoisture2': (None, KEY_SOILMOISTURE2),
-            'soilmoisture3': (None, KEY_SOILMOISTURE3),
-            'soilmoisture4': (None, KEY_SOILMOISTURE4),
-            'soilmoisture5': (None, KEY_SOILMOISTURE5),
-            'soilmoisture6': (None, KEY_SOILMOISTURE6),
-            'soilmoisture7': (None, KEY_SOILMOISTURE7),
-            'soilmoisture8': (None, KEY_SOILMOISTURE8),
-            'soilbatt1': (None, f'wh51_ch1{BATTERY_EXTENTION}'),
-            'soilbatt2': (None, f'wh51_ch2{BATTERY_EXTENTION}'),
-            'soilbatt3': (None, f'wh51_ch3{BATTERY_EXTENTION}'),
-            'soilbatt4': (None, f'wh51_ch4{BATTERY_EXTENTION}'),
-            'soilbatt5': (None, f'wh51_ch5{BATTERY_EXTENTION}'),
-            'soilbatt6': (None, f'wh51_ch6{BATTERY_EXTENTION}'),
-            'soilbatt7': (None, f'wh51_ch7{BATTERY_EXTENTION}'),
-            'soilbatt8': (None, f'wh51_ch8{BATTERY_EXTENTION}'),
-            # WH34
-            'tf_ch1': (f_to_c, KEY_TF_USR1),
-            'tf_ch2': (f_to_c, KEY_TF_USR2),
-            'tf_ch3': (f_to_c, KEY_TF_USR3),
-            'tf_ch4': (f_to_c, KEY_TF_USR4),
-            'tf_ch5': (f_to_c, KEY_TF_USR5),
-            'tf_ch6': (f_to_c, KEY_TF_USR6),
-            'tf_ch7': (f_to_c, KEY_TF_USR7),
-            'tf_ch8': (f_to_c, KEY_TF_USR8),
-            # WH45
-            'tf_co2': (f_to_c, KEY_SENSOR_CO2_TEMP),
-            'humi_co2': (None, KEY_SENSOR_CO2_HUM),
-            'pm10_co2': (None, KEY_SENSOR_CO2_PM10),
-            'pm10_24h_co2': (None, KEY_SENSOR_CO2_PM10_24),
-            'pm25_co2': (None, KEY_SENSOR_CO2_PM255),
-            'pm25_24h_co2': (None, KEY_SENSOR_CO2_PM255_24),
-            'co2': (None, KEY_SENSOR_CO2_CO2),
-            'co2_24h': (None, KEY_SENSOR_CO2_CO2_24),
-            'co2_batt': (None, f'wh45{BATTERY_EXTENTION}'),
-            # WH41 / WH43
-            'pm25_ch1': (None, KEY_PM25_CH1),
-            'pm25_avg_24h_ch1': (None, KEY_PM25_24HAVG1),
-            'pm25batt1': (to_int, f'pm251{BATTERY_EXTENTION}'),
-            'pm25_ch2': (None, KEY_PM25_CH2),
-            'pm25_avg_24h_ch2': (None, KEY_PM25_24HAVG2),
-            'pm25batt2': (to_int, f'pm252{BATTERY_EXTENTION}'),
-            'pm25_ch3': (None, KEY_PM25_CH3),
-            'pm25_avg_24h_ch3': (None, KEY_PM25_24HAVG3),
-            'pm25batt3': (to_int, f'pm253{BATTERY_EXTENTION}'),
-            'pm25_ch4': (None, KEY_PM25_CH4),
-            'pm25_avg_24h_ch4': (None, KEY_PM25_24HAVG4),
-            'pm25batt4': (to_int, f'pm254{BATTERY_EXTENTION}'),
-            # WH55
-            'leak_ch1': (utils.to_bool, KEY_LEAK_CH1),
-            'leak_ch2': (utils.to_bool, KEY_LEAK_CH2),
-            'leak_ch3': (utils.to_bool, KEY_LEAK_CH3),
-            'leak_ch4': (utils.to_bool, KEY_LEAK_CH4),
-            'leakbatt1': (None, f'wh55_ch1{BATTERY_EXTENTION}'),
-            'leakbatt2': (None, f'wh55_ch2{BATTERY_EXTENTION}'),
-            'leakbatt3': (None, f'wh55_ch3{BATTERY_EXTENTION}'),
-            'leakbatt4': (None, f'wh55_ch4{BATTERY_EXTENTION}'),
-            # WH25
-            'wh25batt': (to_int, f'wh25{BATTERY_EXTENTION}'),
-            # WH26
-            'wh26batt': (to_int, f'wh26{BATTERY_EXTENTION}'),
-            # WH57
-            'lightning_day': (None, KEY_LIGHTNING_COUNT),
-            'lightning_distance': (None, KEY_LIGHTNING_DIST),
-            'lightning_time': (None, KEY_LIGHTNING_TIME),
-            # WH68
-            'wh68batt': (to_float, f'wh68{BATTERY_EXTENTION}'),
-            # WH40
-            'wh40batt': (to_float, f'wh40{BATTERY_EXTENTION}'),
-        }
-
-        def parse_data():
-            _data = {}
-            line = data.splitlines()[0]
-            if ':' in line and '&' in line:
-                for item in line.split('&'):
-                    key, value = item.split('=', 1)
-                    try:
-                        value = float(value)
-                        if value % 1 == 0:
-                            value = int(value)
-                    except ValueError:
-                        value = value.lstrip()
-                    _data[key] = value
-
-            _data.update({'client_ip': client_ip})
-            self.logger.debug(f"raw tcp_data={_data}")
-            return _data
-
-        def convert_data():
-            """
-            Harmonize key names and convert into metric units
-
-            response_struct: 'original_key': (decoder, 'new_key'); if new_key == None; ignore transfer to new dict
-            """
-            
-            _data = {}
-            for key in data_dict:
-                try:
-                    decoder, field = tcp_live_data_struct[key]
-                except KeyError:
-                    self.logger.info(f"Unknown key '{key}' with value '{data_dict[key]}'detected. Try do decode remaining sensor data.")
-                    pass
-                else:
-                    if field is None:
-                        continue
-
-                    if decoder:
-                        _data[field] = decoder(data_dict[key])
-                    else:
-                        _data[field] = data_dict[key]
-            self.logger.info(f"TCP. convert_data data_dict={_data}")
-
-            if KEY_UV in _data:
-                _data.update({KEY_LIGHT: solar_rad_to_brightness(_data[KEY_UV])})
-
-            return _data
-
-        data_dict = parse_data()
-
-        self.callback(convert_data())
-
-    @staticmethod
-    def clean_data(data):
-        """Delete unused keys"""
-
-        _unused_keys = [KEY_PASSKEY, KEY_FIRMWARE, KEY_FREQ, KEY_MODEL, KEY_CLIENT_IP]
-
-        for key in data:
-            if key.lower() in _unused_keys:
-                data.pop(key)
-        return data
+        data_dict = self.parser.parse_live_data(data, client_ip)
+        self.logger.debug(f"raw tcp_data={data_dict}")
+        self.callback(data_dict)
 
     def make_handler(self, parse_method):
 
@@ -4432,6 +4236,219 @@ class GatewayTcp(object):
             self.server_close()
 
 
+class TcpParser(object):
+    """Class to parse Ecowitt Gateway sensor data coming via HTTP Post."""
+
+    def __init__(self, plugin_instance):
+
+        # get instance
+        self._plugin_instance = plugin_instance
+        self.logger = self._plugin_instance.logger
+
+        # get interface config
+        self.interface_config = self._plugin_instance.interface_config
+
+        # do we log unknown fields at info or leave at debug
+        self.log_unknown_fields = self.interface_config.log_unknown_fields
+
+    def parse_live_data(self, data, client_ip):
+        """Parse the ecowitt data and add it to a dictionary."""
+
+        # ToDo: Harmonize datetime field to be local instead of UTC
+        # ToDo: Harmonize field 'raingain': {'tcp': 62.0, 'api': 1.0},
+        # ToDo: add field api 'raintotals': {'tcp': 465.91}
+        # ToDo: 'wh25_batt': {'tcp': False, 'api': 0},
+
+        tcp_live_data_struct = {
+            # Generic
+            'client_ip': (None, DataPoints.CLIENT_IP[0]),
+            'PASSKEY': (None, None),
+            'stationtype': (None, DataPoints.FIRMWARE[0]),
+            'freq': ('decode_freq', DataPoints.FREQ[0]),
+            'model': (None, DataPoints.MODEL[0]),
+            'dateutc': (str_to_datetimeutc, DataPoints.TIME[0]),
+            'runtime': (None, DataPoints.RUNTIME[0]),
+            'interval': (None, DataPoints.INTERVAL[0]),
+            # Indoor
+            'tempinf': (f_to_c, DataPoints.INTEMP[0]),
+            'humidityin': (None, DataPoints.INHUMI[0]),
+            'baromrelin': (in_to_hpa, DataPoints.RELBARO[0]),
+            'baromabsin': (in_to_hpa, DataPoints.ABSBARO[0]),
+            # WH 65 / WH24
+            'tempf': (f_to_c, DataPoints.OUTTEMP[0]),
+            'humidity': (None, DataPoints.OUTHUMI[0]),
+            'winddir': (None, DataPoints.WINDDIRECTION[0]),
+            'windspeedmph': (mph_to_ms, DataPoints.WINDSPEED[0]),
+            'windgustmph': (mph_to_ms, DataPoints.GUSTSPEED[0]),
+            'maxdailygust': (mph_to_ms, DataPoints.DAYLWINDMAX[0]),
+            'solarradiation': (None, DataPoints.UV[0]),
+            'uv': (None, DataPoints.UVI[0]),
+            'rainratein': (in_to_mm, DataPoints.RAINRATE[0]),
+            'eventrainin': (in_to_mm, DataPoints.RAINEVENT[0]),
+            'hourlyrainin': (in_to_mm, DataPoints.RAINHOUR[0]),
+            'dailyrainin': (in_to_mm, DataPoints.RAINDAY[0]),
+            'weeklyrainin': (in_to_mm, DataPoints.RAINWEEK[0]),
+            'monthlyrainin': (in_to_mm, DataPoints.RAINMONTH[0]),
+            'yearlyrainin': (in_to_mm, DataPoints.RAINYEAR[0]),
+            'totalrainin': (in_to_mm, DataPoints.RAINTOTALS[0]),
+            'wh65batt': (None, f'wh65{MasterKeys.BATTERY_EXTENTION}'),
+            # WH31
+            'temp1f': (f_to_c, DataPoints.TEMP1[0]),
+            'humidity1': (None, DataPoints.HUMI1[0]),
+            'batt1': (None, f'wh31_ch1{MasterKeys.BATTERY_EXTENTION}'),
+            'temp2f': (f_to_c, DataPoints.TEMP2[0]),
+            'humidity2': (None, DataPoints.HUMI2[0]),
+            'batt2': (None, f'wh31_ch2{MasterKeys.BATTERY_EXTENTION}'),
+            'temp3f': (f_to_c, DataPoints.TEMP3[0]),
+            'humidity3': (None, DataPoints.HUMI3[0]),
+            'batt3': (None, f'wh31_ch3{MasterKeys.BATTERY_EXTENTION}'),
+            'temp4f': (f_to_c, DataPoints.TEMP4[0]),
+            'humidity4': (None, DataPoints.HUMI4[0]),
+            'batt4': (None, f'wh31_ch4{MasterKeys.BATTERY_EXTENTION}'),
+            'temp5f': (f_to_c, DataPoints.TEMP5[0]),
+            'humidity5': (None, DataPoints.HUMI5[0]),
+            'batt5': (None, f'wh31_ch5{MasterKeys.BATTERY_EXTENTION}'),
+            'temp6f': (f_to_c, DataPoints.TEMP6[0]),
+            'humidity6': (None, DataPoints.HUMI6[0]),
+            'batt6': (None, f'wh31_ch6{MasterKeys.BATTERY_EXTENTION}'),
+            'temp7f': (f_to_c, DataPoints.TEMP7[0]),
+            'humidity7': (None, DataPoints.HUMI7[0]),
+            'batt7': (None, f'wh31_ch7{MasterKeys.BATTERY_EXTENTION}'),
+            'temp8f': (f_to_c, DataPoints.TEMP8[0]),
+            'humidity8': (None, DataPoints.HUMI8[0]),
+            'batt8': (None, f'wh31_ch8{MasterKeys.BATTERY_EXTENTION}'),
+            # WN51
+            'soilmoisture1': (None, DataPoints.SOILMOISTURE1[0]),
+            'soilmoisture2': (None, DataPoints.SOILMOISTURE2[0]),
+            'soilmoisture3': (None, DataPoints.SOILMOISTURE3[0]),
+            'soilmoisture4': (None, DataPoints.SOILMOISTURE4[0]),
+            'soilmoisture5': (None, DataPoints.SOILMOISTURE5[0]),
+            'soilmoisture6': (None, DataPoints.SOILMOISTURE6[0]),
+            'soilmoisture7': (None, DataPoints.SOILMOISTURE7[0]),
+            'soilmoisture8': (None, DataPoints.SOILMOISTURE8[0]),
+            'soilbatt1': (None, f'wh51_ch1{MasterKeys.BATTERY_EXTENTION}'),
+            'soilbatt2': (None, f'wh51_ch2{MasterKeys.BATTERY_EXTENTION}'),
+            'soilbatt3': (None, f'wh51_ch3{MasterKeys.BATTERY_EXTENTION}'),
+            'soilbatt4': (None, f'wh51_ch4{MasterKeys.BATTERY_EXTENTION}'),
+            'soilbatt5': (None, f'wh51_ch5{MasterKeys.BATTERY_EXTENTION}'),
+            'soilbatt6': (None, f'wh51_ch6{MasterKeys.BATTERY_EXTENTION}'),
+            'soilbatt7': (None, f'wh51_ch7{MasterKeys.BATTERY_EXTENTION}'),
+            'soilbatt8': (None, f'wh51_ch8{MasterKeys.BATTERY_EXTENTION}'),
+            # WH34
+            'tf_ch1': (f_to_c, DataPoints.TF_USR1[0]),
+            'tf_ch2': (f_to_c, DataPoints.TF_USR2[0]),
+            'tf_ch3': (f_to_c, DataPoints.TF_USR3[0]),
+            'tf_ch4': (f_to_c, DataPoints.TF_USR4[0]),
+            'tf_ch5': (f_to_c, DataPoints.TF_USR5[0]),
+            'tf_ch6': (f_to_c, DataPoints.TF_USR6[0]),
+            'tf_ch7': (f_to_c, DataPoints.TF_USR7[0]),
+            'tf_ch8': (f_to_c, DataPoints.TF_USR8[0]),
+            # WH45
+            'tf_co2': (f_to_c, DataPoints.SENSOR_CO2_TEMP[0]),
+            'humi_co2': (None, DataPoints.SENSOR_CO2_HUM[0]),
+            'pm10_co2': (None, DataPoints.SENSOR_CO2_PM10[0]),
+            'pm10_24h_co2': (None, DataPoints.SENSOR_CO2_PM10_24[0]),
+            'pm25_co2': (None, DataPoints.SENSOR_CO2_PM255[0]),
+            'pm25_24h_co2': (None, DataPoints.SENSOR_CO2_PM255_24[0]),
+            'co2': (None, DataPoints.SENSOR_CO2_CO2[0]),
+            'co2_24h': (None, DataPoints.SENSOR_CO2_CO2_24[0]),
+            'co2_batt': (None, f'wh45{MasterKeys.BATTERY_EXTENTION}'),
+            # WH41 / WH43
+            'pm25_ch1': (None, DataPoints.PM251[0]),
+            'pm25_avg_24h_ch1': (None, DataPoints.PM25_24H_AVG1[0]),
+            'pm25batt1': (to_int, f'pm251{MasterKeys.BATTERY_EXTENTION}'),
+            'pm25_ch2': (None, DataPoints.PM252[0]),
+            'pm25_avg_24h_ch2': (None, DataPoints.PM25_24H_AVG2[0]),
+            'pm25batt2': (to_int, f'pm252{MasterKeys.BATTERY_EXTENTION}'),
+            'pm25_ch3': (None, DataPoints.PM253[0]),
+            'pm25_avg_24h_ch3': (None, DataPoints.PM25_24H_AVG3[0]),
+            'pm25batt3': (to_int, f'pm253{MasterKeys.BATTERY_EXTENTION}'),
+            'pm25_ch4': (None, DataPoints.PM254[0]),
+            'pm25_avg_24h_ch4': (None, DataPoints.PM25_24H_AVG4[0]),
+            'pm25batt4': (to_int, f'pm254{MasterKeys.BATTERY_EXTENTION}'),
+            # WH55
+            'leak_ch1': (utils.to_bool, DataPoints.LEAK1[0]),
+            'leak_ch2': (utils.to_bool, DataPoints.LEAK2[0]),
+            'leak_ch3': (utils.to_bool, DataPoints.LEAK3)[0],
+            'leak_ch4': (utils.to_bool, DataPoints.LEAK4[0]),
+            'leakbatt1': (None, f'wh55_ch1{MasterKeys.BATTERY_EXTENTION}'),
+            'leakbatt2': (None, f'wh55_ch2{MasterKeys.BATTERY_EXTENTION}'),
+            'leakbatt3': (None, f'wh55_ch3{MasterKeys.BATTERY_EXTENTION}'),
+            'leakbatt4': (None, f'wh55_ch4{MasterKeys.BATTERY_EXTENTION}'),
+            # WH25
+            'wh25batt': (to_int, f'wh25{MasterKeys.BATTERY_EXTENTION}'),
+            # WH26
+            'wh26batt': (to_int, f'wh26{MasterKeys.BATTERY_EXTENTION}'),
+            # WH57
+            'lightning_day': (None, DataPoints.LIGHTNING_COUNT[0]),
+            'lightning_distance': (None, DataPoints.LIGHTNING_DIST[0]),
+            'lightning_time': (None, DataPoints.LIGHTNING_TIME[0]),
+            # WH68
+            'wh68batt': (to_float, f'wh68{MasterKeys.BATTERY_EXTENTION}'),
+            # WH40
+            'wh40batt': (to_float, f'wh40{MasterKeys.BATTERY_EXTENTION}'),
+        }
+
+        # convert string to dict
+        raw_data_dict = {}
+        line = data.splitlines()[0]
+        if ':' in line and '&' in line:
+            for item in line.split('&'):
+                key, value = item.split('=', 1)
+                try:
+                    value = float(value)
+                    if value % 1 == 0:
+                        value = int(value)
+                except ValueError:
+                    value = value.lstrip()
+                raw_data_dict[key] = value
+        raw_data_dict.update({'client_ip': client_ip})
+
+        # Harmonize key names and convert into metric units
+        data_dict = {}
+        for key in raw_data_dict:
+            try:
+                decoder, field = tcp_live_data_struct[key]
+            except KeyError:
+                self.logger.info(f"Unknown key '{key}' with value '{raw_data_dict[key]}'detected. Try do decode remaining sensor data.")
+                pass
+            else:
+                if field is None:
+                    continue
+
+                if decoder:
+                    if isinstance(decoder, str):
+                        data_dict[field] = getattr(self, decoder)(raw_data_dict[key])
+                    else:
+                        data_dict[field] = decoder(raw_data_dict[key])
+                else:
+                    data_dict[field] = raw_data_dict[key]
+
+        self.logger.info(f"Post. convert_data {data_dict=}")
+
+        # ToDo: Move to Gateway
+        if DataPoints.UV[0] in data_dict:
+            data_dict.update({DataPoints.LIGHT[0]: solar_rad_to_brightness(data_dict[DataPoints.UV[0]])})
+
+        return data_dict
+
+    @staticmethod
+    def decode_freq(freq):
+        return f"{freq[:-1]} MHz"
+
+    @staticmethod
+    def clean_data(data):
+        """Delete unused keys"""
+
+        _unused_keys = [DataPoints.PASSKEY[0], DataPoints.FIRMWARE[0], DataPoints.FREQ[0], DataPoints.MODEL[0],
+                        DataPoints.CLIENT_IP[0]]
+
+        for key in data:
+            if key.lower() in _unused_keys:
+                data.pop(key)
+        return data
+
+
 class Sensors(object):
     """Class to manage device sensor ID data.
 
@@ -4444,55 +4461,55 @@ class Sensors(object):
 
     # map of sensor ids to short name, long name and battery byte decode function
     sensor_ids = {
-        b'\x00': {'name': 'wh65', 'long_name': 'WH65', 'batt_fn': 'batt_binary'},
-        b'\x01': {'name': 'wh68', 'long_name': 'WH68', 'batt_fn': 'batt_volt'},
-        b'\x02': {'name': 'ws80', 'long_name': 'WS80', 'batt_fn': 'batt_volt'},
-        b'\x03': {'name': 'wh40', 'long_name': 'WH40', 'batt_fn': 'wh40_batt_volt'},
-        b'\x04': {'name': 'wh25', 'long_name': 'WH25', 'batt_fn': 'batt_binary'},
-        b'\x05': {'name': 'wh26', 'long_name': 'WH26', 'batt_fn': 'batt_binary'},
-        b'\x06': {'name': 'wh31_ch1', 'long_name': 'WH31 ch1', 'batt_fn': 'batt_binary'},
-        b'\x07': {'name': 'wh31_ch2', 'long_name': 'WH31 ch2', 'batt_fn': 'batt_binary'},
-        b'\x08': {'name': 'wh31_ch3', 'long_name': 'WH31 ch3', 'batt_fn': 'batt_binary'},
-        b'\x09': {'name': 'wh31_ch4', 'long_name': 'WH31 ch4', 'batt_fn': 'batt_binary'},
-        b'\x0a': {'name': 'wh31_ch5', 'long_name': 'WH31 ch5', 'batt_fn': 'batt_binary'},
-        b'\x0b': {'name': 'wh31_ch6', 'long_name': 'WH31 ch6', 'batt_fn': 'batt_binary'},
-        b'\x0c': {'name': 'wh31_ch7', 'long_name': 'WH31 ch7', 'batt_fn': 'batt_binary'},
-        b'\x0d': {'name': 'wh31_ch8', 'long_name': 'WH31 ch8', 'batt_fn': 'batt_binary'},
-        b'\x0e': {'name': 'wh51_ch1', 'long_name': 'WH51 ch1', 'batt_fn': 'batt_volt_tenth'},
-        b'\x0f': {'name': 'wh51_ch2', 'long_name': 'WH51 ch2', 'batt_fn': 'batt_volt_tenth'},
-        b'\x10': {'name': 'wh51_ch3', 'long_name': 'WH51 ch3', 'batt_fn': 'batt_volt_tenth'},
-        b'\x11': {'name': 'wh51_ch4', 'long_name': 'WH51 ch4', 'batt_fn': 'batt_volt_tenth'},
-        b'\x12': {'name': 'wh51_ch5', 'long_name': 'WH51 ch5', 'batt_fn': 'batt_volt_tenth'},
-        b'\x13': {'name': 'wh51_ch6', 'long_name': 'WH51 ch6', 'batt_fn': 'batt_volt_tenth'},
-        b'\x14': {'name': 'wh51_ch7', 'long_name': 'WH51 ch7', 'batt_fn': 'batt_volt_tenth'},
-        b'\x15': {'name': 'wh51_ch8', 'long_name': 'WH51 ch8', 'batt_fn': 'batt_volt_tenth'},
-        b'\x16': {'name': 'wh41_ch1', 'long_name': 'WH41 ch1', 'batt_fn': 'batt_int'},
-        b'\x17': {'name': 'wh41_ch2', 'long_name': 'WH41 ch2', 'batt_fn': 'batt_int'},
-        b'\x18': {'name': 'wh41_ch3', 'long_name': 'WH41 ch3', 'batt_fn': 'batt_int'},
-        b'\x19': {'name': 'wh41_ch4', 'long_name': 'WH41 ch4', 'batt_fn': 'batt_int'},
-        b'\x1a': {'name': 'wh57', 'long_name': 'WH57', 'batt_fn': 'batt_int'},
-        b'\x1b': {'name': 'wh55_ch1', 'long_name': 'WH55 ch1', 'batt_fn': 'batt_int'},
-        b'\x1c': {'name': 'wh55_ch2', 'long_name': 'WH55 ch2', 'batt_fn': 'batt_int'},
-        b'\x1d': {'name': 'wh55_ch3', 'long_name': 'WH55 ch3', 'batt_fn': 'batt_int'},
-        b'\x1e': {'name': 'wh55_ch4', 'long_name': 'WH55 ch4', 'batt_fn': 'batt_int'},
-        b'\x1f': {'name': 'wn34_ch1', 'long_name': 'WN34 ch1', 'batt_fn': 'batt_volt'},
-        b'\x20': {'name': 'wn34_ch2', 'long_name': 'WN34 ch2', 'batt_fn': 'batt_volt'},
-        b'\x21': {'name': 'wn34_ch3', 'long_name': 'WN34 ch3', 'batt_fn': 'batt_volt'},
-        b'\x22': {'name': 'wn34_ch4', 'long_name': 'WN34 ch4', 'batt_fn': 'batt_volt'},
-        b'\x23': {'name': 'wn34_ch5', 'long_name': 'WN34 ch5', 'batt_fn': 'batt_volt'},
-        b'\x24': {'name': 'wn34_ch6', 'long_name': 'WN34 ch6', 'batt_fn': 'batt_volt'},
-        b'\x25': {'name': 'wn34_ch7', 'long_name': 'WN34 ch7', 'batt_fn': 'batt_volt'},
-        b'\x26': {'name': 'wn34_ch8', 'long_name': 'WN34 ch8', 'batt_fn': 'batt_volt'},
-        b'\x27': {'name': 'wh45', 'long_name': 'WH45', 'batt_fn': 'batt_int'},
-        b'\x28': {'name': 'wn35_ch1', 'long_name': 'WN35 ch1', 'batt_fn': 'batt_volt'},
-        b'\x29': {'name': 'wn35_ch2', 'long_name': 'WN35 ch2', 'batt_fn': 'batt_volt'},
-        b'\x2a': {'name': 'wn35_ch3', 'long_name': 'WN35 ch3', 'batt_fn': 'batt_volt'},
-        b'\x2b': {'name': 'wn35_ch4', 'long_name': 'WN35 ch4', 'batt_fn': 'batt_volt'},
-        b'\x2c': {'name': 'wn35_ch5', 'long_name': 'WN35 ch5', 'batt_fn': 'batt_volt'},
-        b'\x2d': {'name': 'wn35_ch6', 'long_name': 'WN35 ch6', 'batt_fn': 'batt_volt'},
-        b'\x2e': {'name': 'wn35_ch7', 'long_name': 'WN35 ch7', 'batt_fn': 'batt_volt'},
-        b'\x2f': {'name': 'wn35_ch8', 'long_name': 'WN35 ch8', 'batt_fn': 'batt_volt'},
-        b'\x30': {'name': 'ws90', 'long_name': 'WS90', 'batt_fn': 'batt_volt', 'low_batt': 3}
+        b'\x00': {'name': SensorKeys.WH65,   'batt_fn': 'batt_binary'},
+        b'\x01': {'name': SensorKeys.WS68,   'batt_fn': 'batt_volt'},
+        b'\x02': {'name': SensorKeys.WS80,   'batt_fn': 'batt_volt'},
+        b'\x03': {'name': SensorKeys.WH40,   'batt_fn': 'wh40_batt_volt'},
+        b'\x04': {'name': SensorKeys.WH25,   'batt_fn': 'batt_binary'},
+        b'\x05': {'name': SensorKeys.WN26,   'batt_fn': 'batt_binary'},
+        b'\x06': {'name': SensorKeys.WH31_1, 'batt_fn': 'batt_binary'},
+        b'\x07': {'name': SensorKeys.WH31_2, 'batt_fn': 'batt_binary'},
+        b'\x08': {'name': SensorKeys.WH31_3, 'batt_fn': 'batt_binary'},
+        b'\x09': {'name': SensorKeys.WH31_4, 'batt_fn': 'batt_binary'},
+        b'\x0a': {'name': SensorKeys.WH31_5, 'batt_fn': 'batt_binary'},
+        b'\x0b': {'name': SensorKeys.WH31_6, 'batt_fn': 'batt_binary'},
+        b'\x0c': {'name': SensorKeys.WH31_7, 'batt_fn': 'batt_binary'},
+        b'\x0d': {'name': SensorKeys.WH31_8, 'batt_fn': 'batt_binary'},
+        b'\x0e': {'name': SensorKeys.WH51_1, 'batt_fn': 'batt_volt_tenth'},
+        b'\x0f': {'name': SensorKeys.WH51_2, 'batt_fn': 'batt_volt_tenth'},
+        b'\x10': {'name': SensorKeys.WH51_3, 'batt_fn': 'batt_volt_tenth'},
+        b'\x11': {'name': SensorKeys.WH51_4, 'batt_fn': 'batt_volt_tenth'},
+        b'\x12': {'name': SensorKeys.WH51_5, 'batt_fn': 'batt_volt_tenth'},
+        b'\x13': {'name': SensorKeys.WH51_6, 'batt_fn': 'batt_volt_tenth'},
+        b'\x14': {'name': SensorKeys.WH51_7, 'batt_fn': 'batt_volt_tenth'},
+        b'\x15': {'name': SensorKeys.WH51_8, 'batt_fn': 'batt_volt_tenth'},
+        b'\x16': {'name': SensorKeys.WH41_1, 'batt_fn': 'batt_int'},
+        b'\x17': {'name': SensorKeys.WH41_2, 'batt_fn': 'batt_int'},
+        b'\x18': {'name': SensorKeys.WH41_3, 'batt_fn': 'batt_int'},
+        b'\x19': {'name': SensorKeys.WH41_4, 'batt_fn': 'batt_int'},
+        b'\x1a': {'name': SensorKeys.WH57,   'batt_fn': 'batt_int'},
+        b'\x1b': {'name': SensorKeys.WH55_1, 'batt_fn': 'batt_int'},
+        b'\x1c': {'name': SensorKeys.WH55_2, 'batt_fn': 'batt_int'},
+        b'\x1d': {'name': SensorKeys.WH55_3, 'batt_fn': 'batt_int'},
+        b'\x1e': {'name': SensorKeys.WH55_4, 'batt_fn': 'batt_int'},
+        b'\x1f': {'name': SensorKeys.WN34_1, 'batt_fn': 'batt_volt'},
+        b'\x20': {'name': SensorKeys.WN34_2, 'batt_fn': 'batt_volt'},
+        b'\x21': {'name': SensorKeys.WN34_3, 'batt_fn': 'batt_volt'},
+        b'\x22': {'name': SensorKeys.WN34_4, 'batt_fn': 'batt_volt'},
+        b'\x23': {'name': SensorKeys.WN34_5, 'batt_fn': 'batt_volt'},
+        b'\x24': {'name': SensorKeys.WN34_6, 'batt_fn': 'batt_volt'},
+        b'\x25': {'name': SensorKeys.WN34_7, 'batt_fn': 'batt_volt'},
+        b'\x26': {'name': SensorKeys.WN34_8, 'batt_fn': 'batt_volt'},
+        b'\x27': {'name': SensorKeys.WH45,   'batt_fn': 'batt_int'},
+        b'\x28': {'name': SensorKeys.WN35_1, 'batt_fn': 'batt_volt'},
+        b'\x29': {'name': SensorKeys.WN35_2, 'batt_fn': 'batt_volt'},
+        b'\x2a': {'name': SensorKeys.WN35_3, 'batt_fn': 'batt_volt'},
+        b'\x2b': {'name': SensorKeys.WN35_4, 'batt_fn': 'batt_volt'},
+        b'\x2c': {'name': SensorKeys.WN35_5, 'batt_fn': 'batt_volt'},
+        b'\x2d': {'name': SensorKeys.WN35_6, 'batt_fn': 'batt_volt'},
+        b'\x2e': {'name': SensorKeys.WN35_7, 'batt_fn': 'batt_volt'},
+        b'\x2f': {'name': SensorKeys.WN35_8, 'batt_fn': 'batt_volt'},
+        b'\x30': {'name': SensorKeys.WS90,   'batt_fn': 'batt_volt', 'low_batt': 3}
     }
     # sensors for which there is no low battery state
     no_low = ['ws80', 'ws90']
@@ -4513,14 +4530,12 @@ class Sensors(object):
         # If WH32 sensor is used, decode that, otherwise it will decode to WH26 by default
         if self.interface_config.use_wh32:
             # set the WH24 sensor id decode dict entry
-            self.sensor_ids[b'\x05']['name'] = 'wh32'
-            self.sensor_ids[b'\x05']['long_name'] = 'WH32'
+            self.sensor_ids[b'\x05']['name'] = SensorKeys.WH32
 
         # Tell our sensor id decoding whether we have a WH24 or a WH65. By default, we are coded to use a WH65.
         if self.interface_config.is_wh24:
             # set the WH24 sensor id decode dict entry
-            self.sensor_ids[b'\x00']['name'] = 'wh24'
-            self.sensor_ids[b'\x00']['long_name'] = 'WH24'
+            self.sensor_ids[b'\x00']['name'] = SensorKeys.WH24
 
         # do we ignore battery state data from legacy WH40 sensors that do not provide valid battery state data
         self.ignore_wh40_batt = self.interface_config.ignore_wh40_batt
@@ -4633,9 +4648,9 @@ class Sensors(object):
 
         data = {}
         for sensor in self.get_connected_addresses():
-            sensor_name = Sensors.sensor_ids[sensor]['name']
-            data[''.join([sensor_name, BATTERY_EXTENTION])] = self.get_battery_state(sensor)
-            data[''.join([sensor_name, SIGNAL_EXTENTION])] = self.get_signal_level(sensor)
+            sensor_name = Sensors.sensor_ids[sensor]['name'][0]
+            data[f'{sensor_name}{MasterKeys.BATTERY_EXTENTION}'] = self.get_battery_state(sensor)
+            data[f'{sensor_name}{MasterKeys.SIGNAL_EXTENTION}'] = self.get_signal_level(sensor)
         return data
 
     def get_battery_description_data(self) -> dict:
@@ -4647,7 +4662,7 @@ class Sensors(object):
 
         data = {}
         for sensor in self.get_connected_addresses():
-            sensor_name = self.sensor_ids[sensor]['name']
+            sensor_name = self.sensor_ids[sensor]['name'][0]
             data[sensor_name] = self.get_batt_state_desc(sensor, self.get_battery_state(sensor))
 
         return data
@@ -4663,36 +4678,35 @@ class Sensors(object):
         A battery state value of None should not occur but if received the descriptive text 'unknown' is returned.
         """
 
-        if value is not None:
-            if Sensors.sensor_ids[address].get('name') in Sensors.no_low:
-                # we have a sensor for which no low battery cut-off
-                # data exists
-                return None
-            else:
-                batt_fn = Sensors.sensor_ids[address].get('batt_fn')
-                if batt_fn == 'batt_binary':
-                    if value == 0:
-                        return "OK"
-                    elif value == 1:
-                        return "low"
-                    else:
-                        return 'Unknown'
-                elif batt_fn == 'batt_int':
-                    if value <= 1:
-                        return "low"
-                    elif value == 6:
-                        return "DC"
-                    elif value <= 5:
-                        return "OK"
-                    else:
-                        return 'Unknown'
-                elif batt_fn in ['batt_volt', 'batt_volt_tenth', 'wh40_batt_volt']:
-                    if value <= 1.2:
-                        return "low"
-                    else:
-                        return "OK"
-        else:
+        if value is None:
             return 'Unknown'
+
+        if Sensors.sensor_ids[address].get('name') in Sensors.no_low:
+            # we have a sensor for which no low battery cut-off data exists
+            return None
+
+        batt_fn = Sensors.sensor_ids[address].get('batt_fn')
+        if batt_fn == 'batt_binary':
+            if value == 0:
+                return "OK"
+            elif value == 1:
+                return "low"
+            else:
+                return 'Unknown'
+        elif batt_fn == 'batt_int':
+            if value <= 1:
+                return "low"
+            elif value == 6:
+                return "DC"
+            elif value <= 5:
+                return "OK"
+            else:
+                return 'Unknown'
+        elif batt_fn in ['batt_volt', 'batt_volt_tenth', 'wh40_batt_volt']:
+            if value <= 1.2:
+                return "low"
+            else:
+                return "OK"
 
     @staticmethod
     def batt_binary(batt) -> bool:
@@ -4745,8 +4759,7 @@ class Sensors(object):
         """
 
         if round(0.1 * batt, 1) < 2.0:
-            # assume we have a non-battery state reporting WH40
-            # first set the legacy_wh40 flag
+            # assume we have a non-battery state reporting WH40 first set the legacy_wh40 flag
             self.legacy_wh40 = True
             # then do we ignore the result or pass it on
             if self.ignore_wh40_batt:
@@ -4756,8 +4769,7 @@ class Sensors(object):
                 # we are not ignoring the result so return the result
                 return round(0.1 * batt, 1)
         else:
-            # assume we have a battery state reporting WH40
-            # first reset the legacy_wh40 flag
+            # assume we have a battery state reporting WH40 first reset the legacy_wh40 flag
             self.legacy_wh40 = False
             return round(0.01 * batt, 2)
 
