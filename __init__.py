@@ -659,6 +659,17 @@ class Gateway(object):
             if DataPoints.GUSTSPEED_AVG10M[0] not in data:
                 data[DataPoints.GUSTSPEED_AVG10M[0]] = self.get_max_wind(self.wind_avg10m, 3)
 
+    @staticmethod
+    def add_light_data(data: dict) -> None:
+        """
+        Add calculated light to dict
+
+        :param data: dict of parsed Ecowitt Gateway data
+        """
+
+        if DataPoints.LIGHT[0] not in data and DataPoints.UV[0] in data:
+            data.update({DataPoints.LIGHT[0]: solar_rad_to_brightness(data[DataPoints.UV[0]])})
+
     def get_cumulative_rain_field(self, data: dict) -> None:
         """Determine the cumulative rain field used to derive field 'rain'.
 
@@ -1199,8 +1210,8 @@ class GatewayDriver(Gateway):
         if DataPoints.TIME[0] not in parsed_data:
             parsed_data[DataPoints.TIME[0]] = datetime.now().replace(microsecond=0)
         # add the timestamp to the data dict in case our data does not come with one
-        if 'timestamp' not in parsed_data:
-            parsed_data['timestamp'] = int(time.time())
+        if MasterKeys.TIMESTAMP not in parsed_data:
+            parsed_data[MasterKeys.TIMESTAMP] = int(time.time())
 
         # now update our parsed data with the parsed rain data if we have any
         try:
@@ -1251,8 +1262,8 @@ class GatewayDriver(Gateway):
         packet = {}
 
         # put timestamp and datetime to paket if not present
-        if 'timestamp' not in data:
-            packet['timestamp'] = int(time.time())
+        if MasterKeys.TIMESTAMP not in data:
+            packet[MasterKeys.TIMESTAMP] = int(time.time())
         if DataPoints.TIME[0] not in data:
             packet[DataPoints.TIME[0]] = datetime.now().replace(microsecond=0)
             
@@ -1273,6 +1284,7 @@ class GatewayDriver(Gateway):
         # add calculated data
         self.add_temp_data(data)
         self.add_wind_data(data)
+        self.add_light_data(data)
 
         if self.interface_config.show_sensor_warning:
             # add sensor warning data field
@@ -2527,9 +2539,9 @@ class ApiParser(object):
         b'\x88': ('decode_rain_reset', 3, None)                # field 0x88 hold device parameter data that is not included in the loop packets, hence the device field is not used (None).
     }
     # tuple of field codes for device rain related fields in the live data so we can isolate these fields
-    rain_field_codes = (b'\x0D', b'\x0E', b'\x0F', b'\x10', b'\x11', b'\x12', b'\x13', b'\x14', b'\x80', b'\x81', b'\x83', b'\x84', b'\x85', b'\x86')
+    # rain_field_codes = (b'\x0D', b'\x0E', b'\x0F', b'\x10', b'\x11', b'\x12', b'\x13', b'\x14', b'\x80', b'\x81', b'\x83', b'\x84', b'\x85', b'\x86')
     # tuple of field codes for wind related fields in the device live data so we can isolate these fields
-    wind_field_codes = (b'\x0A', b'\x0B', b'\x0C', b'\x19')
+    # wind_field_codes = (b'\x0A', b'\x0B', b'\x0C', b'\x19')
         
     def __init__(self, plugin_instance):
 
@@ -4257,7 +4269,6 @@ class TcpParser(object):
         # ToDo: Harmonize datetime field to be local instead of UTC
         # ToDo: Harmonize field 'raingain': {'tcp': 62.0, 'api': 1.0},
         # ToDo: add field api 'raintotals': {'tcp': 465.91}
-        # ToDo: 'wh25_batt': {'tcp': False, 'api': 0},
 
         tcp_live_data_struct = {
             # Generic
@@ -4425,10 +4436,6 @@ class TcpParser(object):
                     data_dict[field] = raw_data_dict[key]
 
         self.logger.info(f"Post. convert_data {data_dict=}")
-
-        # ToDo: Move to Gateway
-        if DataPoints.UV[0] in data_dict:
-            data_dict.update({DataPoints.LIGHT[0]: solar_rad_to_brightness(data_dict[DataPoints.UV[0]])})
 
         return data_dict
 
