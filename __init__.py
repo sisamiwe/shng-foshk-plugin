@@ -34,8 +34,8 @@
 # ToDo: set CMD_WRITE_CALIBRATION
 # ToDo: set CMD_WRITE_RAINDATA
 # ToDo: set CMD_WRITE_GAIN
-# ToDo: sunhours
-# ToDo: ptrend
+# ToDo: Sonnenstunden
+# ToDo: Luftdrucktrend
 #
 # ToDo Bugfix:
 # ToDo: correct datetime of packets to timezone
@@ -163,7 +163,8 @@ class Foshk(SmartPlugin):
 
         # add scheduler
         self.scheduler_add('poll_api', self.gateway.get_current_api_data, cycle=self.interface_config.api_data_cycle)
-        self.scheduler_add('check_fw_update', self.gateway.get_firmware_update_available, cycle=self.interface_config.fw_check_cycle)
+        if self.interface_config.fw_check_cycle > 0:
+            self.scheduler_add('check_fw_update', self.gateway.get_firmware_update_available, cycle=self.interface_config.fw_check_cycle)
 
         # if customer server is used, set parameters accordingly
         if self.use_customer_server:
@@ -2344,6 +2345,9 @@ class GatewayApi(object):
         Returns the response as a byte string or the value None.
         """
 
+        if DebugLogConfig.api:
+            self.logger.debug(f"Send {cmd=} with {payload=}")
+
         packet = self._build_cmd_packet(cmd, payload)
         response = None
         for attempt in range(self.max_tries):
@@ -3759,7 +3763,7 @@ class ApiParser(object):
         else:
             field1 = fields[0]
             field2 = fields[1]
-            field3 = fields[3]
+            field3 = fields[2]
 
         value1 = struct.unpack("B", data[0:1])[0]
         value2 = struct.unpack("B", data[1:2])[0]
@@ -4601,7 +4605,7 @@ class Sensors(object):
     the set_sensor_id_data() method and passing the sensor ID data to be used as the only parameter.
     """
 
-    # map of sensor ids to short name, long name and battery byte decode function
+    # map of sensor ids to (short name, long name) and battery byte decode function
     sensor_ids = {
         b'\x00': {'name': SensorKeys.WH65,   'batt_fn': 'batt_binary'},
         b'\x01': {'name': SensorKeys.WS68,   'batt_fn': 'batt_volt'},
