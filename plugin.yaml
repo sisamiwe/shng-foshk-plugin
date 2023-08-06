@@ -11,7 +11,7 @@ plugin:
     keywords: froggit ecowitt weather station
 #    support: https://knx-user-forum.de/forum/supportforen/smarthome-py
 
-    version: 1.2.0A                  # Plugin version (must match the version specified in __init__.py)
+    version: 1.2.0B                  # Plugin version (must match the version specified in __init__.py)
     sh_minversion: 1.9.4            # minimum shNG version to use this plugin
 #    sh_maxversion:                 # maximum shNG version to use this plugin (leave empty if latest)
 #    py_minversion:                 # minimum Python version to use for this plugin
@@ -99,14 +99,12 @@ item_attributes:
         valid_list:
         # NOTE: valid_list is automatically created by using datapoints.py
             - absbarometer
-            - annual_reset
             - battery_warning
             - client_ip
             - cloud_ceiling
             - co2
             - co2_24h_avg
             - datetime
-            - day_reset
             - dewpt
             - feelslike
             - firmware
@@ -154,13 +152,23 @@ item_attributes:
             - outhumid
             - outtemp
             - p_rain
-            - p_rainday
-            - p_rainevent
-            - p_rainhour
-            - p_rainmonth
-            - p_rainrate
-            - p_rainweek
-            - p_rainyear
+            - p_rain_day
+            - p_rain_event
+            - p_rain_gain0
+            - p_rain_gain1
+            - p_rain_gain2
+            - p_rain_gain3
+            - p_rain_gain4
+            - p_rain_gain5
+            - p_rain_gain6
+            - p_rain_gain7
+            - p_rain_gain8
+            - p_rain_gain9
+            - p_rain_hour
+            - p_rain_month
+            - p_rain_rate
+            - p_rain_week
+            - p_rain_year
             - pm10
             - pm10_24h_avg
             - pm251
@@ -175,25 +183,18 @@ item_attributes:
             - pm25_24h_avg4
             - rad_comp
             - rain
-            - rain_gain01
-            - rain_gain02
-            - rain_gain03
-            - rain_gain04
-            - rain_gain05
-            - rain_gain06
-            - rain_gain07
-            - rain_gain08
-            - rain_gain09
-            - rain_gain10
+            - rain_day
+            - rain_event
+            - rain_hour
+            - rain_month
             - rain_priority
-            - rainday
-            - rainevent
-            - rainhour
-            - rainmonth
-            - rainrate
-            - raintotals
-            - rainweek
-            - rainyear
+            - rain_rate
+            - rain_reset_day
+            - rain_reset_week
+            - rain_reset_year
+            - rain_totals
+            - rain_week
+            - rain_year
             - reboot
             - relbarometer
             - reset
@@ -254,7 +255,6 @@ item_attributes:
             - uvi
             - weather_txt
             - weatherstation_warning
-            - week_reset
             - wh24_batt
             - wh24_sig
             - wh25_batt
@@ -385,14 +385,12 @@ item_attributes:
         valid_list_description:
         # NOTE: valid_list_description is automatically created by using datapoints.py
             - Absolutely Barometric
-            - Reset Rain Year
             - Warning of any Battery
             - Client IP
             - Cloud Ceiling
             -
             -
             - Datetime
-            - Reset Rain Day
             - Dew Point
             - Feels Like Temperature
             - Firmware Version
@@ -403,7 +401,7 @@ item_attributes:
             - Average Gust Speed 10min
             - Heat Index
             - Humidity
-            - Humidity of CO2 Sensor
+            - Luftfeuchtigkeit am CO2 Sensor
             - Humidity
             - Humidity
             - Humidity
@@ -442,6 +440,16 @@ item_attributes:
             - Rain
             - Rain Day
             - Rain Event
+            - Kalibrierfaktor 0 für Piezo Regensensor
+            - Kalibrierfaktor 1 für Piezo Regensensor
+            - Kalibrierfaktor 2 für Piezo Regensensor
+            - Kalibrierfaktor 3 für Piezo Regensensor
+            - Kalibrierfaktor 4 für Piezo Regensensor
+            - Kalibrierfaktor 5 für Piezo Regensensor (reserviert)
+            - Kalibrierfaktor 6 für Piezo Regensensor (reserviert)
+            - Kalibrierfaktor 7 für Piezo Regensensor (reserviert)
+            - Kalibrierfaktor 8 für Piezo Regensensor (reserviert)
+            - Kalibrierfaktor 9 für Piezo Regensensor (reserviert)
             - Rain Hour
             - Rain Month
             - Rain Rate
@@ -461,22 +469,15 @@ item_attributes:
             - PM2.5 Air Quality 24h average
             - radiation compensation
             - Rain
-            - Kalibrierfaktor für Regensensor Kanal 1
-            - Kalibrierfaktor für Regensensor Kanal 2
-            - Kalibrierfaktor für Regensensor Kanal 3
-            - Kalibrierfaktor für Regensensor Kanal 4
-            - Kalibrierfaktor für Regensensor Kanal 5
-            - Kalibrierfaktor für Regensensor Kanal 6
-            - Kalibrierfaktor für Regensensor Kanal 7
-            - Kalibrierfaktor für Regensensor Kanal 8
-            - Kalibrierfaktor für Regensensor Kanal 9
-            - Kalibrierfaktor für Regensensor Kanal 10
-            - rain priority (classical or piezo)
             - Rain Day
             - Rain Event
             - Rain hour
             - Rain Month
+            - rain priority (classical or piezo)
             - Rain Rate
+            - Uhrzeit des Reset für Rain Day
+            - Tag des Reset für Rain Week
+            - Monat des Reset für Rain Year
             - Rain Totals
             - Rain Week
             - Rain Year
@@ -535,12 +536,11 @@ item_attributes:
             - Temperature
             - Temperature
             - Temperature
-            - Temperature of CO2 Sensor
+            - Temperatur am CO2 Sensor
             - Thunderstorm Warning
             - UVI
             - Weather Description
             - Weatherstation Warning
-            - Reset Rain Week
             - Batteriestatus für Temperatur- und Feuchtigkeitssensor Außen WH24
             - Signalstärke für Temperatur- und Feuchtigkeitssensor Außen WH24
             - Batteriestatus für Temperatur-, Feuchtigkeits- und Drucksensor
@@ -672,11 +672,11 @@ item_attributes:
     foshk_datasource:
         type: str
         description:
-            de: Datenquelle der Werte für Items; API vs. ECOWITT
-            en: Data source for item values; API vs. ECOWITT
+            de: Datenquelle der Werte für Items
+            en: Data source for item values
         valid_list_ci:
             - api
-            - ecowitt
+            - post
 
 item_structs:
     gateway:
@@ -749,65 +749,143 @@ item_structs:
             type: bool
             visu_acl: rw
             foshk_attribute: reset
+
     rain:
         type: num
         foshk_attribute: rain
 
         rate:
             type: num
-            foshk_attribute: rainrate
+            foshk_attribute: rain_rate
         event:
             type: num
-            foshk_attribute: rainevent
+            foshk_attribute: rain_event
         hour:
             type: num
-            foshk_attribute: rainhour
+            foshk_attribute: rain_hour
         day:
             type: num
-            foshk_attribute: rainday
+            foshk_attribute: rain_day
         week:
             type: num
-            foshk_attribute: rainweek
+            foshk_attribute: rain_week
         month:
             type: num
-            foshk_attribute: rainmonth
+            foshk_attribute: rain_month
         year:
             type: num
-            foshk_attribute: rainyear
+            foshk_attribute: rain_year
         total:
             type: num
-            foshk_attribute: raintotals
+            foshk_attribute: rain_totals
+        reset:
+            day:
+                type: num
+                foshk_attribute: rain_reset_day
+            week:
+                type: str
+                foshk_attribute: rain_reset_week
+            year:
+                type: num
+                foshk_attribute: rain_reset_year
+
+    p_rain:
+        type: num
+        foshk_attribute: p_rain
+
+        rate:
+            type: num
+            foshk_attribute: p_rain_rate
+        event:
+            type: num
+            foshk_attribute: p_rain_event
+        hour:
+            type: num
+            foshk_attribute: p_rain_hour
+        day:
+            type: num
+            foshk_attribute: p_rain_day
+        week:
+            type: num
+            foshk_attribute: p_rain_week
+        month:
+            type: num
+            foshk_attribute: p_rain_month
+        year:
+            type: num
+            foshk_attribute: p_rain_year
+        total:
+            type: num
+            foshk_attribute: p_rain_totals
+        reset:
+            day:
+                type: num
+                foshk_attribute: rain_reset_day
+            week:
+                type: str
+                foshk_attribute: rain_reset_week
+            year:
+                type: num
+                foshk_attribute: rain_reset_year
+
+    p_rain_gain:
+        p_rain_gain0:
+            type: num
+            foshk_attribute: p_rain_gain0
+        p_rain_gain1:
+            type: num
+            foshk_attribute: p_rain_gain1
+        p_rain_gain2:
+            type: num
+            foshk_attribute: p_rain_gain2
+        p_rain_gain3:
+            type: num
+            foshk_attribute: p_rain_gain3
+        p_rain_gain4:
+            type: num
+            foshk_attribute: p_rain_gain4
+        p_rain_gain5:
+            type: num
+            foshk_attribute: p_rain_gain5
+        p_rain_gain6:
+            type: num
+            foshk_attribute: p_rain_gain6
+        p_rain_gain7:
+            type: num
+            foshk_attribute: p_rain_gain7
+        p_rain_gain8:
+            type: num
+            foshk_attribute: p_rain_gain8
+        p_rain_gain9:
+            type: num
+            foshk_attribute: p_rain_gain9
+
     wind:
         winddir:
             type: num
             foshk_attribute: winddir
-            database: yes
         winddir_text:
             type: str
             foshk_attribute: winddir_txt
         winddir_avg10m:
             type: num
             foshk_attribute: winddir_avg10m
-        windspeedkmh:
+        windspeed:
             type: num
             foshk_attribute: windspeed
-            database: yes
-            enforce_updates: on
         windspeed_bft:
             type: num
             foshk_attribute: windspeed_bft
-        windspeed_bft_text:
+        windspeed_bft_txt:
             type: str
             foshk_attribute: windspeed_bft_txt
-        windspdkmh_avg10m:
+        windspeed_avg10m:
             type: num
             foshk_attribute: windspeed_avg10m
-        windgustkmh:
+        windgust:
             type: num
             foshk_attribute: gustspeed
-            database: yes
-            enforce_updates: on
-        windgustkmh_max10m:
+        windgust_max10m:
             type: num
             foshk_attribute: gustspeed_avg10m
         winddaymax:
@@ -834,6 +912,54 @@ item_structs:
             type: num
             foshk_attribute: inabshum
 
+    outdoor:
+        outtemp:
+            type: num
+            foshk_attribute: outtemp
+        outhumid:
+            type: num
+            foshk_attribute: outhumid
+        outdewpt:
+            type: num
+            foshk_attribute: outdewpt
+        outfrostpt:
+            type: num
+            foshk_attribute: outfrostpt
+        light:
+            type: num
+            foshk_attribute: light
+        solarradiation:
+            type: num
+            foshk_attribute: solarradiation
+        uvi:
+            type: num
+            foshk_attribute: uvi
+        feels_like:
+            type: num
+            foshk_attribute: feelslike
+        heatindex:
+            type: num
+            foshk_attribute: heatindex
+
+    pressure:
+        pressure_rel:
+            type: num
+            foshk_attribute: relbarometer
+            database: yes
+
+        pressure_abs:
+            type: num
+            foshk_attribute: absbarometer
+            database: yes
+
+    weather:
+        weather_text:
+            type: str
+            foshk_attribute: weather_txt
+        cloud_ceiling:
+            type: num
+            foshk_attribute: cloud_ceiling
+
     ws90:
         outtemp:
             type: num
@@ -858,62 +984,61 @@ item_structs:
             foshk_attribute: datetime
         p_rainrate:
             type: num
-            foshk_attribute: p_rainrate
+            foshk_attribute: p_rain_rate
         p_rainday:
             type: num
-            foshk_attribute: p_rainday
+            foshk_attribute: p_rain_day
         p_rainweek:
             type: num
-            foshk_attribute: p_rainweek
+            foshk_attribute: p_rain_week
         p_rainmonth:
             type: num
-            foshk_attribute: p_rainmonth
+            foshk_attribute: p_rain_month
         p_rainyear:
             type: num
-            foshk_attribute: p_rainyear
+            foshk_attribute: p_rain_year
         p_rainevent:
             type: num
-            foshk_attribute: p_rainevent
-        gain0:
+            foshk_attribute: p_rain_event
+        p_rain_gain0:
             type: num
-            foshk_attribute: gain0
-        gain1:
+            foshk_attribute: p_rain_gain
+        p_rain_gain1:
             type: num
-            foshk_attribute: gain1
-        gain2:
+            foshk_attribute: p_rain_gain1
+        p_rain_gain2:
             type: num
-            foshk_attribute: gain2
-        gain3:
+            foshk_attribute: p_rain_gain2
+        p_rain_gain3:
             type: num
-            foshk_attribute: gain3
-        gain4:
+            foshk_attribute: p_rain_gain3
+        p_rain_gain4:
             type: num
-            foshk_attribute: gain4
-        gain5:
+            foshk_attribute: p_rain_gain4
+        p_rain_gain5:
             type: num
-            foshk_attribute: gain5
-        gain6:
+            foshk_attribute: p_rain_gain5
+        p_rain_gain6:
             type: num
-            foshk_attribute: gain6
-        gain7:
+            foshk_attribute: p_rain_gain6
+        p_rain_gain7:
             type: num
-            foshk_attribute: gain7
-        gain8:
+            foshk_attribute: p_rain_gain7
+        p_rain_gain8:
             type: num
-            foshk_attribute: gain8
-        gain9:
+            foshk_attribute: p_rain_gain8
+        p_rain_gain9:
             type: num
-            foshk_attribute: gain9
-
+            foshk_attribute: p_rain_gain9
         day_reset:
             type: num
-            foshk_attribute: day_reset
+            foshk_attribute: rain_reset_day
         week_reset:
-            type: num
-            foshk_attribute: week_reset
+            type: str
+            foshk_attribute: rain_reset_week
         annual_reset:
             type: num
-            foshk_attribute: annual_reset
+            foshk_attribute: rain_reset_year
         ws90_batt:
             type: num
             foshk_attribute: ws90_batt

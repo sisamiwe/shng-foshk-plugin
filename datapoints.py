@@ -54,24 +54,25 @@ class MasterKeys:
     PM25_AVG = f'{PM25}_24h_avg'
     RAD_COMP = 'rad_comp'
     RAIN = 'rain'
-    RAINDAY = 'rainday'
-    RAINEVENT = 'rainevent'
-    RAINHOUR = 'rainhour'
-    RAINMONTH = 'rainmonth'
-    RAINRATE = 'rainrate'
-    RAINTOTALS = 'raintotals'
-    RAINWEEK = 'rainweek'
-    RAINYEAR = 'rainyear'
-    RAIN_GAIN = 'rain_gain'
-    RAIN_PRIO = 'rain_priority'
-    RAIN_RESET_ANNUAL = 'annual_reset'
-    RAIN_RESET_DAY = 'day_reset'
-    RAIN_RESET_WEEK = 'week_reset'
+    RAIN_DAY = f'{RAIN}_day'
+    RAIN_EVENT = f'{RAIN}_event'
+    RAIN_HOUR = f'{RAIN}_hour'
+    RAIN_MONTH = f'{RAIN}_month'
+    RAIN_RATE = f'{RAIN}_rate'
+    RAIN_TOTALS = f'{RAIN}_totals'
+    RAIN_WEEK = f'{RAIN}_week'
+    RAIN_YEAR = f'{RAIN}_year'
+    RAIN_GAIN = f'{RAIN}_gain'
+    RAIN_PRIO = f'{RAIN}_priority'
+    RAIN_RESET_YEAR = f'{RAIN}_reset_year'
+    RAIN_RESET_DAY = f'{RAIN}_reset_day'
+    RAIN_RESET_WEEK = f'{RAIN}_reset_week'
     RELBARO = 'relbarometer'
     SEPARATOR = '_'
     SIGNAL_EXTENTION = '_sig'
     SOILMOISTURE = 'soilmoist'
     SOILTEMP = 'soiltemp'
+    SOLAR = 'solarradiation'
     TEMP = 'temp'
     TIME = 'datetime'
     TIMESTAMP = 'ts'
@@ -88,9 +89,10 @@ class MasterKeys:
     WH55 = 'wh55'
     WH57 = 'wh57'
     WH65 = 'wh65'
-    WINDCHILL = 'windchill'
-    WINDDIRECTION = 'winddir'
-    WINDSPEED = 'windspeed'
+    WIND = 'wind'
+    WINDCHILL = f'{WIND}chill'
+    WINDDIRECTION = f'{WIND}dir'
+    WINDSPEED = f'{WIND}speed'
     WN26 = 'wn26'
     WN30 = 'wn30'
     WN34 = 'wn34'
@@ -102,14 +104,31 @@ class MasterKeys:
 
 @dataclass
 class DataPoints:
+    # Sub DataPoints used in DataPoints
     SENSOR_CO2_TEMP: tuple = (f'{MasterKeys.TEMP}17', 'Temperatur am CO2 Sensor', '°C')
     SENSOR_CO2_HUM: tuple = (f'{MasterKeys.HUMID}17', 'Luftfeuchtigkeit am CO2 Sensor', '%')
-    SENSOR_CO2_PM10: tuple = (MasterKeys.PM10, '', '')
-    SENSOR_CO2_PM10_24: tuple = (f'{MasterKeys.PM10}_24h_avg', '', '')
+    SENSOR_CO2_PM10: tuple = (MasterKeys.PM10, 'PM10 Wert des CO2 Sensors', '')
+    SENSOR_CO2_PM10_24: tuple = (f'{MasterKeys.PM10}_24h_avg', 'durchschnittlicher PM10 Wert der letzten 24h des CO2 Sensors', '')
     SENSOR_CO2_PM255: tuple = (f'{MasterKeys.PM25}5', '', '')
     SENSOR_CO2_PM255_24: tuple = (f'{MasterKeys.PM25}5_24h_avg', '', '')
     SENSOR_CO2_CO2: tuple = (MasterKeys.CO2, '', '')
     SENSOR_CO2_CO2_24: tuple = (f'{MasterKeys.CO2}_24h_avg', '', '')
+    PIEZO_RAIN:   tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_GAIN}', None, None)
+    PIEZO_RAIN_0: tuple = (f'{PIEZO_RAIN[0]}0', 'Kalibrierfaktor 0 für Piezo Regensensor', '')
+    PIEZO_RAIN_1: tuple = (f'{PIEZO_RAIN[0]}1', 'Kalibrierfaktor 1 für Piezo Regensensor', '')
+    PIEZO_RAIN_2: tuple = (f'{PIEZO_RAIN[0]}2', 'Kalibrierfaktor 2 für Piezo Regensensor', '')
+    PIEZO_RAIN_3: tuple = (f'{PIEZO_RAIN[0]}3', 'Kalibrierfaktor 3 für Piezo Regensensor', '')
+    PIEZO_RAIN_4: tuple = (f'{PIEZO_RAIN[0]}4', 'Kalibrierfaktor 4 für Piezo Regensensor', '')
+    PIEZO_RAIN_5: tuple = (f'{PIEZO_RAIN[0]}5', 'Kalibrierfaktor 5 für Piezo Regensensor (reserviert)', '')
+    PIEZO_RAIN_6: tuple = (f'{PIEZO_RAIN[0]}6', 'Kalibrierfaktor 6 für Piezo Regensensor (reserviert)', '')
+    PIEZO_RAIN_7: tuple = (f'{PIEZO_RAIN[0]}7', 'Kalibrierfaktor 7 für Piezo Regensensor (reserviert)', '')
+    PIEZO_RAIN_8: tuple = (f'{PIEZO_RAIN[0]}8', 'Kalibrierfaktor 8 für Piezo Regensensor (reserviert)', '')
+    PIEZO_RAIN_9: tuple = (f'{PIEZO_RAIN[0]}9', 'Kalibrierfaktor 9 für Piezo Regensensor (reserviert)', '')
+    RAIN_RST_DAY: tuple = (MasterKeys.RAIN_RESET_DAY, 'Uhrzeit des Reset für Rain Day', '')
+    RAIN_RST_WEEK: tuple = (MasterKeys.RAIN_RESET_WEEK, 'Tag des Reset für Rain Week', '')
+    RAIN_RST_YEAR: tuple = (MasterKeys.RAIN_RESET_YEAR, 'Monat des Reset für Rain Year', '')
+
+    # Data Points
     INTEMP: tuple = (f'in{MasterKeys.TEMP}', 'Indoor Temperature', '°C')
     OUTTEMP: tuple = (f'out{MasterKeys.TEMP}', 'Outdoor Temperature', '°C')                                         # 0x02 // 2 //
     DEWPOINT: tuple = (MasterKeys.DEWPT, 'Dew Point', '°C')                                                         # 0x03 // 2 //
@@ -122,14 +141,14 @@ class DataPoints:
     WINDDIRECTION: tuple = (MasterKeys.WINDDIRECTION, 'Wind Direction', '360°')                                     # 0x0A // 2 //
     WINDSPEED: tuple = (MasterKeys.WINDSPEED, 'Wind Speed', 'm/s')                                                  # 0x0B // 2 //
     GUSTSPEED: tuple = (MasterKeys.GUSTSPEED, 'Gust Speed', 'm/s')                                                  # 0x0C // 2 //
-    RAINEVENT: tuple = (MasterKeys.RAINEVENT, 'Rain Event', 'mm')                                                   # 0x0D // 2 //
-    RAINRATE: tuple = (MasterKeys.RAINRATE, 'Rain Rate', 'mm')                                                      # 0x0E // 2 //
-    RAINHOUR: tuple = (MasterKeys.RAINHOUR, 'Rain hour', 'mm')                                                      # 0x0F // 2 //
-    RAINDAY: tuple = (MasterKeys.RAINDAY, 'Rain Day', 'mm')                                                         # 0x10 // 2 //
-    RAINWEEK: tuple = (MasterKeys.RAINWEEK, 'Rain Week', 'mm')                                                      # 0x11 // 2 //
-    RAINMONTH: tuple = (MasterKeys.RAINMONTH, 'Rain Month', 'mm')                                                   # 0x12 // 4 //
-    RAINYEAR: tuple = (MasterKeys.RAINYEAR, 'Rain Year', 'mm')                                                      # 0x13 // 4 //
-    RAINTOTALS: tuple = (MasterKeys.RAINTOTALS, 'Rain Totals', 'mm')                                                # 0x14 // 4 //
+    RAINEVENT: tuple = (MasterKeys.RAIN_EVENT, 'Rain Event', 'mm')                                                  # 0x0D // 2 //
+    RAINRATE: tuple = (MasterKeys.RAIN_RATE, 'Rain Rate', 'mm')                                                     # 0x0E // 2 //
+    RAINHOUR: tuple = (MasterKeys.RAIN_HOUR, 'Rain hour', 'mm')                                                     # 0x0F // 2 //
+    RAINDAY: tuple = (MasterKeys.RAIN_DAY, 'Rain Day', 'mm')                                                        # 0x10 // 2 //
+    RAINWEEK: tuple = (MasterKeys.RAIN_WEEK, 'Rain Week', 'mm')                                                     # 0x11 // 2 //
+    RAINMONTH: tuple = (MasterKeys.RAIN_MONTH, 'Rain Month', 'mm')                                                  # 0x12 // 4 //
+    RAINYEAR: tuple = (MasterKeys.RAIN_YEAR, 'Rain Year', 'mm')                                                     # 0x13 // 4 //
+    RAINTOTALS: tuple = (MasterKeys.RAIN_TOTALS, 'Rain Totals', 'mm')                                               # 0x14 // 4 //
     LIGHT: tuple = (MasterKeys.LIGHT, 'Light', 'lux')                                                               # 0x15 // 4 //
     UV: tuple = (MasterKeys.UV, 'UV', 'uW/m2')                                                                      # 0x16 // 2 //
     UVI: tuple = (MasterKeys.UVI, 'UVI', '0-15')                                                                    # 0x17 // 1 //
@@ -226,18 +245,26 @@ class DataPoints:
     LEAF_WETNESS8: tuple = (f'{MasterKeys.LEAF_WETNESS}8', 'Leaf Wetness', '%')                                     # 0x79 // 1 //
     RAIN_PRIO: tuple = (MasterKeys.RAIN_PRIO, 'rain priority (classical or piezo)', '1: classical, 2: piezo')       # 0x7A // 1 //
     RAD_COMP: tuple = (MasterKeys.RAD_COMP, 'radiation compensation', 'on/off')                                     # 0x7B // 1 //
-    PIEZO_RAINRATE: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINRATE}', 'Rain Rate', 'mm')                         # 0x80 // 2 //
-    PIEZO_RAINEVENT: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINEVENT}', 'Rain Event', 'mm')                      # 0x81 // 2 //
-    PIEZO_RAINHOUR: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINHOUR}', 'Rain Hour', 'mm')                         # 0x82 // 2 //
-    PIEZO_RAINDAY: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINDAY}', 'Rain Day', 'mm')                            # 0x83 // 4 //
-    PIEZO_RAINWEEK: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINWEEK}', 'Rain Week', 'mm')                         # 0x84 // 4 //
-    PIEZO_RAINMONTH: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINMONTH}', 'Rain Month', 'mm')                      # 0x85 // 4 //
-    PIEZO_RAINYEAR: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAINYEAR}', 'Rain Year', 'mm')                         # 0x86 // 4 //
-    PIEZO_GAIN10: tuple = (None, None, None)                                                                        # 0x87 // 2*10 //
-    RST_RAINTIME: tuple = (None, None, None)                                                                        # 0x88 // 3 //
-    RAIN_RESET_DAY: tuple = (MasterKeys.RAIN_RESET_DAY, 'Reset Rain Day', '')
-    RAIN_RESET_WEEK: tuple = (MasterKeys.RAIN_RESET_WEEK, 'Reset Rain Week', '')
-    RAIN_RESET_ANNUAL: tuple = (MasterKeys.RAIN_RESET_ANNUAL, 'Reset Rain Year', '')
+    PIEZO_RAINRATE: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_RATE}', 'Rain Rate', 'mm')                        # 0x80 // 2 //
+    PIEZO_RAINEVENT: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_EVENT}', 'Rain Event', 'mm')                     # 0x81 // 2 //
+    PIEZO_RAINHOUR: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_HOUR}', 'Rain Hour', 'mm')                        # 0x82 // 2 //
+    PIEZO_RAINDAY: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_DAY}', 'Rain Day', 'mm')                           # 0x83 // 4 //
+    PIEZO_RAINWEEK: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_WEEK}', 'Rain Week', 'mm')                        # 0x84 // 4 //
+    PIEZO_RAINMONTH: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_MONTH}', 'Rain Month', 'mm')                     # 0x85 // 4 //
+    PIEZO_RAINYEAR: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_YEAR}', 'Rain Year', 'mm')                        # 0x86 // 4 //
+    PIEZO_RAINGAIN: tuple = ((PIEZO_RAIN_0[0],                                                                      # see first entries of dataclass
+                              PIEZO_RAIN_1[0],                                                                      # see first entries of dataclass
+                              PIEZO_RAIN_2[0],                                                                      # see first entries of dataclass
+                              PIEZO_RAIN_3[0],                                                                      # see first entries of dataclass
+                              PIEZO_RAIN_4[0],                                                                      # see first entries of dataclass
+                              PIEZO_RAIN_5[0],                                                                      # see first entries of dataclass
+                              PIEZO_RAIN_6[0],                                                                      # see first entries of dataclass
+                              PIEZO_RAIN_7[0],                                                                      # see first entries of dataclass                    
+                              PIEZO_RAIN_8[0],                                                                      # see first entries of dataclass
+                              PIEZO_RAIN_9[0]), None, None)                                                         # 0x87 // 2*10 //
+    RAIN_RST_TIME: tuple = ((RAIN_RST_DAY[0],                                                                       # see first entries of dataclass
+                             RAIN_RST_WEEK[0],                                                                      # see first entries of dataclass
+                             RAIN_RST_YEAR[0]), None, None)                                                         # 0x88 // 3 //
     CLIENT_IP: tuple = ('client_ip', 'Client IP', None)
     PASSKEY: tuple = (None, 'Passkey', None)
     FIRMWARE: tuple = ('firmware', 'Firmware Version', None)
@@ -344,17 +371,17 @@ class SensorKeys:
 
 @dataclass
 class GainKeys:
-    RAIN: tuple = (MasterKeys.RAIN_GAIN, None)
-    RAIN_1: tuple = (f'{RAIN[0]}01', 'Kalibrierfaktor für Regensensor Kanal 1')
-    RAIN_2: tuple = (f'{RAIN[0]}02', 'Kalibrierfaktor für Regensensor Kanal 2')
-    RAIN_3: tuple = (f'{RAIN[0]}03', 'Kalibrierfaktor für Regensensor Kanal 3')
-    RAIN_4: tuple = (f'{RAIN[0]}04', 'Kalibrierfaktor für Regensensor Kanal 4')
-    RAIN_5: tuple = (f'{RAIN[0]}05', 'Kalibrierfaktor für Regensensor Kanal 5')
-    RAIN_6: tuple = (f'{RAIN[0]}06', 'Kalibrierfaktor für Regensensor Kanal 6')
-    RAIN_7: tuple = (f'{RAIN[0]}07', 'Kalibrierfaktor für Regensensor Kanal 7')
-    RAIN_8: tuple = (f'{RAIN[0]}08', 'Kalibrierfaktor für Regensensor Kanal 8')
-    RAIN_9: tuple = (f'{RAIN[0]}09', 'Kalibrierfaktor für Regensensor Kanal 9')
-    RAIN_10: tuple = (f'{RAIN[0]}10', 'Kalibrierfaktor für Regensensor Kanal 10')
+    PIEZO_RAIN:   tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_GAIN}', None)
+    #PIEZO_RAIN_0: tuple = (f'{PIEZO_RAIN[0]}0', 'Kalibrierfaktor 0 für Piezo Regensensor')
+    #PIEZO_RAIN_1: tuple = (f'{PIEZO_RAIN[0]}1', 'Kalibrierfaktor 1 für Piezo Regensensor')
+    #PIEZO_RAIN_2: tuple = (f'{PIEZO_RAIN[0]}2', 'Kalibrierfaktor 2 für Piezo Regensensor')
+    #PIEZO_RAIN_3: tuple = (f'{PIEZO_RAIN[0]}3', 'Kalibrierfaktor 3 für Piezo Regensensor')
+    #PIEZO_RAIN_4: tuple = (f'{PIEZO_RAIN[0]}4', 'Kalibrierfaktor 4 für Piezo Regensensor')
+    #PIEZO_RAIN_5: tuple = (f'{PIEZO_RAIN[0]}5', 'Kalibrierfaktor 5 für Piezo Regensensor (reserviert)')
+    #PIEZO_RAIN_6: tuple = (f'{PIEZO_RAIN[0]}6', 'Kalibrierfaktor 6 für Piezo Regensensor (reserviert)')
+    #PIEZO_RAIN_7: tuple = (f'{PIEZO_RAIN[0]}7', 'Kalibrierfaktor 7 für Piezo Regensensor (reserviert)')
+    #PIEZO_RAIN_8: tuple = (f'{PIEZO_RAIN[0]}8', 'Kalibrierfaktor 8 für Piezo Regensensor (reserviert)')
+    #PIEZO_RAIN_9: tuple = (f'{PIEZO_RAIN[0]}9', 'Kalibrierfaktor 9 für Piezo Regensensor (reserviert)')
 
 
 META_ATTRIBUTES = [DataPoints.MODEL,
@@ -412,16 +439,15 @@ if __name__ == '__main__':
             attributs_dict.update({f"{sensor_short}{MasterKeys.SIGNAL_EXTENTION}": (f"Signalstärke für {sensor_desc}",)})
 
     # Iterate over the attributes of the dataclass GainKeys and update dict
-    for field in fields(gain_keys):
-        field_name = field.name
-        field_value = getattr(gain_keys, field_name)
-        gain_short = field_value[0]
-        gain_desc = field_value[1]
+    #for field in fields(gain_keys):
+    #    field_name = field.name
+    #    field_value = getattr(gain_keys, field_name)
+    #    gain_short = field_value[0]
+    #    gain_desc = field_value[1]
 
         # Wenn Beschreibung, dann zum Dict hinzu
-        if gain_short is not None and gain_desc is not None:
-            attributs_dict.update({gain_short: (gain_desc,)})
-
+    #    if gain_short is not None and gain_desc is not None:
+    #        attributs_dict.update({gain_short: (gain_desc,)})
 
     # sort dict by key
     attributs_dict_sorted = dict(sorted(attributs_dict.items()))

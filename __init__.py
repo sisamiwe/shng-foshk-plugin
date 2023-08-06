@@ -26,24 +26,22 @@
 
 
 #########################################################################
-#
-# ToDo
-#  - tswarning                  is there a thunderstorm coming
-#  - set CMD_WRITE_CALIBRATION
-#  - set CMD_WRITE_RAINDATA
-#  - set CMD_WRITE_GAIN
-#  - sunhours
-#  - ptrend
-#  - correct datetime of packets to timezone
+# ToDo: thunderstorm_warning
+# ToDo: weatherstation_warning
+# ToDo: storm_warning
+# ToDo: set CMD_WRITE_CALIBRATION
+# ToDo: set CMD_WRITE_RAINDATA
+# ToDo: set CMD_WRITE_GAIN
+# ToDo: sunhours
+# ToDo: ptrend
+# ToDo: correct datetime of packets to timezone
 ########################################
 
-
 # API: https://osswww.ecowitt.net/uploads/20220407/WN1900%20GW1000,1100%20WH2680,2650%20telenet%20v1.6.4.pdf
-# API: http://blog.meteodrenthe.nl/wp-content/uploads/2023/02/WN1900-GW10001100-WH26802650-telenet-v1.6.4.pdf
 
 import lib.env as env
 from lib.model.smartplugin import SmartPlugin
-from lib.utils import Utils as utils
+from lib.utils import Utils
 from lib.shtime import Shtime
 from .webif import WebInterface
 from .datapoints import DataPoints, MasterKeys, SensorKeys, GainKeys, META_ATTRIBUTES, POST_ATTRIBUTES, FW_UPDATE_URL
@@ -74,7 +72,7 @@ class Foshk(SmartPlugin):
     Data Items must be defined in ./data_items.py.
     """
 
-    PLUGIN_VERSION = '1.2.0A'
+    PLUGIN_VERSION = '1.2.0B'
 
     def __init__(self, sh):
         """Initializes the plugin"""
@@ -114,7 +112,7 @@ class Foshk(SmartPlugin):
         _ecowitt_data_cycle = self.get_parameter_value('Ecowitt_Data_Cycle')
         self.use_customer_server = bool(_ecowitt_data_cycle)
         if self.use_customer_server:
-            post_server_ip = utils.get_local_ipv4_address()
+            post_server_ip = Utils.get_local_ipv4_address()
             post_server_port = self._select_port_for_tcp_server(8080)
             post_server_cycle = max(_ecowitt_data_cycle, 16)
             self.logger.debug(f"Receiving ECOWITT data has been enabled. Data upload to {post_server_ip}:{post_server_port} with an interval of {post_server_cycle}s will be set.")
@@ -201,14 +199,14 @@ class Foshk(SmartPlugin):
             foshk_attribute = (self.get_iattr_value(item.conf, 'foshk_attribute')).lower()
 
             if foshk_attribute in META_ATTRIBUTES:
-                source = 'meta'
+                source = 'api'
 
             elif foshk_attribute in POST_ATTRIBUTES:
-                source = 'ecowitt'
+                source = 'post'
 
             elif self.has_iattr(item.conf, 'foshk_datasource'):
                 foshk_datasource = (self.get_iattr_value(item.conf, 'foshk_datasource')).lower()
-                if foshk_datasource == 'ecowitt' and not self.use_customer_server:
+                if foshk_datasource == 'post' and not self.use_customer_server:
                     self.logger.warning(f" Item {item.path()} should use datasource {foshk_datasource} as per item.yaml, but 'ECOWITT'-protocol not enabled. Item ignored")
                     source = None
                 else:
@@ -262,7 +260,7 @@ class Foshk(SmartPlugin):
         data[DataPoints.FIRMWARE[0]] = self.firmware_version
         self.logger.debug(f"meta_data {data=}")
         self._update_data_dict(data=data, source='api')
-        self._update_item_values(data=data, source='meta')
+        self._update_item_values(data=data, source='api')
 
     def _work_data_queue(self) -> None:
         """Works the data-queue where all gathered data were placed"""
@@ -286,21 +284,27 @@ class Foshk(SmartPlugin):
         :param source: source the data come from
         """
 
-        self.logger.debug(f"Called with source={source}")
+        self.logger.debug(f"Called with {source=}")
 
         for foshk_attribute in data:
-            item_list = self.get_item_list('match', f'{source}.{foshk_attribute}')
+            item_list = self.get_item_list(filter_key='match', filter_value=f'{source}.{foshk_attribute}')
+
+            self.logger.debug(f"Working {foshk_attribute=}")
+
             if not item_list:
-                # self.logger.debug(f"No item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found.")
-                continue
-            elif len(item_list) > 1:
-                # self.logger.debug(f"More than one item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found. First one will be used.")
+                self.logger.debug(f"No item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found.")
                 continue
 
-            item = item_list[0]
-            value = data[foshk_attribute]
-            # self.logger.debug(f"Value {value} will be set to item={item.path()} with foshk_attribute={foshk_attribute}, datasource={source}")
-            item(value, self.get_shortname(), source)
+            self.logger.debug(f"Got corresponding items: {item_list=}")
+
+            for item in item_list:
+                value = data[foshk_attribute]
+                self.logger.debug(f"Item={item.path()} with {foshk_attribute=}, {source=} will be set to {value=}")
+                # update plg_item_dict
+                item_config = self.get_item_config(item)
+                item_config.update({'value': value})
+                # update item value
+                item(value, self.get_shortname(), source)
 
         self.logger.debug(f"Updating item values finished")
 
@@ -603,6 +607,8 @@ class Gateway(object):
 
             if DataPoints.WINDSPEED[0] in data:
                 data[DataPoints.FEELS_LIKE[0]] = self.get_windchill_index_metric(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]])
+                data[DataPoints.HEATINDEX[0]] = self.get_heat_index(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]], units='metric')
+
                 if data.keys() >= {DataPoints.OUTHUMI[0]}:
                     data[DataPoints.FEELS_LIKE[0]] = self.calculate_feels_like(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]])
 
@@ -802,7 +808,7 @@ class Gateway(object):
 
         # Replace it with the Heat Index, if necessary
         if feels_like == temperature_f and temperature_f >= 80:
-            feels_like = self.get_heat_index(temperature_f, windspeed_mph)
+            feels_like = self.get_heat_index(temperature_f, windspeed_mph, units='imperial')
 
         # convert back to Celsius and return
         return f_to_c(feels_like)
@@ -928,16 +934,16 @@ class Gateway(object):
         return round(10 ** 5 * mw / rs * vp() / (t_air_c + 273.15), 1)
 
     @staticmethod
-    def get_windchill_index_metric(t_air_c: float, wind_speed: float) -> float:
+    def get_windchill_index_metric(air_temp_c: float, wind_speed_kmh: float) -> float:
         """
         Compute the wind chill index
 
-        :param t_air_c: current ambient temperature in degrees Celsius
-        :param wind_speed: wind speed in kilometers/hour
+        :param air_temp_c: current ambient temperature in degrees Celsius
+        :param wind_speed_kmh: wind speed in kilometers/hour
         :return: the wind chill index
         """
 
-        return round(13.12 + 0.6215*t_air_c - 11.37*math.pow(wind_speed, 0.16) + 0.3965*t_air_c*math.pow(wind_speed, 0.16), 1)
+        return round(13.12 + 0.6215 * air_temp_c - 11.37 * math.pow(wind_speed_kmh, 0.16) + 0.3965 * air_temp_c * math.pow(wind_speed_kmh, 0.16), 1)
 
     @staticmethod
     def get_windchill_index_imperial(air_temp_f: float, wind_speed_mph: float) -> float:
@@ -957,27 +963,59 @@ class Gateway(object):
         return round(windchill, 1)
 
     @staticmethod
-    def get_heat_index(temperature_f: float, rel_hum: float):
+    def get_heat_index(temperature: float, rel_hum: float, units: str = 'imperial') -> Union[float, None]:
         """
-        Compute the heat index
+        Compute the heat index using metric temperature in °Fahrenheit / °Celsius
 
-        :param temperature_f: current ambient temperature in Fahrenheit
-        :type temperature_f: float
+        :param temperature: current ambient temperature in °Fahrenheit / °Celsius
         :param rel_hum: rel humidity
-        :type rel_hum: float
+        :param units: unit system used for temperature
 
         :return: the heat index
-        :rtype: float
         """
 
-        heat_index = 0.5 * (temperature_f + 61.0 + ((temperature_f-68.0)*1.2) + (rel_hum*0.094))
-        if heat_index >= 80:
-            heat_index = -42.379 + 2.04901523*temperature_f + 10.14333127*rel_hum - .22475541*temperature_f*rel_hum - .00683783*temperature_f*temperature_f - .05481717*rel_hum*rel_hum + .00122874*temperature_f*temperature_f*rel_hum + .00085282*temperature_f*rel_hum*rel_hum - .00000199*temperature_f*temperature_f*rel_hum*rel_hum
-            if rel_hum < 13 and 80 <= temperature_f <= 112:
-                heat_index = heat_index - ((13-rel_hum)/4)*math.sqrt((17-math.fabs(temperature_f-95.))/17)
-                if rel_hum > 85 and 80 <= temperature_f <= 87:
-                    heat_index = heat_index + ((rel_hum-85)/10) * ((87-temperature_f)/5)
-        return round(heat_index, 1)
+        if units not in ['imperial', 'metric']:
+            return
+
+        if units == 'metric':
+            temperature = env.c_to_f(temperature)
+
+        T = temperature
+        RH = rel_hum
+        c1 = -42.379
+        c2 = 2.04901523
+        c3 = 10.14333127
+        c4 = -0.22475541
+        c5 = -6.83783e-3
+        c6 = -5.481717e-2
+        c7 = 1.22874e-3
+        c8 = 8.5282e-4
+        c9 = -1.99e-6
+
+        # calculate heat index using °Fahrenheit for temperature
+        HI = 0.5 * (T + 61.0 + (T - 68.0) * 1.2 + RH * 0.094)
+
+        if HI >= 80:
+            HI = math.fsum([
+                c1,
+                c2 * T,
+                c3 * RH,
+                c4 * T * RH,
+                c5 * T**2,
+                c6 * RH**2,
+                c7 * T**2 * RH,
+                c8 * T * RH**2,
+                c9 * T**2 * RH**2,
+                ])
+            if RH < 13 and 80 <= T <= 112:
+                HI = HI - ((13 - RH) / 4) * math.sqrt((17 - math.fabs(T - 95.0)) / 17)
+                if RH > 85 and 80 <= T <= 87:
+                    HI = HI + ((RH-85)/10) * ((87-T)/5)
+
+        if units == 'metric':
+            return round(env.f_to_c(HI), 1)
+
+        return round(HI, 1)
 
     @staticmethod
     def get_weather_now(hpa: float, lang: str = 'de') -> str:
@@ -1088,15 +1126,15 @@ class Gateway(object):
                 batterycheck += key
         # check result, create log entry data field
         if batterycheck != "":
-            data['battery_warning'] = 0
+            data['battery_warning'] = False
             if not self.battery_warning:
                 self.logger.warning(f"<WARNING> Post: Battery level for sensor(s) {batterycheck} is critical - please swap battery")
                 self.battery_warning = True
-                data['battery_warning'] = 1
+                data['battery_warning'] = True
         elif self.battery_warning:
             self.logger.info("<OK> Post: Battery level for all sensors is ok again")
             self.battery_warning = False
-            data['battery_warning'] = 0
+            data['battery_warning'] = False
 
     def check_sensors(self, data: dict, connected_sensors: list, missing_count: int = 2) -> None:
         """
@@ -1109,7 +1147,7 @@ class Gateway(object):
         if set(connected_sensors) == set(self.sensors_all):
             # self.logger.debug(f"check_sensors: All sensors are still connected!")
             self.sensor_warning = False
-            data['sensor_warning'] = 0
+            data['sensor_warning'] = False
         else:
             missing_sensors = list(set(self.sensors_all).difference(set(connected_sensors)))
             self.update_missing_sensor_dict(missing_sensors)
@@ -1122,10 +1160,10 @@ class Gateway(object):
             if blacklist:
                 self.logger.error(f"API: check_sensors: The following sensors where lost (more than {missing_count} data cycles): {list(blacklist)}")
                 self.sensor_warning = True
-                data['sensor_warning'] = 1
+                data['sensor_warning'] = True
             else:
                 self.sensor_warning = False
-                data['sensor_warning'] = 0
+                data['sensor_warning'] = False
 
     def update_missing_sensor_dict(self, missing_sensors: list) -> None:
         """
@@ -1172,6 +1210,7 @@ class GatewayDriver(Gateway):
             self.logger.info('Init connection to Ecowitt Gateway via HTTP requests')
             self.http = GatewayHttp(plugin_instance)
         else:
+            self.logger.debug('Ecowitt Gateway does not support interface via HTTP requests')
             self.http = None
 
         # get a GatewayTCP object to handle data from server upload
@@ -1179,6 +1218,7 @@ class GatewayDriver(Gateway):
             self.logger.info('Init connection to Ecowitt Gateway via HTTP Post')
             self.tcp = GatewayTcp(plugin_instance, self.get_current_tcp_data)
         else:
+            self.logger.debug('Interface via HTTP Post not activated')
             self.tcp = None
 
         # do we have a legacy WH40 and how are we handling its battery state data
@@ -1255,7 +1295,7 @@ class GatewayDriver(Gateway):
         """callback function for already parsed live data from tcp upload and put it to queue."""
         
         self.logger.debug(f"TCP: {parsed_data=}")
-        self._plugin_instance.data_queue.put(('tcp', self._post_process_data(parsed_data)))
+        self._plugin_instance.data_queue.put(('post', self._post_process_data(parsed_data)))
         
     def _post_process_data(self, data: dict, master: bool = False) -> dict:
 
@@ -1344,11 +1384,13 @@ class GatewayDriver(Gateway):
         Return the WS90 installed firmware version. If no WS90 is available the value None is returned.
         """
 
+        if not self.http:
+            return None
+
         sensors = self.http.get_sensors_info()
         for sensor in sensors:
             if sensor.get('img') == 'wh90':
                 return sensor.get('version', 'not available')
-        return None
 
     #############################################################
     #  Gateway Device Methods
@@ -2535,7 +2577,7 @@ class ApiParser(object):
         b'\x84': ('decode_big_rain', 4, DataPoints.PIEZO_RAINWEEK[0]),
         b'\x85': ('decode_big_rain', 4, DataPoints.PIEZO_RAINMONTH[0]),
         b'\x86': ('decode_big_rain', 4, DataPoints.PIEZO_RAINYEAR[0]),
-        b'\x87': ('decode_rain_gain', 20, None),               # field 0x87 hold device parameter data that is not included in the loop packets, hence the device field is not used (None).
+        b'\x87': ('decode_rain_gain', 20, DataPoints.PIEZO_RAINGAIN[0]),               # field 0x87 hold device parameter data that is not included in the loop packets, hence the device field is not used (None).
         b'\x88': ('decode_rain_reset', 3, None)                # field 0x88 hold device parameter data that is not included in the loop packets, hence the device field is not used (None).
     }
     # tuple of field codes for device rain related fields in the live data so we can isolate these fields
@@ -2580,6 +2622,7 @@ class ApiParser(object):
                 # obtain the decode function, field size and field name for the current field
                 try:
                     decode_fn_str, field_size, field = structure[payload[index:index + 1]]
+                    self.logger.debug(f"Decode {index=} with {field=}")
                 except KeyError:
                     if self.log_unknown_fields:
                         log_fn = self.logger.info
@@ -2865,10 +2908,10 @@ class ApiParser(object):
         # initialise a dict to hold our parsed data
         gain_dict = dict()
         # and decode/store the calibration data; bytes 0 and 1 are reserved (lux to solar radiation conversion gain (126.7))
-        gain_dict['uv'] = struct.unpack(">H", data[2:4])[0] / 100.0
-        gain_dict['solar'] = struct.unpack(">H", data[4:6])[0] / 100.0
-        gain_dict['wind'] = struct.unpack(">H", data[6:8])[0] / 100.0
-        gain_dict['rain'] = struct.unpack(">H", data[8:10])[0] / 100.0
+        gain_dict[MasterKeys.UV] = struct.unpack(">H", data[2:4])[0] / 100.0
+        gain_dict[MasterKeys.SOLAR] = struct.unpack(">H", data[4:6])[0] / 100.0
+        gain_dict[MasterKeys.WIND] = struct.unpack(">H", data[6:8])[0] / 100.0
+        gain_dict[MasterKeys.RAIN] = struct.unpack(">H", data[8:10])[0] / 100.0
         # return the parsed response
         return gain_dict
 
@@ -3582,49 +3625,57 @@ class ApiParser(object):
         keeping with other sensors we do not use the sensor data battery state, rather we obtain it from the sensor ID data.
         """
 
-        if len(data) == 16 and fields is not None:
-            results = dict()
-            results[fields[0]] = self.decode_temp(data[0:2])
-            results[fields[1]] = self.decode_humid(data[2:3])
-            results[fields[2]] = self.decode_pm10(data[3:5])
-            results[fields[3]] = self.decode_pm10(data[5:7])
-            results[fields[4]] = self.decode_pm25(data[7:9])
-            results[fields[5]] = self.decode_pm25(data[9:11])
-            results[fields[6]] = self.decode_co2(data[11:13])
-            results[fields[7]] = self.decode_co2(data[13:15])
-            # we could decode the battery state but we will be obtaining battery state data from the sensor IDs in a later step so we can skip it here
-            return results
-        return {}
+        if len(data) != 16 or fields is None:
+            return {}
+
+        results = dict()
+        results[fields[0]] = self.decode_temp(data[0:2])
+        results[fields[1]] = self.decode_humid(data[2:3])
+        results[fields[2]] = self.decode_pm10(data[3:5])
+        results[fields[3]] = self.decode_pm10(data[5:7])
+        results[fields[4]] = self.decode_pm25(data[7:9])
+        results[fields[5]] = self.decode_pm25(data[9:11])
+        results[fields[6]] = self.decode_co2(data[11:13])
+        results[fields[7]] = self.decode_co2(data[13:15])
+        # we could decode the battery state but we will be obtaining battery state data from the sensor IDs in a later step so we can skip it here
+        return results
 
     def decode_rain_gain(self, data, fields=None):
         """Decode piezo rain gain data.
 
-        Piezo rain gain data is 20 bytes of data comprising 10 two byte big
-        endian fields with each field representing a value in hundredths of
-        a unit.
+        Piezo rain gain data is 20 bytes of data comprising 10 two byte big endian fields with each field representing a value in hundredths of a unit.
 
         The 20 bytes of piezo rain gain data is allocated as follows:
         Byte(s) #      Data      Format            Comments
-        bytes   1-2    gain1     unsigned short    gain x 100
-                3-4    gain2     unsigned short    gain x 100
-                5-6    gain3     unsigned short    gain x 100
-                7-8    gain4     unsigned short    gain x 100
-                9-10   gain5     unsigned short    gain x 100
-                11-12  gain6     unsigned short    gain x 100, reserved
-                13-14  gain7     unsigned short    gain x 100, reserved
-                15-16  gain8     unsigned short    gain x 100, reserved
-                17-18  gain9     unsigned short    gain x 100, reserved
-                19-20  gain10    unsigned short    gain x 100, reserved
+        bytes   1-2    gain0     unsigned short    gain x 100
+                3-4    gain1     unsigned short    gain x 100
+                5-6    gain2     unsigned short    gain x 100
+                7-8    gain3     unsigned short    gain x 100
+                9-10   gain4     unsigned short    gain x 100
+                11-12  gain5     unsigned short    gain x 100, reserved
+                13-14  gain6     unsigned short    gain x 100, reserved
+                15-16  gain7     unsigned short    gain x 100, reserved
+                17-18  gain8     unsigned short    gain x 100, reserved
+                19-20  gain9     unsigned short    gain x 100, reserved
 
         As of device firmware v2.1.3 gain6-gain10 inclusive are unused and reserved for future use.
         """
 
-        if len(data) == 20:
-            results = dict()
+        if len(data) != 20:
+            return {}
+
+        results = dict()
+        if fields is None:
+            field = f"{MasterKeys.PIEZO}{MasterKeys.RAIN_GAIN}"
             for gain in range(10):
-                results[f"{GainKeys.RAIN[0]}{gain}"] = self.decode_gain_100(data[gain * 2:gain * 2 + 2])
-            return results
-        return {}
+                results[f"{field}{gain}"] = self.decode_gain_100(data[gain * 2:gain * 2 + 2])
+        else:
+            gain = 0
+            for field in fields:
+                results[field] = self.decode_gain_100(data[gain * 2:gain * 2 + 2])
+                gain += 1
+        return results
+
 
     @staticmethod
     def decode_rain_reset(data, fields=None):
@@ -3635,21 +3686,32 @@ class ApiParser(object):
 
         The three bytes of rain reset data is allocated as follows:
         Byte  #  Data               Format         Comments
-        byte  1  day reset time     unsigned byte  hour of the day to reset day
-                                                   rain, eg 7 = 07:00
-              2  week reset time    unsigned byte  day of week to reset week rain,
-                                                   allowed values are 0 or 1. 0=Sunday, 1=Monday
-              3  annual reset time  unsigned byte  month of year to reset annual
-                                                   rain, allowed values are 0-11, eg 2 = March
+        byte  1  day reset time     unsigned byte  hour of the day to reset day rain, eg 7 = 07:00
+              2  week reset time    unsigned byte  day of week to reset week rain, allowed values are 0 or 1. 0=Sunday, 1=Monday
+              3  annual reset time  unsigned byte  month of year to reset annual rain, allowed values are 0-11, eg 2 = March
         """
 
-        if len(data) == 3:
-            results = dict()
-            results[DataPoints.RAIN_RESET_DAY[0]] = struct.unpack("B", data[0:1])[0]
-            results[DataPoints.RAIN_RESET_WEEK[0]] = struct.unpack("B", data[1:2])[0]
-            results[DataPoints.RAIN_RESET_ANNUAL[0]] = struct.unpack("B", data[2:3])[0]
-            return results
-        return {}
+        if len(data) != 3:
+            return {}
+
+        results = dict()
+        if fields is None:
+            field1 = DataPoints.RAIN_RST_DAY[0]
+            field2 = DataPoints.RAIN_RST_WEEK[0]
+            field3 = DataPoints.RAIN_RST_YEAR[0]
+        else:
+            field1 = fields[0]
+            field2 = fields[1]
+            field3 = fields[3]
+
+        value1 = struct.unpack("B", data[0:1])[0]
+        value2 = struct.unpack("B", data[1:2])[0]
+        value3 = struct.unpack("B", data[2:3])[0]
+
+        results[field1] = to_int(value1)
+        results[field2] = ['Sunday', 'Monday'][to_int(value2)]
+        results[field3] = to_int(value3) + 1
+        return results
 
     @staticmethod
     def decode_batt(data, field=None):
@@ -4185,7 +4247,7 @@ class GatewayTcp(object):
             if self._server_thread.is_alive():
                 self.logger.error("Unable to shut down Gateway-TCP-Server thread")
             else:
-                self.logger.info("Gateway-TCP-Server thread has been terminated")
+                self.logger.info("Gateway-TCP-Server thread has been shutdown.")
         self._server_thread = None
 
     def parse_tcp_live_data(self, data, client_ip):
@@ -4378,10 +4440,10 @@ class TcpParser(object):
             'pm25_avg_24h_ch4': (None, DataPoints.PM25_24H_AVG4[0]),
             'pm25batt4': (to_int, f'pm254{MasterKeys.BATTERY_EXTENTION}'),
             # WH55
-            'leak_ch1': (utils.to_bool, DataPoints.LEAK1[0]),
-            'leak_ch2': (utils.to_bool, DataPoints.LEAK2[0]),
-            'leak_ch3': (utils.to_bool, DataPoints.LEAK3)[0],
-            'leak_ch4': (utils.to_bool, DataPoints.LEAK4[0]),
+            'leak_ch1': (Utils.to_bool, DataPoints.LEAK1[0]),
+            'leak_ch2': (Utils.to_bool, DataPoints.LEAK2[0]),
+            'leak_ch3': (Utils.to_bool, DataPoints.LEAK3)[0],
+            'leak_ch4': (Utils.to_bool, DataPoints.LEAK4[0]),
             'leakbatt1': (None, f'wh55_ch1{MasterKeys.BATTERY_EXTENTION}'),
             'leakbatt2': (None, f'wh55_ch2{MasterKeys.BATTERY_EXTENTION}'),
             'leakbatt3': (None, f'wh55_ch3{MasterKeys.BATTERY_EXTENTION}'),
