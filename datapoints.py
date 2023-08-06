@@ -369,21 +369,6 @@ class SensorKeys:
     WN30_8: tuple = (f'{WN30[0]}8', f'{WN30[1]}8', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 8')
 
 
-@dataclass
-class GainKeys:
-    PIEZO_RAIN:   tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_GAIN}', None)
-    #PIEZO_RAIN_0: tuple = (f'{PIEZO_RAIN[0]}0', 'Kalibrierfaktor 0 für Piezo Regensensor')
-    #PIEZO_RAIN_1: tuple = (f'{PIEZO_RAIN[0]}1', 'Kalibrierfaktor 1 für Piezo Regensensor')
-    #PIEZO_RAIN_2: tuple = (f'{PIEZO_RAIN[0]}2', 'Kalibrierfaktor 2 für Piezo Regensensor')
-    #PIEZO_RAIN_3: tuple = (f'{PIEZO_RAIN[0]}3', 'Kalibrierfaktor 3 für Piezo Regensensor')
-    #PIEZO_RAIN_4: tuple = (f'{PIEZO_RAIN[0]}4', 'Kalibrierfaktor 4 für Piezo Regensensor')
-    #PIEZO_RAIN_5: tuple = (f'{PIEZO_RAIN[0]}5', 'Kalibrierfaktor 5 für Piezo Regensensor (reserviert)')
-    #PIEZO_RAIN_6: tuple = (f'{PIEZO_RAIN[0]}6', 'Kalibrierfaktor 6 für Piezo Regensensor (reserviert)')
-    #PIEZO_RAIN_7: tuple = (f'{PIEZO_RAIN[0]}7', 'Kalibrierfaktor 7 für Piezo Regensensor (reserviert)')
-    #PIEZO_RAIN_8: tuple = (f'{PIEZO_RAIN[0]}8', 'Kalibrierfaktor 8 für Piezo Regensensor (reserviert)')
-    #PIEZO_RAIN_9: tuple = (f'{PIEZO_RAIN[0]}9', 'Kalibrierfaktor 9 für Piezo Regensensor (reserviert)')
-
-
 META_ATTRIBUTES = [DataPoints.MODEL,
                    DataPoints.FREQ,
                    DataPoints.SENSOR_WARNING,
@@ -411,7 +396,6 @@ if __name__ == '__main__':
     attribute = 'foshk_attribute'
     data_points = DataPoints()
     sensor_keys = SensorKeys()
-    gain_keys = GainKeys()
     attributs_dict = dict()
 
     # Iterate over the attributes of the dataclass DataPoints and create dict
@@ -437,17 +421,6 @@ if __name__ == '__main__':
         if sensor_short is not None and sensor_desc is not None:
             attributs_dict.update({f"{sensor_short}{MasterKeys.BATTERY_EXTENTION}": (f"Batteriestatus für {sensor_desc}",)})
             attributs_dict.update({f"{sensor_short}{MasterKeys.SIGNAL_EXTENTION}": (f"Signalstärke für {sensor_desc}",)})
-
-    # Iterate over the attributes of the dataclass GainKeys and update dict
-    #for field in fields(gain_keys):
-    #    field_name = field.name
-    #    field_value = getattr(gain_keys, field_name)
-    #    gain_short = field_value[0]
-    #    gain_desc = field_value[1]
-
-        # Wenn Beschreibung, dann zum Dict hinzu
-    #    if gain_short is not None and gain_desc is not None:
-    #        attributs_dict.update({gain_short: (gain_desc,)})
 
     # sort dict by key
     attributs_dict_sorted = dict(sorted(attributs_dict.items()))

@@ -26,15 +26,25 @@
 
 
 #########################################################################
+# ToDo Extension
 # ToDo: thunderstorm_warning
 # ToDo: weatherstation_warning
 # ToDo: storm_warning
+# ToDo: weather forecast using get_weather_forecast
 # ToDo: set CMD_WRITE_CALIBRATION
 # ToDo: set CMD_WRITE_RAINDATA
 # ToDo: set CMD_WRITE_GAIN
 # ToDo: sunhours
 # ToDo: ptrend
+#
+# ToDo Bugfix:
 # ToDo: correct datetime of packets to timezone
+# ToDo: Decode Light in ApiParser liefert falschen Wert
+# ToDo: decode for UV / solarradiation is not correct. TCP value is correct
+# ToDo: Check determination of datetime in parse_read_ssss
+# ToDo: Harmonize datetime field to be local instead of UTC in parse_live_data TCP
+# ToDo: Harmonize field 'raingain': {'tcp': 62.0, 'api': 1.0}  in parse_live_data TCP
+# ToDo: add field api 'raintotals': {'tcp': 465.91}  in parse_live_data TCP
 ########################################
 
 # API: https://osswww.ecowitt.net/uploads/20220407/WN1900%20GW1000,1100%20WH2680,2650%20telenet%20v1.6.4.pdf
@@ -44,7 +54,7 @@ from lib.model.smartplugin import SmartPlugin
 from lib.utils import Utils
 from lib.shtime import Shtime
 from .webif import WebInterface
-from .datapoints import DataPoints, MasterKeys, SensorKeys, GainKeys, META_ATTRIBUTES, POST_ATTRIBUTES, FW_UPDATE_URL
+from .datapoints import DataPoints, MasterKeys, SensorKeys, META_ATTRIBUTES, POST_ATTRIBUTES, FW_UPDATE_URL
 
 import re
 import socket
@@ -72,7 +82,7 @@ class Foshk(SmartPlugin):
     Data Items must be defined in ./data_items.py.
     """
 
-    PLUGIN_VERSION = '1.2.0B'
+    PLUGIN_VERSION = '1.2.0C'
 
     def __init__(self, sh):
         """Initializes the plugin"""
@@ -125,7 +135,7 @@ class Foshk(SmartPlugin):
                 self.logger.error(f"Receiving ECOWITT data has been enabled, but not able to define server ip or port with setting {post_server_ip}:{post_server_port}")
                 self._init_complete = False
 
-        # init Class InterfaceConfig
+        # init Config Classes
         self.interface_config = InterfaceConfig(**interface_config)
 
         # get a GatewayDriver object
@@ -258,7 +268,8 @@ class Foshk(SmartPlugin):
         data[DataPoints.MODEL[0]] = self.station_model
         data[DataPoints.FREQ[0]] = self.system_parameters.get('frequency')
         data[DataPoints.FIRMWARE[0]] = self.firmware_version
-        self.logger.debug(f"meta_data {data=}")
+        if DebugLogConfig.main_class:
+            self.logger.debug(f"meta_data {data=}")
         self._update_data_dict(data=data, source='api')
         self._update_item_values(data=data, source='api')
 
@@ -272,7 +283,8 @@ class Foshk(SmartPlugin):
                 pass
             else:
                 source, data = queue_entry
-                self.logger.debug(f"{source=}, {data=}")
+                if DebugLogConfig.main_class:
+                    self.logger.debug(f"{source=}, {data=}")
                 self._update_data_dict(data=data, source=source)
                 self._update_item_values(data=data, source=source)
 
@@ -292,21 +304,24 @@ class Foshk(SmartPlugin):
             self.logger.debug(f"Working {foshk_attribute=}")
 
             if not item_list:
-                self.logger.debug(f"No item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found.")
+                if DebugLogConfig.main_class:
+                    self.logger.debug(f"No item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found.")
                 continue
 
             self.logger.debug(f"Got corresponding items: {item_list=}")
 
             for item in item_list:
                 value = data[foshk_attribute]
-                self.logger.debug(f"Item={item.path()} with {foshk_attribute=}, {source=} will be set to {value=}")
+                if DebugLogConfig.main_class:
+                    self.logger.debug(f"Item={item.path()} with {foshk_attribute=}, {source=} will be set to {value=}")
                 # update plg_item_dict
                 item_config = self.get_item_config(item)
                 item_config.update({'value': value})
                 # update item value
                 item(value, self.get_shortname(), source)
 
-        self.logger.debug(f"Updating item values finished")
+        if DebugLogConfig.main_class:
+            self.logger.debug(f"Updating item values finished")
 
     def _update_data_dict(self, data: dict, source: str):
         """Updates the plugin internal data dicts"""
@@ -529,6 +544,17 @@ class InterfaceConfig:
     custom_params: dict = None
 
 
+@dataclass
+class DebugLogConfig:
+    """Class to define debug log options gateway config."""
+
+    main_class: bool = False
+    gateway: bool = True
+    api: bool = True
+    tcp: bool = True
+    http: bool = True
+
+
 # ============================================================================
 #                           Gateway Error classes
 # ============================================================================
@@ -606,7 +632,7 @@ class Gateway(object):
         if DataPoints.OUTTEMP[0] in data:
 
             if DataPoints.WINDSPEED[0] in data:
-                data[DataPoints.FEELS_LIKE[0]] = self.get_windchill_index_metric(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]])
+                data[DataPoints.FEELS_LIKE[0]] = self.get_windchill_index(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]], units='metric')
                 data[DataPoints.HEATINDEX[0]] = self.get_heat_index(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]], units='metric')
 
                 if data.keys() >= {DataPoints.OUTHUMI[0]}:
@@ -688,8 +714,7 @@ class Gateway(object):
         data: dic of parsed device API data
         """
 
-        # Do we have a confirmed field to use for calculating rain? If we do we
-        # can skip this otherwise we need to look for one.
+        # Do we have a confirmed field to use for calculating rain? If we do we can skip this otherwise we need to look for one.
         if not self.rain_mapping_confirmed:
             # We have no field for calculating rain so look for one, if device field DataPoints.RAINTOTALS[0] is present used that as our first choice.
             # Otherwise, work down the list in order of descending period.
@@ -711,7 +736,6 @@ class Gateway(object):
             if self.rain_mapping_confirmed:
                 self.logger.info(f"Using '{self.rain_total_field}' for rain total")
             else:
-                # if debug_rain is set log that we had nothing
                 self.logger.info("No suitable field found for rain")
 
         # Do we have a confirmed field to use for calculating piezo rain? If we do we can skip this otherwise we need to look for one.
@@ -762,8 +786,7 @@ class Gateway(object):
         if self.piezo_rain_mapping_confirmed and self.piezo_rain_total_field in data:
             # yes on both counts, so get the new total
             piezo_new_total = data[self.piezo_rain_total_field]
-            # now calculate field p_rain as the difference between the new and
-            # old totals
+            # now calculate field p_rain as the difference between the new and old totals
             data[DataPoints.PIEZO_RAIN[0]] = self.delta_rain(piezo_new_total, self.piezo_last_rain, descriptor='piezo rain')
 
             # log some pertinent values
@@ -804,7 +827,7 @@ class Gateway(object):
         windspeed_mph = env.kmh_to_mph(windspeed_kmh)
 
         # Try Wind Chill first
-        feels_like = self.get_windchill_index_imperial(temperature_f, windspeed_mph)
+        feels_like = self.get_windchill_index(temperature_f, windspeed_mph, units='imperial')
 
         # Replace it with the Heat Index, if necessary
         if feels_like == temperature_f and temperature_f >= 80:
@@ -891,76 +914,83 @@ class Gateway(object):
         return dew_point_c
 
     @staticmethod
-    def get_frost_point_c(t_air_c: float, dew_point_c: float) -> float:
+    def get_frost_point_c(temperature: float, dew_point: float) -> float:
         """
         Compute the frost point in degrees Celsius
 
-        :param t_air_c: current ambient temperature in degrees Celsius
-        :param dew_point_c: current dew point in degrees Celsius
+        :param temperature: current ambient temperature in degrees Celsius
+        :param dew_point: current dew point in degrees Celsius
         :return: the frost point in degrees Celsius
         """
 
         try:
-            dew_point_k = 273.15 + dew_point_c
-            t_air_k = 273.15 + t_air_c
-            frost_point_k = dew_point_k - t_air_k + 2671.02 / ((2954.61 / t_air_k) + 2.193665 * math.log(t_air_k) - 13.3448)
-            frost_point_c = round(frost_point_k - 273.15, 1)
+            dew_point_k = KELVIN + dew_point
+            temperature_k = KELVIN + temperature
+            frost_point_k = dew_point_k - temperature_k + 2671.02 / ((2954.61 / temperature_k) + 2.193665 * math.log(temperature_k) - 13.3448)
         except ValueError:
             frost_point_c = -9999
+        else:
+            frost_point_c = round(frost_point_k - KELVIN, 1)
+
         return frost_point_c
 
     @staticmethod
-    def get_abs_hum_c(t_air_c: float, rel_humidity: float) -> float:
+    def get_abs_hum_c(temperature: float, humidity_rel: float) -> float:
         """
         Return the absolute humidity in (g/cm3) from the relative humidity in % and temperature (Celsius)
     
-        :param t_air_c: temperature in Celsius
-        :param rel_humidity: relative humidity in %
+        :param temperature: temperature in Celsius
+        :param humidity_rel: relative humidity in %
         :return: val = absolute humidity in (g/cm3)
         """
 
-        const = MAGNUS_COEFFICIENTS['positive'] if t_air_c > 0 else MAGNUS_COEFFICIENTS['negative']
-        mw = 18.016  # kg/kmol (Molekulargewicht des Wasserdampfes)
-        rs = 8314.3  # J/(kmol*K) (universelle Gaskonstante)
+        magnus_coe = MAGNUS_COEFFICIENTS['positive'] if temperature > 0 else MAGNUS_COEFFICIENTS['negative']
 
         def svp():
             """Compute saturated water vapor pressure (Sättigungsdampfdruck) in hPa"""
-            return const['a'] * math.exp((const['b'] * t_air_c) / (const['c'] + t_air_c))
+            return magnus_coe['a'] * math.exp((magnus_coe['b'] * temperature) / (magnus_coe['c'] + temperature))
 
         def vp():
             """Compute actual water vapor pressure (Dampfdruck) in hPa"""
-            return rel_humidity / 100 * svp()
+            return humidity_rel / 100 * svp()
 
-        return round(10 ** 5 * mw / rs * vp() / (t_air_c + 273.15), 1)
+        return round(10 ** 5 * MW / RS * vp() / (temperature + KELVIN), 1)
 
     @staticmethod
-    def get_windchill_index_metric(air_temp_c: float, wind_speed_kmh: float) -> float:
+    def get_windchill_index(temperature: float, wind_speed: float, units: str = 'imperial') -> Union[float, None]:
         """
         Compute the wind chill index
 
-        :param air_temp_c: current ambient temperature in degrees Celsius
-        :param wind_speed_kmh: wind speed in kilometers/hour
+        :param temperature: current ambient temperature in °Fahrenheit / °Celsius
+        :param wind_speed: wind speed in miles/hour or km/h
         :return: the wind chill index
+        :param units: unit system used for temperature
         """
 
-        return round(13.12 + 0.6215 * air_temp_c - 11.37 * math.pow(wind_speed_kmh, 0.16) + 0.3965 * air_temp_c * math.pow(wind_speed_kmh, 0.16), 1)
+        if units not in ['imperial', 'metric']:
+            return
 
-    @staticmethod
-    def get_windchill_index_imperial(air_temp_f: float, wind_speed_mph: float) -> float:
-        """
-        Compute the wind chill index
-
-        :param air_temp_f: current ambient temperature in Fahrenheit
-        :param wind_speed_mph: wind speed in miles/hour
-        :return: the wind chill index
-        """
-
-        if air_temp_f <= 50 and wind_speed_mph >= 3:
-            windchill = 35.74 + (0.6215*air_temp_f) - 35.75*(wind_speed_mph**0.16) + ((0.4275*air_temp_f)*(wind_speed_mph**0.16))
+        if units == 'metric':
+            T = env.c_to_f(temperature)
+            V = env.kmh_to_mph(wind_speed)
         else:
-            windchill = air_temp_f
+            T = temperature
+            V = wind_speed
 
-        return round(windchill, 1)
+        if T <= 50 and V >= 3:
+            WCI = math.fsum([
+                13.12,
+                0.6215 * T,
+                -11.37 * math.pow(V, 0.16),
+                0.3965 * T * math.pow(V, 0.16),
+            ])
+        else:
+            WCI = T
+
+        if units == 'metric':
+            return round(env.f_to_c(WCI), 1)
+
+        return round(WCI, 1)
 
     @staticmethod
     def get_heat_index(temperature: float, rel_hum: float, units: str = 'imperial') -> Union[float, None]:
@@ -1018,11 +1048,11 @@ class Gateway(object):
         return round(HI, 1)
 
     @staticmethod
-    def get_weather_now(hpa: float, lang: str = 'de') -> str:
+    def get_weather_now(pressure: float, lang: str = 'de') -> str:
         """
         Computes text for current weather condition
 
-        :param hpa: current air pressure in hpa
+        :param pressure: current air pressure in hpa
         :param lang: acronym of language
         :return: wind direction text
         """
@@ -1031,13 +1061,13 @@ class Gateway(object):
         _weather_now_en = ["stormy, rainy", "rainy", "unstable", "sunny", "dry, thunderstorm"]
         _weather_now = _weather_now_de if lang == "de" else _weather_now_en
 
-        if hpa <= 980:
+        if pressure <= 980:
             entry = 0                # stürmisch, Regen
-        elif hpa <= 1000:
+        elif pressure <= 1000:
             entry = 1                # regnerisch
-        elif hpa <= 1020:
+        elif pressure <= 1020:
             entry = 2                # wechselhaft
-        elif hpa <= 1040:
+        elif pressure <= 1040:
             entry = 3                # sonnig
         else:
             entry = 4                # trocken, Gewitter
@@ -1045,11 +1075,11 @@ class Gateway(object):
         return _weather_now[entry]
 
     @staticmethod
-    def get_weather_forecast(diff: float, lang: str = 'de') -> str:
+    def get_weather_forecast(pressure_differance: float, lang: str = 'de') -> str:
         """
         Computes weather forecast based on changes for relative air pressure
 
-        :param diff: pressure difference between now and 3 hours ago
+        :param pressure_differance: pressure difference between now and 3 hours ago
         :param lang: acronym of language
         :return: the wind chill index
         """
@@ -1058,19 +1088,19 @@ class Gateway(object):
         _weather_forecast_en = ["storm with hail", "rain/storm", "rainy", "soon rain", "constant", "nice for a long time", "nice & unstable", "storm warning"]
         _weather_forecast = _weather_forecast_de if lang == "de" else _weather_forecast_en
 
-        if diff <= -8:
+        if pressure_differance <= -8:
             wproglvl = 0               # Sturm mit Hagel
-        elif diff <= -5:
+        elif pressure_differance <= -5:
             wproglvl = 1               # Regen/Unwetter
-        elif diff <= -3:
+        elif pressure_differance <= -3:
             wproglvl = 2               # regnerisch
-        elif diff <= -0.5:
+        elif pressure_differance <= -0.5:
             wproglvl = 3               # baldiger Regen
-        elif diff <= 0.5:
+        elif pressure_differance <= 0.5:
             wproglvl = 4               # gleichbleibend
-        elif diff <= 3:
+        elif pressure_differance <= 3:
             wproglvl = 5               # lange schön
-        elif diff <= 5:
+        elif pressure_differance <= 5:
             wproglvl = 6               # schön & labil
         else:
             wproglvl = 7               # Sturmwarnung
@@ -1078,17 +1108,17 @@ class Gateway(object):
         return _weather_forecast[wproglvl]
 
     @staticmethod
-    def get_cloud_ceiling(temp: float, dewpt: float) -> float:
+    def get_cloud_ceiling(temperature: float, dewpt: float) -> float:
         """
-        Computes cloud ceiling (Wolkenuntergrenze/Konvektionskondensationsniveau)
+        Computes cloud ceiling (Wolkenuntergrenze/Konvektionskondensationsniveau) usind °Celsius
         Faustformel für die Berechnung der Höhe der Wolkenuntergrenze von Quellwolken: Höhe in Meter = 122 x Spread (Taupunktdifferenz)
 
-        :param temp: outside temperatur in celsius
+        :param temperature: outside temperatur in celsius
         :param dewpt: outside dew point in celsius
         :return: cloud ceiling in meter
         """
 
-        return int(round((temp - dewpt) * 122, 1))
+        return int(round((temperature - dewpt) * 122, 1))
 
     @staticmethod
     def get_avg_wind(d: deque, w: int) -> float:
@@ -1145,7 +1175,8 @@ class Gateway(object):
         self.sensors_all = list(set(self.sensors_all + connected_sensors))
         # check if all sensors are still connected, create log entry data field
         if set(connected_sensors) == set(self.sensors_all):
-            # self.logger.debug(f"check_sensors: All sensors are still connected!")
+            if DebugLogConfig.gateway:
+                self.logger.debug(f"check_sensors: All sensors are still connected!")
             self.sensor_warning = False
             data['sensor_warning'] = False
         else:
@@ -1176,7 +1207,8 @@ class Gateway(object):
             else:
                 self.sensors_missed[sensor] += 1
 
-        self.logger.debug(f"sensors_missed={self.sensors_missed}")
+        if DebugLogConfig.gateway:
+            self.logger.debug(f"sensors_missed={self.sensors_missed}")
 
 
 class GatewayDriver(Gateway):
@@ -1210,7 +1242,8 @@ class GatewayDriver(Gateway):
             self.logger.info('Init connection to Ecowitt Gateway via HTTP requests')
             self.http = GatewayHttp(plugin_instance)
         else:
-            self.logger.debug('Ecowitt Gateway does not support interface via HTTP requests')
+            if DebugLogConfig.gateway:
+                self.logger.debug('Ecowitt Gateway does not support interface via HTTP requests')
             self.http = None
 
         # get a GatewayTCP object to handle data from server upload
@@ -1218,7 +1251,8 @@ class GatewayDriver(Gateway):
             self.logger.info('Init connection to Ecowitt Gateway via HTTP Post')
             self.tcp = GatewayTcp(plugin_instance, self.get_current_tcp_data)
         else:
-            self.logger.debug('Interface via HTTP Post not activated')
+            if DebugLogConfig.gateway:
+                self.logger.debug('Interface via HTTP Post not activated')
             self.tcp = None
 
         # do we have a legacy WH40 and how are we handling its battery state data
@@ -1245,7 +1279,8 @@ class GatewayDriver(Gateway):
 
         # Now obtain the bulk of the current sensor data via the API. If the data cannot be obtained we will see a GWIOError exception
         parsed_data = self.api.get_livedata()
-        self.logger.debug(f"live_api_data={parsed_data}")
+        if DebugLogConfig.gateway:
+            self.logger.debug(f"live_api_data={parsed_data}")
         # add the datetime to the data dict in case our data does not come with one
         if DataPoints.TIME[0] not in parsed_data:
             parsed_data[DataPoints.TIME[0]] = datetime.now().replace(microsecond=0)
@@ -1262,7 +1297,8 @@ class GatewayDriver(Gateway):
             parsed_rain_data = None
             pass
 
-        self.logger.debug(f"{parsed_rain_data=}")
+        if DebugLogConfig.gateway:
+            self.logger.debug(f"{parsed_rain_data=}")
         if parsed_rain_data is not None:
             parsed_data.update(parsed_rain_data)
 
@@ -1273,12 +1309,14 @@ class GatewayDriver(Gateway):
             parsed_sensor_state_data = None
             pass
 
-        self.logger.debug(f"{parsed_sensor_state_data=}")
+        if DebugLogConfig.gateway:
+            self.logger.debug(f"{parsed_sensor_state_data=}")
         if parsed_sensor_state_data is not None:
             parsed_data.update(parsed_sensor_state_data)
 
         # log the parsed data
-        self.logger.debug(f"{parsed_data=}")
+        if DebugLogConfig.gateway:
+            self.logger.debug(f"{parsed_data=}")
 
         # put parsed data to queue
         self._plugin_instance.data_queue.put(('api', self._post_process_data(parsed_data, True)))
@@ -1287,14 +1325,16 @@ class GatewayDriver(Gateway):
         """Get all current sensor data from HTTP Get request and put it to queue."""
         
         parsed_data = self.http.get_livedata()
-        self.logger.debug(f"live_http_data={parsed_data}")
+        if DebugLogConfig.gateway:
+            self.logger.debug(f"live_http_data={parsed_data}")
 
         self._plugin_instance.data_queue.put(('http', self._post_process_data(parsed_data)))
 
     def get_current_tcp_data(self, parsed_data: dict) -> None:
         """callback function for already parsed live data from tcp upload and put it to queue."""
-        
-        self.logger.debug(f"TCP: {parsed_data=}")
+
+        if DebugLogConfig.gateway:
+            self.logger.debug(f"TCP: {parsed_data=}")
         self._plugin_instance.data_queue.put(('post', self._post_process_data(parsed_data)))
         
     def _post_process_data(self, data: dict, master: bool = False) -> dict:
@@ -1449,14 +1489,17 @@ class GatewayDriver(Gateway):
         _ecowitt_path = current_usr_path['ecowitt_path']
         _wu_path = current_usr_path['wu_path']
 
-        self.logger.debug(f"To be set customized path: Ecowitt: current='{_ecowitt_path}' vs. new='{custom_ecowitt_path}' and WU: current='{_wu_path}' vs. new='{custom_wu_path}'")
+        if DebugLogConfig.gateway:
+            self.logger.debug(f"To be set customized path: Ecowitt: current='{_ecowitt_path}' vs. new='{custom_ecowitt_path}' and WU: current='{_wu_path}' vs. new='{custom_wu_path}'")
 
         if not (_ecowitt_path == custom_ecowitt_path and _wu_path == custom_wu_path):
-            self.logger.debug(f"Need to set customized path: Ecowitt: current='{_ecowitt_path}' vs. new='{custom_ecowitt_path}' and WU: current='{_wu_path}' vs. new='{custom_wu_path}'")
+            if DebugLogConfig.gateway:
+                self.logger.debug(f"Need to set customized path: Ecowitt: current='{_ecowitt_path}' vs. new='{custom_ecowitt_path}' and WU: current='{_wu_path}' vs. new='{custom_wu_path}'")
             response = self.api.set_usr_path(custom_ecowitt_path, custom_wu_path)
             return 'SUCCESS' if response[4] == 0 else 'FAIL'
         else:
-            self.logger.debug(f"Customized Path settings already correct; No need to write it")
+            if DebugLogConfig.gateway:
+                self.logger.debug(f"Customized Path settings already correct; No need to write it")
             return 'NO NEED'
 
     def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled) -> str:
@@ -1466,11 +1509,13 @@ class GatewayDriver(Gateway):
         new_custom_params = {'id': custom_server_id, 'password': custom_password, 'server': custom_host, 'port': custom_port, 'interval': custom_interval, 'protocol type': ['Ecowitt', 'WU'][int(custom_type)], 'active': bool(int(custom_enabled))}
 
         if new_custom_params.items() <= current_custom_params.items():
-            self.logger.debug(f"Customized Server settings already correct; No need to do it again")
+            if DebugLogConfig.gateway:
+                self.logger.debug(f"Customized Server settings already correct; No need to do it again")
             return 'NO NEED'
         else:
-            self.logger.debug(f"Request to set customized server: current setting={current_custom_params}")
-            self.logger.debug(f"Request to set customized server:     new setting={new_custom_params}")
+            if DebugLogConfig.gateway:
+                self.logger.debug(f"Request to set customized server: current setting={current_custom_params}")
+                self.logger.debug(f"Request to set customized server:     new setting={new_custom_params}")
             response = self.api.set_custom_params(custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled)
             return 'SUCCESS' if response[4] == 0 else 'FAIL'
 
@@ -1478,7 +1523,8 @@ class GatewayDriver(Gateway):
         """Check if firmware update is available for Gateways not support http requests"""
 
         fw_info = requests.get(FW_UPDATE_URL)
-        self.logger.debug(f"check_firmware_update: getting firmware update info from {FW_UPDATE_URL} results in status={fw_info.status_code}")
+        if DebugLogConfig.gateway:
+            self.logger.debug(f"check_firmware_update: getting firmware update info from {FW_UPDATE_URL} results in status={fw_info.status_code}")
 
         if fw_info.status_code == 200:
             # get current firmware version
@@ -1503,7 +1549,8 @@ class GatewayDriver(Gateway):
                     remote_firmware_notes = remote_firmware_notes.split(";")
                 else:
                     remote_firmware_notes = [remote_firmware_notes]
-                self.logger.debug(f"remote_firmware_notes={remote_firmware_notes}")
+                if DebugLogConfig.gateway:
+                    self.logger.debug(f"remote_firmware_notes={remote_firmware_notes}")
                 return True, latest_firmware, remote_firmware_notes
             else:
                 return False, latest_firmware, []
@@ -1625,7 +1672,8 @@ class GatewayApi(object):
                         break
                     else:
                         # did not discover any device so log it
-                        self.logger.debug(f"Failed to detect device IP address and/or port after {attempt + 1,} attempts")
+                        if DebugLogConfig.api:
+                            self.logger.debug(f"Failed to detect device IP address and/or port after {attempt + 1,} attempts")
                         # do we try again or raise an exception
                         if attempt < self.max_tries - 1:
                             # we still have at least one more try left so sleep and try again
@@ -1731,7 +1779,8 @@ class GatewayApi(object):
         ttl = struct.pack('b', 1)
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
         packet = self._build_cmd_packet('CMD_BROADCAST')
-        # self.logger.debug(f"Sending broadcast packet <{packet}> in Hex: '{bytes_to_hex(packet)}' to '{self.broadcast_address}:{self.broadcast_port}'")
+        if DebugLogConfig.api:
+            self.logger.debug(f"Sending broadcast packet <{packet}> in Hex: '{bytes_to_hex(packet)}' to '{self.broadcast_address}:{self.broadcast_port}'")
         
         # initialise a list for the results as multiple devices may respond
         result_list = []
@@ -1739,7 +1788,8 @@ class GatewayApi(object):
         while True:
             try:
                 response = s.recv(1024)
-                self.logger.debug(f"Received broadcast response in HEX '{bytes_to_hex(response)}' and in Bytes {response}")
+                if DebugLogConfig.api:
+                    self.logger.debug(f"Received broadcast response in HEX '{bytes_to_hex(response)}' and in Bytes {response}")
             except socket.timeout:
                 break
             except socket.error as e:
@@ -1749,7 +1799,8 @@ class GatewayApi(object):
                 try:
                     self._check_response(response, self.API_COMMANDS['CMD_BROADCAST'])
                 except InvalidChecksum as e:
-                    self.logger.debug(f"Invalid response to command 'CMD_BROADCAST': {e}")
+                    if DebugLogConfig.api:
+                        self.logger.debug(f"Invalid response to command 'CMD_BROADCAST': {e}")
                 except UnknownApiCommand:
                     raise
                 except Exception as e:
@@ -1785,8 +1836,8 @@ class GatewayApi(object):
                     # containing data for a unique discovered device
                     device_list = self.discover()
                 except socket.error as e:
-                    # log the error
-                    self.logger.debug(f"Failed attempt {attempt + 1} to detect any devices: {e} {type(e)}")
+                    if DebugLogConfig.api:
+                        self.logger.debug(f"Failed attempt {attempt + 1} to detect any devices: {e} {type(e)}")
                 else:
                     # did we find any devices
                     if len(device_list) > 0:
@@ -1812,14 +1863,15 @@ class GatewayApi(object):
                         # return True indicating the re-discovery was successful
                         return True
                     else:
-                        # did not discover any devices so log it
-                        self.logger.debug(f"Failed attempt {attempt + 1} to detect any devices")
+                        if DebugLogConfig.api:
+                            self.logger.debug(f"Failed attempt {attempt + 1} to detect any devices")
             else:
                 # we exhausted our attempts at re-discovery so log it
                 self.logger.info(f"Failed to detect original {self.model} after {self.max_tries} attempts")
         else:
             # an IP address was specified, so we cannot go searching, log it
-            self.logger.debug("IP address specified in 'weewx.conf', re-discovery was not attempted")
+            if DebugLogConfig.api:
+                self.logger.debug("IP address specified in 'weewx.conf', re-discovery was not attempted")
         # if we made it here re-discovery was unsuccessful so return False
         return False
 
@@ -2038,7 +2090,8 @@ class GatewayApi(object):
                 len(custom_host)) + custom_host + chr(int(int(custom_port) / 256)) + chr(
                 int(int(custom_port) % 256)) + chr(int(int(custom_interval) / 256)) + chr(
                 int(int(custom_interval) % 256)) + chr(int(custom_type)) + chr(int(custom_enabled)), 'latin-1')
-        self.logger.debug(f"Customized Server: payload={payload}")
+        if DebugLogConfig.api:
+            self.logger.debug(f"Customized Server: payload={payload}")
         return self._send_cmd_with_retries('CMD_WRITE_CUSTOMIZED', payload)
 
     def get_usr_path(self):
@@ -2062,14 +2115,17 @@ class GatewayApi(object):
         contacted a GatewayIOError will have been raised by _send_cmd_with_retries() which will be passed through by
         set_usr_path(). Any code calling set_usr_path() should be prepared to handle this exception.
         """
-        self.logger.debug(f"set_usr_path: set user path called with custom_ecowitt_path={custom_ecowitt_path} and custom_wu_path={custom_wu_path}")
+
+        if DebugLogConfig.api:
+            self.logger.debug(f"set_usr_path: set user path called with custom_ecowitt_path={custom_ecowitt_path} and custom_wu_path={custom_wu_path}")
 
         payload = bytearray()
         payload.extend(int_to_bytes(len(custom_ecowitt_path), 1))
         payload.extend(str.encode(custom_ecowitt_path))
         payload.extend(int_to_bytes(len(custom_wu_path), 1))
         payload.extend(str.encode(custom_wu_path))
-        self.logger.debug(f"Customized Path: payload={payload}")
+        if DebugLogConfig.api:
+            self.logger.debug(f"Customized Path: payload={payload}")
         return self._send_cmd_with_retries('CMD_WRITE_USR_PATH', payload)
 
     def get_mac_address(self):
@@ -2106,12 +2162,13 @@ class GatewayApi(object):
         GatewayIOError will have been raised by _send_cmd_with_retries() which will be passed through by get_firmware_version(). Any code
         calling get_firmware_version() should be prepared to handle this exception.
         """
-
-        self.logger.debug(f"set_firmware_upgrade: Firmware update called for {self.ip_address}:{self.port}")
+        if DebugLogConfig.api:
+            self.logger.debug(f"set_firmware_upgrade: Firmware update called for {self.ip_address}:{self.port}")
         payload = bytearray()
         payload.extend(self.ip_address)
         payload.extend(int_to_bytes(self.port, 2))
-        self.logger.debug(f"set_firmware_upgrade: payload={payload}")
+        if DebugLogConfig.api:
+            self.logger.debug(f"set_firmware_upgrade: payload={payload}")
         return self._send_cmd_with_retries('CMD_WRITE_UPDATE', payload)
 
     def get_sensor_id(self):
@@ -2246,8 +2303,8 @@ class GatewayApi(object):
         GatewayIOError will have been raised by _send_cmd_with_retries() which will be passed through by set_reboot(). Any code
         calling set_reboot() should be prepared to handle this exception.
         """
-
-        self.logger.debug(f"set_reboot: Reboot called for {self.ip_address}:{self.port}")
+        if DebugLogConfig.api:
+            self.logger.debug(f"set_reboot: Reboot called for {self.ip_address}:{self.port}")
         return self._send_cmd_with_retries('CMD_WRITE_REBOOT')
 
     def set_reset(self):
@@ -2258,8 +2315,8 @@ class GatewayApi(object):
         GatewayIOError will have been raised by _send_cmd_with_retries() which will be passed through by set_reboot(). Any code
         calling set_reboot() should be prepared to handle this exception.
         """
-
-        self.logger.debug(f"set_reboot: Reset called for {self.ip_address}:{self.port}")
+        if DebugLogConfig.api:
+            self.logger.debug(f"set_reboot: Reset called for {self.ip_address}:{self.port}")
         return self._send_cmd_with_retries('CMD_WRITE_RESET')
 
     def read_rain(self) -> dict:
@@ -2293,14 +2350,17 @@ class GatewayApi(object):
             try:
                 response = self._send_cmd(packet)
             except socket.timeout as e:
-                self.logger.debug(f"Failed to obtain response to attempt {attempt + 1} to send command '{cmd}': {e}")
+                if DebugLogConfig.api:
+                    self.logger.debug(f"Failed to obtain response to attempt {attempt + 1} to send command '{cmd}': {e}")
             except Exception as e:
-                self.logger.debug(f"Failed attempt {attempt + 1} to send command '{cmd}':{e!r}")
+                if DebugLogConfig.api:
+                    self.logger.debug(f"Failed attempt {attempt + 1} to send command '{cmd}':{e!r}")
             else:
                 try:
                     self._check_response(response, self.API_COMMANDS[cmd])
                 except InvalidChecksum as e:
-                    self.logger.debug(f"Invalid response to attempt {attempt + 1} to send command '{cmd}':{e}")
+                    if DebugLogConfig.api:
+                        self.logger.debug(f"Invalid response to attempt {attempt + 1} to send command '{cmd}':{e}")
                 except UnknownApiCommand:
                     raise
                 except Exception as e:
@@ -2364,7 +2424,8 @@ class GatewayApi(object):
                 s.connect((self.ip_address, self.port))
                 s.sendall(packet)
                 response = s.recv(1024)
-                self.logger.debug(f"Received response '{bytes_to_hex(response)}'")
+                if DebugLogConfig.api:
+                    self.logger.debug(f"Received response '{bytes_to_hex(response)}'")
                 return response
             except socket.error as e:
                 self.logger.warning(f"Socket Error {e!r} occurred.")
@@ -2443,13 +2504,10 @@ class ApiParser(object):
     """
 
     # Dictionary of 'address' based data. Dictionary is keyed by device data field 'address' containing various parameters for each
-    # 'address'. Dictionary tuple format is: (decode fn, size, field name)
-    # where:
+    # 'address'. Dictionary tuple format is: (decode fn, size, field name) where:
     #   decode fn:  the decode function name to be used for the field
     #   size:       the size of field data in bytes
     #   field name: the name of the device field to be used for the decoded data
-
-    # ToDo: Decode Light liefert falschen Wert
 
     api_live_data_struct = {
         b'\x01': ('decode_temp', 2, DataPoints.INTEMP[0]),
@@ -2550,7 +2608,7 @@ class ApiParser(object):
         b'\x69': ('decode_wn34', 3, DataPoints.TF_USR7[0]),
         b'\x6A': ('decode_wn34', 3, DataPoints.TF_USR8[0]),
         b'\x70': ('decode_wh45', 16, DataPoints.SENSOR_CO2[0]),               # WH45 battery data is not obtained from live data rather it is obtained from sensor ID data
-        b'\x71': (None, None, None),                                # placeholder for unknown field 0x71
+        b'\x71': (None, None, None),                                          # placeholder for unknown field 0x71
         b'\x72': ('decode_wet', 1, DataPoints.LEAF_WETNESS1[0]),
         b'\x73': ('decode_wet', 1, DataPoints.LEAF_WETNESS2[0]),
         b'\x74': ('decode_wet', 1, DataPoints.LEAF_WETNESS3[0]),
@@ -2578,7 +2636,7 @@ class ApiParser(object):
         b'\x85': ('decode_big_rain', 4, DataPoints.PIEZO_RAINMONTH[0]),
         b'\x86': ('decode_big_rain', 4, DataPoints.PIEZO_RAINYEAR[0]),
         b'\x87': ('decode_rain_gain', 20, DataPoints.PIEZO_RAINGAIN[0]),               # field 0x87 hold device parameter data that is not included in the loop packets, hence the device field is not used (None).
-        b'\x88': ('decode_rain_reset', 3, None)                # field 0x88 hold device parameter data that is not included in the loop packets, hence the device field is not used (None).
+        b'\x88': ('decode_rain_reset', 3, DataPoints.RAIN_RST_TIME[0])                 # field 0x88 hold device parameter data that is not included in the loop packets, hence the device field is not used (None).
     }
     # tuple of field codes for device rain related fields in the live data so we can isolate these fields
     # rain_field_codes = (b'\x0D', b'\x0E', b'\x0F', b'\x10', b'\x11', b'\x12', b'\x13', b'\x14', b'\x80', b'\x81', b'\x83', b'\x84', b'\x85', b'\x86')
@@ -2597,7 +2655,6 @@ class ApiParser(object):
         # do we log unknown fields at info or leave at debug
         self.log_unknown_fields = self.interface_config.log_unknown_fields
 
-    # ToDo: decode for UV / solarradiation is not correct. TCP value is correct
     def parse_addressed_data(self, payload, structure):
         """Parse an address structure API response payload.
 
@@ -2622,13 +2679,15 @@ class ApiParser(object):
                 # obtain the decode function, field size and field name for the current field
                 try:
                     decode_fn_str, field_size, field = structure[payload[index:index + 1]]
-                    self.logger.debug(f"Decode {index=} with {field=}")
+                    if DebugLogConfig.api:
+                        self.logger.debug(f"Decode id={payload[index:index + 1]} with {field=}")
                 except KeyError:
+                    _msg = f"Unknown field address '{bytes_to_hex(payload[index:index + 1])}' detected. Remaining data '{bytes_to_hex(payload[index + 1:])}' ignored."
                     if self.log_unknown_fields:
-                        log_fn = self.logger.info
+                        self.logger.info(_msg)
                     else:
-                        log_fn = self.logger.debug
-                    log_fn(f"Unknown field address '{bytes_to_hex(payload[index:index + 1])}' detected. Remaining data '{bytes_to_hex(payload[index + 1:])}' ignored.")
+                        if DebugLogConfig.api:
+                            self.logger.debug(_msg)
                     break
                 else:
                     _field_data = getattr(self, decode_fn_str)(payload[index + 1:index + 1 + field_size], field)
@@ -3045,7 +3104,6 @@ class ApiParser(object):
         data_dict = dict()
         data_dict['frequency'] = FREQUENCIES[data[0]]
         data_dict['sensor type'] = SENSOR_TYPES[data[1]]
-        # ToDo: Check determination of datetime
         data_dict['utc'] = datetime.fromtimestamp(self.decode_utc(data[2:6])).replace(tzinfo=timezone.utc)
         data_dict['timezone_index'] = data[6]
         data_dict['dst_status'] = data[7] != 0
@@ -3676,7 +3734,6 @@ class ApiParser(object):
                 gain += 1
         return results
 
-
     @staticmethod
     def decode_rain_reset(data, fields=None):
         """Decode rain reset data.
@@ -3776,7 +3833,7 @@ class GatewayHttp(object):
             Builds a request url
             :return: string of the url, dependent on settings of the FritzDevice
             """
-            return f"http://{self.host}:{self.port}/{cmd}?"
+            return f"http://{self.host}/{cmd}?"
 
         # an invalid command
         if cmd not in GatewayHttp.commands:
@@ -3791,7 +3848,8 @@ class GatewayHttp(object):
         else:
             status_code = rsp.status_code
             if status_code == 200:
-                self.logger.debug("Sending HTTP request successful")
+                if DebugLogConfig.http:
+                    self.logger.debug("Sending HTTP request successful")
                 if result == 'json':
                     try:
                         data = rsp.json()
@@ -3802,11 +3860,13 @@ class GatewayHttp(object):
                 else:
                     return rsp.text.strip()
             elif status_code == 403:
-                self.logger.debug("HTTP access denied.")
+                if DebugLogConfig.http:
+                    self.logger.debug("HTTP access denied.")
             else:
                 self.logger.error(f"HTTP request error code: {status_code}")
                 rsp.raise_for_status()
-                self.logger.debug(f"Url: {url}, Params: {params}")
+                if DebugLogConfig.http:
+                    self.logger.debug(f"Url: {url}, Params: {params}")
 
     def get_version(self):
         """Get the device firmware related information.
@@ -3971,9 +4031,11 @@ class GatewayHttp(object):
 
     def new_firmware_available(self):
         """Get information whether a new firmware is available."""
+
         return self.parser.parse_new_version(self.get_version())
 
     def get_livedata(self):
+        """Get live data"""
         return self.parser.parse_livedata(self.get_livedata_info())
 
 
@@ -4180,16 +4242,22 @@ class HttpParser(object):
         return data_dict
 
     @staticmethod
-    def parse_version(data: dict):
-        _version = data.get('version')
-        if _version:
-            return _version.split(' ')[1]
+    def parse_version(data: dict) -> str:
+        """extract current firmware version"""
+
+        if isinstance(data, dict):
+            _version = data.get('version')
+            if _version:
+                return _version.split(' ')[1]
 
     @staticmethod
-    def parse_new_version(data: dict):
-        _new_version = data.get('newVersion')
-        if _new_version:
-            return bool(int(_new_version))
+    def parse_new_version(data: dict) -> bool:
+        """extract availability of new firmware version"""
+
+        if isinstance(data, dict):
+            _new_version = data.get('newVersion')
+            if _new_version:
+                return bool(int(_new_version))
 
     @staticmethod
     def batt_int(batt) -> int:
@@ -4214,7 +4282,8 @@ class GatewayTcp(object):
         self._server_thread = None
 
         # log the relevant settings/parameters we are using
-        self.logger.debug("Starting GatewayTcp")
+        if DebugLogConfig.tcp:
+            self.logger.debug("Starting GatewayTcp")
 
         # get tcp server object
         self.tcp_server = GatewayTcp.TCPServer(self.make_handler(self.parse_tcp_live_data), plugin_instance)
@@ -4253,7 +4322,8 @@ class GatewayTcp(object):
     def parse_tcp_live_data(self, data, client_ip):
 
         data_dict = self.parser.parse_live_data(data, client_ip)
-        self.logger.debug(f"raw tcp_data={data_dict}")
+        if DebugLogConfig.tcp:
+            self.logger.debug(f"raw tcp_data={data_dict}")
         self.callback(data_dict)
 
     def make_handler(self, parse_method):
@@ -4301,11 +4371,13 @@ class GatewayTcp(object):
             socketserver.TCPServer.__init__(self, (address, int(port)), handler)
 
         def run(self):
-            self.logger.debug("Start FoshkPlugin TCP Server")
+            if DebugLogConfig.tcp:
+                self.logger.debug("Start FoshkPlugin TCP Server")
             self.serve_forever()
 
         def stop(self):
-            self.logger.debug("Stop FoshkPlugin TCP Server")
+            if DebugLogConfig.tcp:
+                self.logger.debug("Stop FoshkPlugin TCP Server")
             self.shutdown()
             self.server_close()
 
@@ -4327,10 +4399,6 @@ class TcpParser(object):
 
     def parse_live_data(self, data, client_ip):
         """Parse the ecowitt data and add it to a dictionary."""
-
-        # ToDo: Harmonize datetime field to be local instead of UTC
-        # ToDo: Harmonize field 'raingain': {'tcp': 62.0, 'api': 1.0},
-        # ToDo: add field api 'raintotals': {'tcp': 465.91}
 
         tcp_live_data_struct = {
             # Generic
@@ -4483,7 +4551,12 @@ class TcpParser(object):
             try:
                 decoder, field = tcp_live_data_struct[key]
             except KeyError:
-                self.logger.info(f"Unknown key '{key}' with value '{raw_data_dict[key]}'detected. Try do decode remaining sensor data.")
+                _msg = f"Unknown key '{key}' with value '{raw_data_dict[key]}'detected. Try do decode remaining sensor data."
+                if self.log_unknown_fields:
+                    self.logger.info(_msg)
+                else:
+                    if DebugLogConfig.tcp:
+                        self.logger.debug(_msg)
                 pass
             else:
                 if field is None:
@@ -4916,7 +4989,7 @@ def timestamp_to_string(ts: int, format_str: str = "%Y-%m-%d %H:%M:%S %Z") -> Un
 
 
 def ver_str_to_num(s: str) -> Union[None, int]:
-    """Extract Verion Number of Firmware out of String"""
+    """Extract Version Number of Firmware out of String"""
 
     try:
         vpos = s.index("V")+1
@@ -4933,7 +5006,6 @@ def f_to_c(temp_f, n: int = 1) -> float:
 
 def mph_to_ms(mph: float, n: int = 1) -> float:
     """Convert mph to m/s"""
-    #     return round(float(f)/0.621371*1000/3600, n)
 
     return round(env.kmh_to_ms(env.mph_to_kmh(mph)), n)
 
@@ -4957,7 +5029,7 @@ def in_to_mm(f: float, n: int = 2) -> float:
 
 def solar_rad_to_brightness(f: float, n: int = 0) -> float:
     """Convert solar radiation in W/m² to Lux using 1W/m² = 126.7 lux"""
-    return round(float(f)*126.7, n)
+    return round(float(f) * S2B, n)
 
 
 def to_int(value) -> int:
@@ -5015,3 +5087,15 @@ MAGNUS_COEFFICIENTS = dict(
     positive=dict(a=7.5, b=17.368, c=238.88),
     negative=dict(a=7.6, b=17.966, c=247.15),
 )
+
+
+KELVIN = 273.15  # 0K = -273.15°C
+
+
+MW = 18.016  # kg/kmol (Molekulargewicht des Wasserdampfes)
+
+
+RS = 8314.3  # J/(kmol*K) (universelle Gaskonstante)
+
+
+S2B = 126.7  # 1W/m² = 126.7 lux
