@@ -53,7 +53,7 @@ parameters:
 
     FW_Update_Check_Crontab:
         type: str
-        default: '0 1 * * *'
+        default: 0 1 * * *
         description:
             de: Crontab für die Abfrage, ob neue Firmware verfügbar ist.
             en: Crontab to check for newer firmware

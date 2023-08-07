@@ -1,4 +1,4 @@
-FOSHK
+foshk
 =====
 
 Anforderungen
@@ -16,11 +16,16 @@ Die Einrichtung erfolgt automatisch gemäß den Einstellungen im Plugin.
 
 Konfiguration
 -------------
-TBD
+
+Informationen über Plugin Parameter sind unter :doc:`/plugins_doc/config/foshk` beschrieben.
 
 
 Foshk Item-Attribute
 --------------------
+
+Dieses Kapitel wurde automatisch durch Ausführen des Skripts in der Datei 'datapoints.py erstellt.
+
+Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: Attribute: Beschreibung [Einheit]
 
 - absbarometer: Absoluter Luftdruck [hpa]
 
@@ -32,8 +37,7 @@ Foshk Item-Attribute
 
 - co2: Aktueller CO2 Meßwert des CO2 Sensors [Vol%]
 
-- co2_24h_avg: Mittlerer CO2 Messwert der letzten 24h des CO2 Sensors
-  [Vol%]
+- co2_24h_avg: Mittlerer CO2 Messwert der letzten 24h des CO2 Sensors [Vol%]
 
 - datetime: Datetime [None]
 
@@ -43,16 +47,13 @@ Foshk Item-Attribute
 
 - firmware: Firmware Version [None]
 
-- firmware_update_available: Firmware Update verfügbar [True/False]
-
-- firmware_update_text: Beschreibung der Änderungen in der Firmware [-]
+- firmware_update_available: Firmwareupdate verfügbar [True/False]
 
 - frequency: Frequenz des Transmitter [None]
 
 - gustspeed: Böengeschwindigkeit [m/s]
 
-- gustspeed_avg10m: Durchschnittliche Windböen der letzten 10min
-  *Berechnung im Plugin [m/s]
+- gustspeed_avg10m: Durchschnittliche Windböen der letzten 10min *Berechnung im Plugin [m/s]
 
 - heatindex: Heat Index [-]
 
@@ -168,8 +169,7 @@ Foshk Item-Attribute
 
 - pm10: PM10 Wert des CO2 Sensors []
 
-- pm10_24h_avg: durchschnittlicher PM10 Wert der letzten 24h des CO2
-  Sensors []
+- pm10_24h_avg: durchschnittlicher PM10 Wert der letzten 24h des CO2 Sensors []
 
 - pm251: PM2.5 Partikelmenge Kanal 1 [μg/m3]
 
@@ -181,8 +181,7 @@ Foshk Item-Attribute
 
 - pm255: PM2.5 Wert des CO2 Sensors []
 
-- pm255_24h_avg: durchschnittlicher PM2.5 Wert der letzten 24h des CO2
-  Sensors []
+- pm255_24h_avg: durchschnittlicher PM2.5 Wert der letzten 24h des CO2 Sensors []
 
 - pm25_24h_avg1: PM2.5 Partikelmenge 24h Mittel Kanal 1 [μg/m3]
 
@@ -336,22 +335,17 @@ Foshk Item-Attribute
 
 - uvi: UV-Index [0-15]
 
-- weather_txt: Beschreibung des aktuellen Wetters als Text *Berechnung
-  im Plugin [-]
+- weather_txt: Beschreibung des aktuellen Wetters als Text *Berechnung im Plugin [-]
 
 - weatherstation_warning: Warnung der Wetterstation [True/False]
 
-- wh24_batt: Batteriestatus für Temperatur- und Feuchtigkeitssensor
-  Außen WH24 [-]
+- wh24_batt: Batteriestatus für Temperatur- und Feuchtigkeitssensor Außen WH24 [-]
 
-- wh24_sig: Signalstärke für Temperatur- und Feuchtigkeitssensor Außen
-  WH24 [1-6]
+- wh24_sig: Signalstärke für Temperatur- und Feuchtigkeitssensor Außen WH24 [1-6]
 
-- wh25_batt: Batteriestatus für Temperatur-, Feuchtigkeits- und
-  Drucksensor [-]
+- wh25_batt: Batteriestatus für Temperatur-, Feuchtigkeits- und Drucksensor [-]
 
-- wh25_sig: Signalstärke für Temperatur-, Feuchtigkeits- und Drucksensor
-  [1-6]
+- wh25_sig: Signalstärke für Temperatur-, Feuchtigkeits- und Drucksensor [1-6]
 
 - wh31_ch1_batt: Batteriestatus für Thermo-Hygrometer Kanal 1 [-]
 
@@ -385,33 +379,27 @@ Foshk Item-Attribute
 
 - wh31_ch8_sig: Signalstärke für Thermo-Hygrometer Kanal 8 [1-6]
 
-- wh32_batt: Batteriestatus für Temperatur- und Feuchtigkeitssensor WH32
-  [-]
+- wh32_batt: Batteriestatus für Temperatur- und Feuchtigkeitssensor WH32 [-]
 
-- wh32_sig: Signalstärke für Temperatur- und Feuchtigkeitssensor WH32
-  [1-6]
+- wh32_sig: Signalstärke für Temperatur- und Feuchtigkeitssensor WH32 [1-6]
 
 - wh40_batt: Batteriestatus für Regensensor [-]
 
 - wh40_sig: Signalstärke für Regensensor [1-6]
 
-- wh41_ch1_batt: Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 1
-  [-]
+- wh41_ch1_batt: Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 1 [-]
 
 - wh41_ch1_sig: Signalstärke für Partikelsensor PM2.5 WH41 Kanal 1 [1-6]
 
-- wh41_ch2_batt: Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 2
-  [-]
+- wh41_ch2_batt: Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 2 [-]
 
 - wh41_ch2_sig: Signalstärke für Partikelsensor PM2.5 WH41 Kanal 2 [1-6]
 
-- wh41_ch3_batt: Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 3
-  [-]
+- wh41_ch3_batt: Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 3 [-]
 
 - wh41_ch3_sig: Signalstärke für Partikelsensor PM2.5 WH41 Kanal 3 [1-6]
 
-- wh41_ch4_batt: Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 4
-  [-]
+- wh41_ch4_batt: Batteriestatus für Partikelsensor PM2.5 WH41 Kanal 4 [-]
 
 - wh41_ch4_sig: Signalstärke für Partikelsensor PM2.5 WH41 Kanal 4 [1-6]
 
@@ -485,169 +473,117 @@ Foshk Item-Attribute
 
 - winddir: Windrichtung [360°]
 
-- winddir_avg10m: Durchschnittliche Windrichtung der letzten 10min
-  *Berechnung im Plugin [360°]
+- winddir_avg10m: Durchschnittliche Windrichtung der letzten 10min *Berechnung im Plugin [360°]
 
 - winddir_txt: Windrichtung als Richtungstext *Berechnung im Plugin [-]
 
 - windspeed: Windgeschwindigkeit [m/s]
 
-- windspeed_avg10m: Durchschnittliche Windgeschwindigkeit der letzten
-  10min *Berechnung im Plugin [m/s]
+- windspeed_avg10m: Durchschnittliche Windgeschwindigkeit der letzten 10min *Berechnung im Plugin [m/s]
 
-- windspeed_bft: Windgeschwindigkeit auf der Beaufort Skala *Berechnung
-  im Plugin [-]
+- windspeed_bft: Windgeschwindigkeit auf der Beaufort Skala *Berechnung im Plugin [-]
 
-- windspeed_bft_txt: Windgeschwindigkeit auf der Beaufort Skala als Text
-  *Berechnung im Plugin [-]
+- windspeed_bft_txt: Windgeschwindigkeit auf der Beaufort Skala als Text *Berechnung im Plugin [-]
 
 - wn26_batt: Batteriestatus für Pool Thermometer [-]
 
 - wn26_sig: Signalstärke für Pool Thermometer [1-6]
 
-- wn30_ch1_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 1 [-]
+- wn30_ch1_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 1 [-]
 
-- wn30_ch1_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 1 [1-6]
+- wn30_ch1_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 1 [1-6]
 
-- wn30_ch2_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 2 [-]
+- wn30_ch2_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 2 [-]
 
-- wn30_ch2_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 2 [1-6]
+- wn30_ch2_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 2 [1-6]
 
-- wn30_ch3_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 3 [-]
+- wn30_ch3_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 3 [-]
 
-- wn30_ch3_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 3 [1-6]
+- wn30_ch3_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 3 [1-6]
 
-- wn30_ch4_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 4 [-]
+- wn30_ch4_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 4 [-]
 
-- wn30_ch4_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 4 [1-6]
+- wn30_ch4_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 4 [1-6]
 
-- wn30_ch5_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 5 [-]
+- wn30_ch5_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 5 [-]
 
-- wn30_ch5_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 5 [1-6]
+- wn30_ch5_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 5 [1-6]
 
-- wn30_ch6_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 6 [-]
+- wn30_ch6_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 6 [-]
 
-- wn30_ch6_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 6 [1-6]
+- wn30_ch6_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 6 [1-6]
 
-- wn30_ch7_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 7 [-]
+- wn30_ch7_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 7 [-]
 
-- wn30_ch7_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 7 [1-6]
+- wn30_ch7_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 7 [1-6]
 
-- wn30_ch8_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 8 [-]
+- wn30_ch8_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 8 [-]
 
-- wn30_ch8_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN30 Kanal 8 [1-6]
+- wn30_ch8_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN30 Kanal 8 [1-6]
 
-- wn34_ch1_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 1 [-]
+- wn34_ch1_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 1 [-]
 
-- wn34_ch1_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 1 [1-6]
+- wn34_ch1_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 1 [1-6]
 
-- wn34_ch2_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 2 [-]
+- wn34_ch2_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 2 [-]
 
-- wn34_ch2_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 2 [1-6]
+- wn34_ch2_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 2 [1-6]
 
-- wn34_ch3_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 3 [-]
+- wn34_ch3_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 3 [-]
 
-- wn34_ch3_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 3 [1-6]
+- wn34_ch3_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 3 [1-6]
 
-- wn34_ch4_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 4 [-]
+- wn34_ch4_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 4 [-]
 
-- wn34_ch4_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 4 [1-6]
+- wn34_ch4_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 4 [1-6]
 
-- wn34_ch5_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 5 [-]
+- wn34_ch5_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 5 [-]
 
-- wn34_ch5_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 5 [1-6]
+- wn34_ch5_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 5 [1-6]
 
-- wn34_ch6_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 6 [-]
+- wn34_ch6_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 6 [-]
 
-- wn34_ch6_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 6 [1-6]
+- wn34_ch6_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 6 [1-6]
 
-- wn34_ch7_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 7 [-]
+- wn34_ch7_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 7 [-]
 
-- wn34_ch7_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 7 [1-6]
+- wn34_ch7_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 7 [1-6]
 
-- wn34_ch8_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 8 [-]
+- wn34_ch8_batt: Batteriestatus für Thermometer mit wasserdichtem Sensor WN34 Kanal 8 [-]
 
-- wn34_ch8_sig: Signalstärke für Thermometer mit wasserdichtem Sensor
-  WN34 Kanal 8 [1-6]
+- wn34_ch8_sig: Signalstärke für Thermometer mit wasserdichtem Sensor WN34 Kanal 8 [1-6]
 
-- wn35_ch1_batt: Batteriestatus für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 1 [-]
+- wn35_ch1_batt: Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 1 [-]
 
-- wn35_ch1_sig: Signalstärke für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 1 [1-6]
+- wn35_ch1_sig: Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 1 [1-6]
 
-- wn35_ch2_batt: Batteriestatus für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 2 [-]
+- wn35_ch2_batt: Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 2 [-]
 
-- wn35_ch2_sig: Signalstärke für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 2 [1-6]
+- wn35_ch2_sig: Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 2 [1-6]
 
-- wn35_ch3_batt: Batteriestatus für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 3 [-]
+- wn35_ch3_batt: Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 3 [-]
 
-- wn35_ch3_sig: Signalstärke für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 3 [1-6]
+- wn35_ch3_sig: Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 3 [1-6]
 
-- wn35_ch4_batt: Batteriestatus für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 4 [-]
+- wn35_ch4_batt: Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 4 [-]
 
-- wn35_ch4_sig: Signalstärke für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 4 [1-6]
+- wn35_ch4_sig: Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 4 [1-6]
 
-- wn35_ch5_batt: Batteriestatus für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 5 [-]
+- wn35_ch5_batt: Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 5 [-]
 
-- wn35_ch5_sig: Signalstärke für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 5 [1-6]
+- wn35_ch5_sig: Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 5 [1-6]
 
-- wn35_ch6_batt: Batteriestatus für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 6 [-]
+- wn35_ch6_batt: Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 6 [-]
 
-- wn35_ch6_sig: Signalstärke für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 6 [1-6]
+- wn35_ch6_sig: Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 6 [1-6]
 
-- wn35_ch7_batt: Batteriestatus für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 7 [-]
+- wn35_ch7_batt: Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 7 [-]
 
-- wn35_ch7_sig: Signalstärke für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 7 [1-6]
+- wn35_ch7_sig: Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 7 [1-6]
 
-- wn35_ch8_batt: Batteriestatus für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 8 [-]
+- wn35_ch8_batt: Batteriestatus für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 8 [-]
 
-- wn35_ch8_sig: Signalstärke für Feuchtigkeitssensor für
-  Pflanzen/Blätter WN35 Kanal 8 [1-6]
+- wn35_ch8_sig: Signalstärke für Feuchtigkeitssensor für Pflanzen/Blätter WN35 Kanal 8 [1-6]
 
 - ws80_batt: Batteriestatus für Wetterstation WS80 [-]
 
@@ -656,6 +592,7 @@ Foshk Item-Attribute
 - ws90_batt: Batteriestatus für Wetterstation 7in1 WS90 [-]
 
 - ws90_sig: Signalstärke für Wetterstation 7in1 WS90 [1-6]
+
 
 Beispiele
 ---------
@@ -671,39 +608,21 @@ FOSHK Items
 
 Das Webinterface zeigt die Items an, für die ein Foshk-Attribut konfiguriert ist.
 
-.. image:: user_doc/assets/webif_tab1.jpg
-   :class: screenshot
 
-FOSHK API data
-^^^^^^^^^^^^^^
+FOSHK data
+^^^^^^^^^^
 
-Das Webinterface die verfügbaren Daten (Dict Key und Dict Value) an, die über die API ausgelesen wurden.
+Das Webinterface zeigt die verfügbaren Daten (Dict Key und Dict Value) an, die ausgelesen wurden.
 
-.. image:: user_doc/assets/webif_tab2.jpg
-   :class: screenshot
-
-FOSHK TCP data
-^^^^^^^^^^^^^^
-
-Das Webinterface die verfügbaren Daten (Dict Key und Dict Value) an, die über die TCP-Verbinung und das ECOWITT
-Protokoll empfangen.
-
-.. image:: user_doc/assets/webif_tab3.jpg
-   :class: screenshot
 
 FOSHK Settings
 ^^^^^^^^^^^^^^
 
 Das Webinterface die Einstellung der Wetterstation an.
 
-.. image:: user_doc/assets/webif_tab4.jpg
-   :class: screenshot
 
 FOSHK Maintenance
 ^^^^^^^^^^^^^^^^^
 
 Das Webinterface zeigt detaillierte Informationen über die im Plugin verfügbaren Daten an.
 Dies dient der Maintenance bzw. Fehlersuche.
-
-.. image:: user_doc/assets/webif_tab5.jpg
-   :class: screenshot

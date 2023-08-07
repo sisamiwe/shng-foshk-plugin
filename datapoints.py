@@ -392,7 +392,6 @@ FW_UPDATE_URL = 'http://download.ecowitt.net/down/filewave?v=FirwaveReadme.txt'.
 if __name__ == '__main__':
 
     import ruamel.yaml
-    from rstcloth import RstCloth
 
     FILENAME_PLUGIN = 'plugin.yaml'
     attribute = 'foshk_attribute'
@@ -462,13 +461,34 @@ if __name__ == '__main__':
 
 
     # Update user_doc.rst
-    attribute_list = []
-    for key in attributs_dict_sorted:
-        attribute_list.append(f"{key}: {attributs_dict_sorted[key][0]} [{attributs_dict_sorted[key][1]}]")
+    DOC_FILE_NAME = 'user_doc.rst'
 
-    doc = RstCloth()
-    doc.h2('Foshk Item-Attribute')
-    doc.newline()
-    for entry in attribute_list:
-        doc.li(entry, '-', 0)
-        doc.newline()
+    attribute_list = []
+    attribute_list.append("Dieses Kapitel wurde automatisch durch Ausführen des Skripts in der Datei 'datapoints.py' erstellt.\n")
+    attribute_list.append("\n")
+    attribute_list.append("Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: Attribute: Beschreibung [Einheit]\n")
+    attribute_list.append("\n")
+
+    for key in attributs_dict_sorted:
+        attribute_list.append(f"- {key}: {attributs_dict_sorted[key][0]} [{attributs_dict_sorted[key][1]}]\n")
+        attribute_list.append("\n")
+
+    with open(DOC_FILE_NAME, 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+
+    start = end = None
+    for i, line in enumerate(lines):
+        if 'Foshk Item-Attribute' in line:
+            start = i + 3
+        if 'Beispiele' in line:
+            end = i - 4
+
+    part1 = lines[0:start]
+    part3 = lines[end:len(lines)]
+    new_lines = part1 + attribute_list + part3
+
+    with open(DOC_FILE_NAME, 'w', encoding='utf-8') as file:
+        for line in new_lines:
+            file.write(line)
+
+    print(f"Successfully updated Foshk-Attributes in {DOC_FILE_NAME}!")
