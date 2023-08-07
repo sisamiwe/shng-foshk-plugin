@@ -108,10 +108,24 @@ class Foshk(SmartPlugin):
         if gateway_port == 0 or not is_port_valid(gateway_port):
             gateway_port = None
 
+        api_update_cycle = self.get_parameter_value('Gateway_Poll_Cycle')
+        if api_update_cycle == 0:
+            api_update_cycle = None
+        api_update_crontab = self.get_parameter_value('Gateway_Poll_Cycle_Crontab')
+        if api_update_crontab == '':
+            api_update_crontab = None
+        if not (api_update_cycle or api_update_crontab):
+            self.logger.warning(f"{self.get_fullname()}: no update cycle or crontab set. The data will not be polled automatically")
+
+        fw_check_crontab = self.get_parameter_value('FW_Update_Check_Crontab')
+        if fw_check_crontab == '':
+            fw_check_crontab = None
+
         interface_config = {'ip_address': gateway_address,
                             'port': gateway_port,
-                            'api_data_cycle': self.get_parameter_value('Gateway_Poll_Cycle'),
-                            'fw_check_cycle': (self.get_parameter_value('FW_Update_Check_Cycle') * 24 * 3600),
+                            'api_data_cycle': api_update_cycle,
+                            'api_data_crontab': api_update_crontab,
+                            'fw_check_crontab': fw_check_crontab,
                             'show_battery_warning': self.get_parameter_value('Battery_Warning'),
                             'show_sensor_warning': self.get_parameter_value('Sensor_Warning'),
                             'use_wh32': self.get_parameter_value('Use_of_WH32'),
@@ -162,9 +176,9 @@ class Foshk(SmartPlugin):
         self.interface_config.port = self.gateway.port
 
         # add scheduler
-        self.scheduler_add('poll_api', self.gateway.get_current_api_data, cycle=self.interface_config.api_data_cycle)
-        if self.interface_config.fw_check_cycle > 0:
-            self.scheduler_add('check_fw_update', self.is_firmware_update_available, cycle=self.interface_config.fw_check_cycle)
+        self.scheduler_add('poll_api', self.gateway.get_current_api_data, cycle=self.interface_config.api_data_cycle, cron=self.interface_config.api_data_crontab)
+        if self.interface_config.fw_check_crontab is not None:
+            self.scheduler_add('check_fw_update', self.is_firmware_update_available, cron=self.interface_config.fw_check_crontab)
 
         # if customer server is used, set parameters accordingly
         if self.use_customer_server:
@@ -496,6 +510,9 @@ class InterfaceConfig:
     # default device poll interval in sec via api
     api_data_cycle: int = 20
 
+    # default device poll crontab via api
+    api_data_crontab: str = None
+
     # default period between lost contact log entries during an extended period of lost contact when run as a Service  in sec
     lost_contact_log_period: int = 21600
 
@@ -503,7 +520,7 @@ class InterfaceConfig:
     show_battery: bool = False
 
     # default firmware update check interval in sec
-    fw_check_cycle: int = 0
+    fw_check_crontab: str = None
 
     # show availability of firmware update
     show_fw_update_available: bool = False
@@ -545,7 +562,7 @@ class InterfaceConfig:
     custom_params: dict = None
 
     def __post_init__(self):
-        if self.fw_check_cycle > 0:
+        if self.fw_check_crontab is not None:
             self.show_fw_update_available = True
 
 
@@ -1227,7 +1244,7 @@ class GatewayDriver(Gateway):
         # get interface config
         self.interface_config = self._plugin_instance.interface_config
         self.api_data_cycle = self.interface_config.api_data_cycle
-        self.fw_update_check_cycle = self.interface_config.fw_check_cycle
+        self.fw_check_crontab = self.interface_config.fw_check_crontab
         self.show_fw_update_available = self.interface_config.show_fw_update_available
         ignore_wh40_batt = self.interface_config.ignore_wh40_batt
 
@@ -1569,6 +1586,7 @@ class GatewayDriver(Gateway):
 
         self.interface_config.fw_update_available = result
         return result
+
 
 class GatewayApi(object):
     """Class to interact with a gateway device via the Ecowitt LAN/Wi-Fi Gateway API.
