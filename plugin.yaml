@@ -11,7 +11,7 @@ plugin:
     keywords: froggit ecowitt weather station
 #    support: https://knx-user-forum.de/forum/supportforen/smarthome-py
 
-    version: 1.2.0C                  # Plugin version (must match the version specified in __init__.py)
+    version: 1.2.0D                  # Plugin version (must match the version specified in __init__.py)
     sh_minversion: 1.9.4            # minimum shNG version to use this plugin
 #    sh_maxversion:                 # maximum shNG version to use this plugin (leave empty if latest)
 #    py_minversion:                 # minimum Python version to use for this plugin
@@ -109,7 +109,6 @@ item_attributes:
             - feelslike
             - firmware
             - firmware_update_available
-            - firmware_update_text
             - frequency
             - gustspeed
             - gustspeed_avg10m
@@ -384,62 +383,61 @@ item_attributes:
             - ws90_sig
         valid_list_description:
         # NOTE: valid_list_description is automatically created by using datapoints.py
-            - Absolutely Barometric
-            - Warning of any Battery
+            - Absoluter Luftdruck
+            - Batteriewarnung
             - Client IP
-            - Cloud Ceiling
-            -
-            -
+            - Wolkenhöhe *Berechnung im Plugin
+            - Aktueller CO2 Meßwert des CO2 Sensors
+            - Mittlerer CO2 Messwert der letzten 24h des CO2 Sensors
             - Datetime
-            - Dew Point
-            - Feels Like Temperature
+            - Taupunkt
+            - Gefühlte Temperatur
             - Firmware Version
-            - Firmware Update available
-            - Firmware Update Description
-            - Frequency of Transmitter
-            - Gust Speed
-            - Average Gust Speed 10min
+            - Firmwareupdate verfügbar
+            - Frequenz des Transmitter
+            - Böengeschwindigkeit
+            - Durchschnittliche Windböen der letzten 10min *Berechnung im Plugin
             - Heat Index
-            - Humidity
+            - Luftfeuchtigkeit
             - Luftfeuchtigkeit am CO2 Sensor
-            - Humidity
-            - Humidity
-            - Humidity
-            - Humidity
-            - Humidity
-            - Humidity
-            - Humidity
-            - Absolute Humidity Indoor
-            - Dew Point Indoor
-            - Indoor Humidity
-            - Indoor Temperature
-            - Data Inteval
-            - Leaf Wetness
-            - Leaf Wetness
-            - Leaf Wetness
-            - Leaf Wetness
-            - Leaf Wetness
-            - Leaf Wetness
-            - Leaf Wetness
-            - Leaf Wetness
-            - Leakage
-            - Leakage
-            - Leakage
-            - Leakage
-            - Light
-            - lightning counter for the day
-            - lightning happened time
-            - lightning distance
+            - Luftfeuchtigkeit
+            - Luftfeuchtigkeit
+            - Luftfeuchtigkeit
+            - Luftfeuchtigkeit
+            - Luftfeuchtigkeit
+            - Luftfeuchtigkeit
+            - Luftfeuchtigkeit
+            - Absolute Luftfeuchtigkeit Innen
+            - Taupunkt Innen
+            - Innenluftfeuchtigkeit
+            - Innentemperatur
+            - Interval des Datenflusses
+            - Blätter-/Pflanzenfeuchtigkeit Kanal 1
+            - Blätter-/Pflanzenfeuchtigkeit Kanal 2
+            - Blätter-/Pflanzenfeuchtigkeit Kanal 3
+            - Blätter-/Pflanzenfeuchtigkeit Kanal 4
+            - Blätter-/Pflanzenfeuchtigkeit Kanal 5
+            - Blätter-/Pflanzenfeuchtigkeit Kanal 6
+            - Blätter-/Pflanzenfeuchtigkeit Kanal 7
+            - Blätter-/Pflanzenfeuchtigkeit Kanal 8
+            - Leckage
+            - Leckage
+            - Leckage
+            - Leckage
+            - Helligkeit
+            - kumulierte Anzahl der Blitze des Tages
+            - Zeitpunkt des Blitzes
+            - Blitzentfernung
             - All sensor lowbatt
-            - Gateway Model
-            - Absolute Humidity Outdoor
-            - Dew Point Outdoor
-            - Frost Point Outdoor
-            - Outdoor Humidity
-            - Outdoor Temperature
-            - Rain
-            - Rain Day
-            - Rain Event
+            - Gateway Modell
+            - Absolute Luftfeuchtigkeit Außen
+            - Taupunkt Außen
+            - Frostpunkt Außen
+            - Außenluftfeuchtigkeit
+            - Außentemperatur
+            - Regenmenge
+            - kumulierte Regenmenge des aktuellen Tages
+            - kumulierte Regenmenge des aktuellen Regenevents
             - Kalibrierfaktor 0 für Piezo Regensensor
             - Kalibrierfaktor 1 für Piezo Regensensor
             - Kalibrierfaktor 2 für Piezo Regensensor
@@ -450,97 +448,97 @@ item_attributes:
             - Kalibrierfaktor 7 für Piezo Regensensor (reserviert)
             - Kalibrierfaktor 8 für Piezo Regensensor (reserviert)
             - Kalibrierfaktor 9 für Piezo Regensensor (reserviert)
-            - Rain Hour
-            - Rain Month
-            - Rain Rate
-            - Rain Week
-            - Rain Year
-            -
-            -
-            - PM2.5 Air Quality
-            - PM2.5 Air Quality
-            - PM2.5 Air Quality
-            - PM2.5 Air Quality
-            -
-            -
-            - PM2.5 Air Quality 24h average
-            - PM2.5 Air Quality 24h average
-            - PM2.5 Air Quality 24h average
-            - PM2.5 Air Quality 24h average
-            - radiation compensation
-            - Rain
-            - Rain Day
-            - Rain Event
-            - Rain hour
-            - Rain Month
-            - rain priority (classical or piezo)
-            - Rain Rate
+            - kumulierte Regenmenge der aktuellen Stunde
+            - kumulierte Regenmenge des aktuellen Monats
+            - Regenmenge pro Zeit des aktuellen Regenevents
+            - kumulierte Regenmenge der aktuellen Woche
+            - kumulierte Regenmenge des aktuellen Jahres
+            - PM10 Wert des CO2 Sensors
+            - durchschnittlicher PM10 Wert der letzten 24h des CO2 Sensors
+            - PM2.5 Partikelmenge Kanal 1
+            - PM2.5 Partikelmenge Kanal 2
+            - PM2.5 Partikelmenge Kanal 3
+            - PM2.5 Partikelmenge Kanal 4
+            - PM2.5 Wert des CO2 Sensors
+            - durchschnittlicher PM2.5 Wert der letzten 24h des CO2 Sensors
+            - PM2.5 Partikelmenge 24h Mittel Kanal 1
+            - PM2.5 Partikelmenge 24h Mittel Kanal 2
+            - PM2.5 Partikelmenge 24h Mittel Kanal 3
+            - PM2.5 Partikelmenge 24h Mittel Kanal 4
+            - Anwendung der Strahlungskompensation
+            - Regenmenge
+            - kumulierte Regenmenge des aktuellen Tages
+            - kumulierte Regenmenge des aktuellen Regenevents
+            - kumulierte Regenmenge der aktuellen Stunde
+            - kumulierte Regenmenge des aktuellen Monats
+            - Verwendung des Regensensors
+            - Regenmenge pro Zeit des aktuellen Regenevents
             - Uhrzeit des Reset für Rain Day
             - Tag des Reset für Rain Week
             - Monat des Reset für Rain Year
-            - Rain Totals
-            - Rain Week
-            - Rain Year
+            - kumulierte Regenmenge seit Inbetriebnahme bzw. Reset
+            - kumulierte Regenmenge der aktuellen Woche
+            - kumulierte Regenmenge des aktuellen Jahres
             - Reboot
-            - Relative Barometric
+            - Relativer Luftdruck
             - Reset
-            - Runtime
-            - Warning of any Sensor
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Moisture
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - Soil Temperature
-            - UV
-            - Storm Warning
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
-            - Temperature
+            - Laufzeit des Gateways
+            - Sensorwarnung
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodenfeuchtigkeit
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - Bodentemperatur
+            - UV Strahlung
+            - Sturmwarnung
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
+            - Temperatur
             - Temperatur am CO2 Sensor
-            - Thunderstorm Warning
-            - UVI
-            - Weather Description
-            - Weatherstation Warning
+            - Gewitterwarnung
+            - UV-Index
+            - Beschreibung des aktuellen Wetters als Text *Berechnung im Plugin
+            - Warnung der Wetterstation
             - Batteriestatus für Temperatur- und Feuchtigkeitssensor Außen WH24
             - Signalstärke für Temperatur- und Feuchtigkeitssensor Außen WH24
             - Batteriestatus für Temperatur-, Feuchtigkeits- und Drucksensor
@@ -606,14 +604,14 @@ item_attributes:
             - Batteriestatus für Wetterstation WS68
             - Signalstärke für Wetterstation WS68
             - Wind Chill
-            -
-            - Wind Direction
-            - Average Wind Direction 10min
-            - Wind Direction Desctiption
-            - Wind Speed
-            - Average Windspeed 10min
-            - Wind Speed in Beautford
-            - Wind Speed in Beautford Text
+            - max. Windböengeschwindigkeit des Tages
+            - Windrichtung
+            - Durchschnittliche Windrichtung der letzten 10min *Berechnung im Plugin
+            - Windrichtung als Richtungstext *Berechnung im Plugin
+            - Windgeschwindigkeit
+            - Durchschnittliche Windgeschwindigkeit der letzten 10min *Berechnung im Plugin
+            - Windgeschwindigkeit auf der Beaufort Skala *Berechnung im Plugin
+            - Windgeschwindigkeit auf der Beaufort Skala als Text *Berechnung im Plugin
             - Batteriestatus für Pool Thermometer
             - Signalstärke für Pool Thermometer
             - Batteriestatus für Thermometer mit wasserdichtem Sensor WN30 Kanal 1
@@ -710,10 +708,10 @@ item_structs:
                 visu_acl: ro
                 foshk_attribute: firmware_update_available
 
-            update_text:
-                type: list
-                visu_acl: ro
-                foshk_attribute: firmware_update_text
+#            update_text:
+#                type: list
+#                visu_acl: ro
+#                foshk_attribute: firmware_update_text
 
         weatherstation_warning:
             type: bool
@@ -980,7 +978,7 @@ item_structs:
             type: num
             foshk_attribute: winddaymax
         datetime:
-            type: str
+            type: foo
             foshk_attribute: datetime
         p_rainrate:
             type: num
@@ -1049,7 +1047,13 @@ item_structs:
 item_attribute_prefixes: NONE
 
 plugin_functions:
-    firmware_update:
+    is_firmware_update_available:
+        type: bool
+        description:
+            de: Prüfen, ob ein Firmwareupdate vorliegt
+            en: Check, if firmware update is available
+
+    update_firmware:
         type: bool
         description:
             de: Firmware update
@@ -1066,66 +1070,5 @@ plugin_functions:
         description:
             de: Reset
             en: command reset
-
-    set_usr_path:
-        type: foo
-        description:
-            de: Setzen des UserPath für Ecowitt und WU Daten upload
-            en: set user path for Ecowitt and WU data upload
-        parameters:
-            custom_ecowitt_pathpath:
-                type: str
-                description:
-                    de: UserPath für Ecowitt
-                    en: User path for Ecowitt
-            custom_wu_path:
-                type: str
-                description:
-                    de: UserPath für WU
-                    en: User path for WU
-
-    set_custom_params:
-        type: foo
-        description:
-            de: Setzen der Parameter für customized Data Upload
-            en: Set paramaters for customized data Upload
-        parameters:
-            custom_server_id:
-                type: str
-                description:
-                    de: Server ID
-                    en: server id
-            custom_password:
-                type: str
-                description:
-                    de: Passwort
-                    en: password
-            custom_host:
-                type: ipv4
-                description:
-                    de: IP Adresse des Servers, auf den die Daten geladen werden sollen
-                    en: ip address of the server the data should be uploaded to
-            custom_port:
-                type: num
-                description:
-                    de: Port des Servers, auf den die Daten geladen werden sollen
-                    en: port address of the server the data should be uploaded to
-            custom_interval:
-                type: num
-                description:
-                    de: Zyklus, in dem die Daten auf den Server geladen werden
-                    en: Cycle, in which the the data will be uploaded
-                valid_min: 16
-                valid_max: 300
-            custom_type:
-                type: bool
-                description:
-                    de: WU (=True) oder Ecowitt (=False) Protokoll
-                    en: WU (=True) or Ecowitt (=False) protocol
-            custom_enabled:
-                type: bool
-                description:
-                    de: AN/AUS für das benutzerdefinierte Hochladen der Daten
-                    en: ON/OFF of customized data upload
 
 logic_parameters: NONE

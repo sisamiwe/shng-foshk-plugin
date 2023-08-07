@@ -117,7 +117,7 @@ class WebInterface(SmartPluginWebIf):
 
     @cherrypy.expose
     def check_firmware_update(self):
-        self.plugin.check_firmware_update()
+        self.plugin.gateway.get_firmware_update_available()
 
     @cherrypy.expose
     def run_firmware_update(self):

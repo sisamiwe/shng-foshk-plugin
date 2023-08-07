@@ -82,7 +82,7 @@ class Foshk(SmartPlugin):
     Data Items must be defined in ./data_items.py.
     """
 
-    PLUGIN_VERSION = '1.2.0C'
+    PLUGIN_VERSION = '1.2.0D'
 
     def __init__(self, sh):
         """Initializes the plugin"""
@@ -164,7 +164,7 @@ class Foshk(SmartPlugin):
         # add scheduler
         self.scheduler_add('poll_api', self.gateway.get_current_api_data, cycle=self.interface_config.api_data_cycle)
         if self.interface_config.fw_check_cycle > 0:
-            self.scheduler_add('check_fw_update', self.gateway.get_firmware_update_available, cycle=self.interface_config.fw_check_cycle)
+            self.scheduler_add('check_fw_update', self.is_firmware_update_available, cycle=self.interface_config.fw_check_cycle)
 
         # if customer server is used, set parameters accordingly
         if self.use_customer_server:
@@ -355,6 +355,8 @@ class Foshk(SmartPlugin):
         else:
             self.logger.error(f"Error during setting set_usr_path: {result=}")
 
+        return result
+
     def _set_custom_params(self, custom_server_id: str = '', custom_password: str = '', custom_host: str = None, custom_port: int = None, custom_interval: int = None, custom_type: bool = False, custom_enabled: bool = True):
         """
         Set customer parameter for Ecowitt data to receive
@@ -383,6 +385,8 @@ class Foshk(SmartPlugin):
         else:
             self.logger.error(f"Error during setting custom params: {result=}")
 
+        return result
+
     def _select_port_for_tcp_server(self, port: int) -> int:
         """
         Check if default port for tcp server is free and can be used
@@ -407,29 +411,22 @@ class Foshk(SmartPlugin):
     def reboot(self):
         """Reboot device"""
 
-        result = self.gateway.api.reboot()
-        if result == 'SUCCESS' or result == 'NO NEED':
-            self.logger.debug(f"reboot: {result}")
-        else:
-            self.logger.error(f"reboot: {result}")
+        return self.gateway.reboot()
 
     def reset(self):
         """Reset device"""
 
-        result = self.gateway.api.reset()
-        if result == 'SUCCESS' or result == 'NO NEED':
-            self.logger.debug(f"reset: {result}")
-        else:
-            self.logger.error(f"reset: {result}")
+        return self.gateway.reset()
+
+    def is_firmware_update_available(self):
+        """Check, if firmware update is available"""
+
+        return self.gateway.is_firmware_update_available()
 
     def update_firmware(self):
         """Run firmware update"""
 
-        result = self.gateway.api.update_firmware()
-        if result == 'SUCCESS':
-            self.logger.debug(f"firmware_update: {result}")
-        else:
-            self.logger.error(f"firmware_update: {result}")
+        return self.gateway.update_firmware()
 
     @property
     def station_model(self) -> str:
@@ -506,10 +503,13 @@ class InterfaceConfig:
     show_battery: bool = False
 
     # default firmware update check interval in sec
-    fw_check_cycle: int = 86400
+    fw_check_cycle: int = 0
 
     # show availability of firmware update
-    show_fw_update_avail: bool = True
+    show_fw_update_available: bool = False
+
+    # availability of firmware update
+    fw_update_available: bool = False
 
     # log unknown fields
     log_unknown_fields: bool = False
@@ -543,6 +543,10 @@ class InterfaceConfig:
 
     # custom params for data server upload
     custom_params: dict = None
+
+    def __post_init__(self):
+        if self.fw_check_cycle > 0:
+            self.show_fw_update_available = True
 
 
 @dataclass
@@ -1224,7 +1228,7 @@ class GatewayDriver(Gateway):
         self.interface_config = self._plugin_instance.interface_config
         self.api_data_cycle = self.interface_config.api_data_cycle
         self.fw_update_check_cycle = self.interface_config.fw_check_cycle
-        self.show_fw_update_avail = self.interface_config.show_fw_update_avail
+        self.show_fw_update_available = self.interface_config.show_fw_update_available
         ignore_wh40_batt = self.interface_config.ignore_wh40_batt
 
         # now initialize my superclasses
@@ -1375,6 +1379,10 @@ class GatewayDriver(Gateway):
             # add battery warning data field
             self.check_battery(data, self.api.sensors.get_battery_description_data())
 
+        if self.interface_config.show_fw_update_available:
+            # add show_fw_update_available field
+            data[DataPoints.FIRMWARE_UPDATE_AVAILABLE[0]] = self.interface_config.fw_update_available
+
         # add the data to the empty packet
         packet.update(data)
 
@@ -1442,17 +1450,6 @@ class GatewayDriver(Gateway):
 
         return self.api.get_sensor_id()
 
-    def get_firmware_update_available(self) -> bool:
-        """Whether a device firmware update is available or not.
-
-        Return True if a device firmware update is available or False otherwise."""
-        
-        # for Gateways supporting http requests
-        if self.http:
-            return self.http.new_firmware_available()
-
-        return self.check_firmware_update()[0]
-
     def get_calibration(self):
         """Device device calibration data."""
 
@@ -1480,7 +1477,7 @@ class GatewayDriver(Gateway):
     def update_firmware(self):
         """Update the Gateway firmware."""
 
-        response = self.api.set_firmware_upgrade()
+        response = self.api.set_firmware_update()
         return 'SUCCESS' if response[4] == 0 else 'FAIL'
 
     def set_usr_path(self, custom_ecowitt_path, custom_wu_path) -> str:
@@ -1556,6 +1553,22 @@ class GatewayDriver(Gateway):
             else:
                 return False, latest_firmware, []
 
+        # ToDO: return None, if GW is not in Datei
+
+    def is_firmware_update_available(self) -> bool:
+        """Whether a device firmware update is available or not.
+
+        Return True if a device firmware update is available or False otherwise."""
+
+        # for Gateways supporting http requests
+        if self.http:
+            result = self.http.new_firmware_available()
+        # for all other Gateways
+        else:
+            result = self.check_firmware_update()[0]
+
+        self.interface_config.fw_update_available = result
+        return result
 
 class GatewayApi(object):
     """Class to interact with a gateway device via the Ecowitt LAN/Wi-Fi Gateway API.
@@ -2155,21 +2168,22 @@ class GatewayApi(object):
         # now return the parsed response
         return self.parser.parse_read_firmware_version(response)
 
-    def set_firmware_upgrade(self):
+    def set_firmware_update(self):
         """
-        Set Gateway firmware upgrade.
+        Starts Gateway firmware update.
 
         Sends the command to upgrade Gateway firmware version to the API with retries. If the Gateway cannot be contacted a
         GatewayIOError will have been raised by _send_cmd_with_retries() which will be passed through by get_firmware_version(). Any code
         calling get_firmware_version() should be prepared to handle this exception.
         """
+
         if DebugLogConfig.api:
-            self.logger.debug(f"set_firmware_upgrade: Firmware update called for {self.ip_address}:{self.port}")
+            self.logger.debug(f"Firmware update called for {self.ip_address}:{self.port}")
         payload = bytearray()
-        payload.extend(self.ip_address)
+        payload.extend(socket.inet_aton(self.ip_address))
         payload.extend(int_to_bytes(self.port, 2))
         if DebugLogConfig.api:
-            self.logger.debug(f"set_firmware_upgrade: payload={payload}")
+            self.logger.debug(f"payload={payload}")
         return self._send_cmd_with_retries('CMD_WRITE_UPDATE', payload)
 
     def get_sensor_id(self):
@@ -4250,18 +4264,18 @@ class HttpParser(object):
         """extract current firmware version"""
 
         if isinstance(data, dict):
-            _version = data.get('version')
-            if _version:
-                return _version.split(' ')[1]
+            version = data.get('version')
+            if version and isinstance(version, str):
+                return version.split(' ')[1]
 
     @staticmethod
     def parse_new_version(data: dict) -> bool:
         """extract availability of new firmware version"""
 
         if isinstance(data, dict):
-            _new_version = data.get('newVersion')
-            if _new_version:
-                return bool(int(_new_version))
+            new_version = data.get('newVersion')
+            if new_version:
+                return bool(int(new_version))
 
     @staticmethod
     def batt_int(batt) -> int:
