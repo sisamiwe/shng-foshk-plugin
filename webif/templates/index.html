@@ -61,9 +61,9 @@
 				shngInsertText (item+'_last_update', objResponse['item_values'][item]['last_update'], 'maintable');
 				shngInsertText (item+'_last_change', objResponse['item_values'][item]['last_change'], 'maintable');
             }
-            for (var entry in objResponse['api']) {
-				shngInsertText (entry+'_api_data_value', objResponse['api'][entry], 'datatable');
-                shngInsertText (entry+'_tcp_data_value', objResponse['tcp'][entry], 'datatable');
+            for (var entry in objResponse) {
+				shngInsertText (entry+'_api_data_value', objResponse[entry]['api'], 'datatable');
+                shngInsertText (entry+'_post_data_value', objResponse[entry]['post'], 'datatable');
 			}
 		}
 	}
@@ -166,7 +166,7 @@
 		<tr>
 			<th></th>
 			<th>{{ _('Key') }}</th>
-			<th style="text-align: right">{{ _('TCP Value') }}</th>
+			<th style="text-align: right">{{ _('POST Value') }}</th>
 			<th style="text-align: right">{{ _('API Value') }}</th>
 		</tr>
 	</thead>
@@ -175,7 +175,7 @@
 			<tr>
 				<td></td>
 				<td class="py-1">{{ entry }}</td>
-				<td class="py-1" id="{{ entry }}_tcp_data_value" style="text-align: right">.{{ p.data_dict[entry]['tcp'] }}</td>
+				<td class="py-1" id="{{ entry }}_post_data_value" style="text-align: right">.{{ p.data_dict[entry]['post'] }}</td>
 				<td class="py-1" id="{{ entry }}_api_data_value" style="text-align: right">.{{ p.data_dict[entry]['api'] }}</td>
 			</tr>
 		{% endfor %}

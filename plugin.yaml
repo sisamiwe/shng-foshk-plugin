@@ -11,7 +11,7 @@ plugin:
     keywords: froggit ecowitt weather station
 #    support: https://knx-user-forum.de/forum/supportforen/smarthome-py
 
-    version: 1.2.0D                  # Plugin version (must match the version specified in __init__.py)
+    version: 1.2.1                  # Plugin version (must match the version specified in __init__.py)
     sh_minversion: 1.9.4            # minimum shNG version to use this plugin
 #    sh_maxversion:                 # maximum shNG version to use this plugin (leave empty if latest)
 #    py_minversion:                 # minimum Python version to use for this plugin
@@ -63,14 +63,35 @@ parameters:
         default: true
         description:
             de: Erzeugt ein separates Datenfeld für eine Batteriewarnung.
-            en: Creates a separate Data field für battery warning
+            en: Creates a separate Data field for battery warning
 
     Sensor_Warning:
         type: bool
         default: true
         description:
             de: Erzeugt ein separates Datenfeld für eine Sensorwarnung.
-            en: Creates a separate Data field für sensor warning
+            en: Creates a separate Data field for sensor warning
+
+    Weatherstation_Warning:
+        type: bool
+        default: true
+        description:
+            de: Erzeugt ein separates Datenfeld für eine Warnung der Wetterstation.
+            en: Creates a separate Data field for warning of weather station
+
+    Storm_Warning:
+        type: bool
+        default: true
+        description:
+            de: Erzeugt ein separates Datenfeld für eine Sturmwarnung.
+            en: Creates a separate Data field for storm warning
+
+    Leakage_Warning:
+        type: bool
+        default: true
+        description:
+            de: Erzeugt ein separates Datenfeld für eine Leckagewarnung.
+            en: Creates a separate Data field for leakage warning
 
     Use_of_WH32:
         type: bool
@@ -103,7 +124,12 @@ item_attributes:
             en: Data attribute of Foshk device
         valid_list:
         # NOTE: valid_list is automatically created by using datapoints.py
-            - absbarometer
+            - air_pressure_abs
+            - air_pressure_rel
+            - air_pressure_rel_diff_1h
+            - air_pressure_rel_diff_3h
+            - air_pressure_rel_trend_1h
+            - air_pressure_rel_trend_3h
             - battery_warning
             - client_ip
             - cloud_ceiling
@@ -144,6 +170,7 @@ item_attributes:
             - leak2
             - leak3
             - leak4
+            - leakage_warning
             - light
             - lightningcount
             - lightningdettime
@@ -200,7 +227,6 @@ item_attributes:
             - rain_week
             - rain_year
             - reboot
-            - relbarometer
             - reset
             - runtime
             - sensor_warning
@@ -238,6 +264,11 @@ item_attributes:
             - soiltemp16
             - solarradiation
             - storm_warning
+            - sun_duration_day
+            - sun_duration_hour
+            - sun_duration_month
+            - sun_duration_week
+            - sun_duration_year
             - temp01
             - temp02
             - temp03
@@ -257,6 +288,7 @@ item_attributes:
             - temp17
             - thunderstorm_warning
             - uvi
+            - weather_forecast_txt
             - weather_txt
             - weatherstation_warning
             - wh24_batt
@@ -389,6 +421,11 @@ item_attributes:
         valid_list_description:
         # NOTE: valid_list_description is automatically created by using datapoints.py
             - Absoluter Luftdruck
+            - Relativer Luftdruck
+            - Unterschied im Luftdruck innerhalb der letzten Stunde *Berechnung im Plugin
+            - Unterschied im Luftdruck innerhalb der letzten 3 Stunden *Berechnung im Plugin
+            - Trend des Luftdrucks innerhalb der letzten Stunde *Berechnung im Plugin
+            - Trend des Luftdrucks innerhalb der letzten 3 Stunden *Berechnung im Plugin
             - Batteriewarnung
             - Client IP
             - Wolkenhöhe *Berechnung im Plugin
@@ -429,6 +466,7 @@ item_attributes:
             - Leckage
             - Leckage
             - Leckage
+            - Leckagewarning
             - Helligkeit
             - kumulierte Anzahl der Blitze des Tages
             - Zeitpunkt des Blitzes
@@ -485,7 +523,6 @@ item_attributes:
             - kumulierte Regenmenge der aktuellen Woche
             - kumulierte Regenmenge des aktuellen Jahres
             - Reboot
-            - Relativer Luftdruck
             - Reset
             - Laufzeit des Gateways
             - Sensorwarnung
@@ -523,6 +560,11 @@ item_attributes:
             - Bodentemperatur
             - UV Strahlung
             - Sturmwarnung
+            - Sonnenstunden am aktuellen Tag *Berechnung im Plugin
+            - Sonnenminuten in der aktuellen Stunde *Berechnung im Plugin
+            - Sonnenstunden im aktuellen Monat *Berechnung im Plugin
+            - Sonnenstunden in der aktuellen Woche *Berechnung im Plugin
+            - Sonnenstunden im aktuellen Jahr *Berechnung im Plugin
             - Temperatur
             - Temperatur
             - Temperatur
@@ -542,6 +584,7 @@ item_attributes:
             - Temperatur am CO2 Sensor
             - Gewitterwarnung
             - UV-Index
+            - Beschreibung des Wetterausblicks als Text *Berechnung im Plugin
             - Beschreibung des aktuellen Wetters als Text *Berechnung im Plugin
             - Warnung der Wetterstation
             - Batteriestatus für Temperatur- und Feuchtigkeitssensor Außen WH24
@@ -817,9 +860,9 @@ item_structs:
         year:
             type: num
             foshk_attribute: p_rain_year
-        total:
-            type: num
-            foshk_attribute: p_rain_totals
+#        total:
+#            type: num
+#            foshk_attribute: p_rain_totals
         reset:
             day:
                 type: num
@@ -904,10 +947,10 @@ item_structs:
             foshk_attribute: inhumid
         absbarometer:                  # absoluter Luftdruck
             type: num
-            foshk_attribute: absbarometer
+            foshk_attribute: air_pressure_abs
         relbarometer:                  # relativer Luftdruck
             type: num
-            foshk_attribute: relbarometer
+            foshk_attribute: air_pressure_rel
         indewpt:                       # Taupunkt
             type: num
             foshk_attribute: indewpt
@@ -947,12 +990,12 @@ item_structs:
     pressure:
         pressure_rel:
             type: num
-            foshk_attribute: relbarometer
+            foshk_attribute: air_pressure_rel
             database: yes
 
         pressure_abs:
             type: num
-            foshk_attribute: absbarometer
+            foshk_attribute: air_pressure_abs
             database: yes
 
     weather:
@@ -1005,7 +1048,7 @@ item_structs:
             foshk_attribute: p_rain_event
         p_rain_gain0:
             type: num
-            foshk_attribute: p_rain_gain
+            foshk_attribute: p_rain_gain0
         p_rain_gain1:
             type: num
             foshk_attribute: p_rain_gain1

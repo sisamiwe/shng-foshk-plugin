@@ -24,13 +24,14 @@
 #
 #########################################################################
 
+import ruamel.yaml
 from dataclasses import dataclass, fields
 
 
 @dataclass
 class MasterKeys:
     # MASTER KEYS
-    ABSBARO = 'absbarometer'
+    ABSBARO = 'air_pressure_abs'
     ABSHUM = 'abshum'
     BATTERY_EXTENTION = '_batt'
     CHANNEL = 'ch'
@@ -67,7 +68,7 @@ class MasterKeys:
     RAIN_RESET_YEAR = f'{RAIN}_reset_year'
     RAIN_RESET_DAY = f'{RAIN}_reset_day'
     RAIN_RESET_WEEK = f'{RAIN}_reset_week'
-    RELBARO = 'relbarometer'
+    RELBARO = 'air_pressure_rel'
     SEPARATOR = '_'
     SIGNAL_EXTENTION = '_sig'
     SOILMOISTURE = 'soilmoist'
@@ -101,6 +102,7 @@ class MasterKeys:
     WS80 = 'ws80'
     WS90 = 'ws90'
     FW_UPD_AVAIL = 'firmware_update_available'
+    SUN_DURATION = 'sun_duration'
 
 
 @dataclass
@@ -286,6 +288,7 @@ class DataPoints:
     STORM_WARNING: tuple = ('storm_warning', 'Sturmwarnung', 'True/False')
     THUNDERSTORM_WARNING: tuple = ('thunderstorm_warning', 'Gewitterwarnung', 'True/False')
     WEATHERSTATION_WARNING: tuple = ('weatherstation_warning', 'Warnung der Wetterstation', 'True/False')
+    LEAKAGE_WARNING: tuple = ('leakage_warning', 'Leckagewarning', 'True/False')
     FIRMWARE_UPDATE_AVAILABLE: tuple = (MasterKeys.FW_UPD_AVAIL, 'Firmwareupdate verfügbar', 'True/False')
     # FIRMWARE_UPDATE_TEXT: tuple = ('firmware_update_text', 'Beschreibung der Änderungen in der Firmware', '-')
     CLOUD_CEILING: tuple = ('cloud_ceiling', 'Wolkenhöhe *Berechnung im Plugin', 'm')
@@ -293,11 +296,23 @@ class DataPoints:
     WINDSPEED_BFT: tuple = ('windspeed_bft', 'Windgeschwindigkeit auf der Beaufort Skala *Berechnung im Plugin', '-')
     WINDSPEED_BFT_TEXT: tuple = ('windspeed_bft_txt', 'Windgeschwindigkeit auf der Beaufort Skala als Text *Berechnung im Plugin', '-')
     WEATHER_TEXT: tuple = ('weather_txt', 'Beschreibung des aktuellen Wetters als Text *Berechnung im Plugin', '-')
+    WEATHER_FORECAST_TEXT: tuple = ('weather_forecast_txt', 'Beschreibung des Wetterausblicks als Text *Berechnung im Plugin', '-')
     WINDSPEED_AVG10M: tuple = ('windspeed_avg10m', 'Durchschnittliche Windgeschwindigkeit der letzten 10min *Berechnung im Plugin', 'm/s')
     WINDDIR_AVG10M: tuple = ('winddir_avg10m', 'Durchschnittliche Windrichtung der letzten 10min *Berechnung im Plugin', '360°')
     GUSTSPEED_AVG10M: tuple = ('gustspeed_avg10m', 'Durchschnittliche Windböen der letzten 10min *Berechnung im Plugin', 'm/s')
     PIEZO_RAIN: tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN}', 'Regenmenge', 'mm')
     RAIN: tuple = (MasterKeys.RAIN, 'Regenmenge', 'mm')
+    AIR_PRESSURE_REL_DIFF_xh: tuple = (f"{MasterKeys.RELBARO}_diff", None, None)
+    AIR_PRESSURE_REL_DIFF_1h: tuple = (f"{AIR_PRESSURE_REL_DIFF_xh[0]}_1h", 'Unterschied im Luftdruck innerhalb der letzten Stunde *Berechnung im Plugin', 'hPa')
+    AIR_PRESSURE_REL_DIFF_3h: tuple = (f"{AIR_PRESSURE_REL_DIFF_xh[0]}_3h", 'Unterschied im Luftdruck innerhalb der letzten 3 Stunden *Berechnung im Plugin', 'hPa')
+    AIR_PRESSURE_REL_TREND_xh: tuple = (f"{MasterKeys.RELBARO}_trend", None, None)
+    AIR_PRESSURE_REL_TREND_1h: tuple = (f"{AIR_PRESSURE_REL_TREND_xh[0]}_1h", 'Trend des Luftdrucks innerhalb der letzten Stunde *Berechnung im Plugin', '-')
+    AIR_PRESSURE_REL_TREND_3h: tuple = (f"{AIR_PRESSURE_REL_TREND_xh[0]}_3h", 'Trend des Luftdrucks innerhalb der letzten 3 Stunden *Berechnung im Plugin', '-')
+    SUN_DURATION_HOUR: tuple = (f"{MasterKeys.SUN_DURATION}_hour", 'Sonnenminuten in der aktuellen Stunde *Berechnung im Plugin', 'min')
+    SUN_DURATION_DAY: tuple = (f"{MasterKeys.SUN_DURATION}_day", 'Sonnenstunden am aktuellen Tag *Berechnung im Plugin', 'h')
+    SUN_DURATION_WEEK: tuple = (f"{MasterKeys.SUN_DURATION}_week", 'Sonnenstunden in der aktuellen Woche *Berechnung im Plugin', 'h')
+    SUN_DURATION_MONTH: tuple = (f"{MasterKeys.SUN_DURATION}_month", 'Sonnenstunden im aktuellen Monat *Berechnung im Plugin', 'h')
+    SUN_DURATION_YEAR: tuple = (f"{MasterKeys.SUN_DURATION}_year", 'Sonnenstunden im aktuellen Jahr *Berechnung im Plugin', 'h')
 
 
 @dataclass
@@ -386,20 +401,9 @@ META_ATTRIBUTES = [DataPoints.MODEL,
 POST_ATTRIBUTES = [DataPoints.RUNTIME]
 
 
-FW_UPDATE_URL = 'http://download.ecowitt.net/down/filewave?v=FirwaveReadme.txt'.replace("\"", "")
-
-
-if __name__ == '__main__':
-
-    import ruamel.yaml
-
-    FILENAME_PLUGIN = 'plugin.yaml'
-    attribute = 'foshk_attribute'
-    data_points = DataPoints()
-    sensor_keys = SensorKeys()
-    attributs_dict = dict()
-
-    # Iterate over the attributes of the dataclass DataPoints and create dict
+# methods for automated update of files
+def get_attributs_dict_sorted():
+    _attributs_dict = dict()
     for field in fields(data_points):
         field_name = field.name
         field_value = getattr(data_points, field_name)
@@ -409,7 +413,7 @@ if __name__ == '__main__':
 
         # Wenn Beschreibung, dann zum Dict hinzu
         if fosk_attr is not None and fosk_attr_desc is not None:
-            attributs_dict.update({fosk_attr: (fosk_attr_desc, fosk_attr_unit)})
+            _attributs_dict.update({fosk_attr: (fosk_attr_desc, fosk_attr_unit)})
 
     # Iterate over the attributes of the dataclass SensorKeys and update dict
     for field in fields(sensor_keys):
@@ -420,22 +424,26 @@ if __name__ == '__main__':
 
         # Wenn Beschreibung, dann zum Dict hinzu
         if sensor_short is not None and sensor_desc is not None:
-            attributs_dict.update({f"{sensor_short}{MasterKeys.BATTERY_EXTENTION}": (f"Batteriestatus für {sensor_desc}", '-')})
-            attributs_dict.update({f"{sensor_short}{MasterKeys.SIGNAL_EXTENTION}": (f"Signalstärke für {sensor_desc}", '1-6')})
+            _attributs_dict.update({f"{sensor_short}{MasterKeys.BATTERY_EXTENTION}": (f"Batteriestatus für {sensor_desc}", '-')})
+            _attributs_dict.update({f"{sensor_short}{MasterKeys.SIGNAL_EXTENTION}": (f"Signalstärke für {sensor_desc}", '1-6')})
 
     # sort dict by key
-    attributs_dict_sorted = dict(sorted(attributs_dict.items()))
+    return dict(sorted(_attributs_dict.items()))
+
+
+def update_plugin_yaml_attributes():
+    print(f"A) Start updating Attribute '{attribute}' in {FILENAME_PLUGIN}!")
 
     # interate over dict and create strings
-    valid_list_str =         """        # NOTE: valid_list is automatically created by using datapoints.py"""
-    valid_list_desc_str =    """        # NOTE: valid_list_description is automatically created by using datapoints.py"""
+    valid_list_str = """        # NOTE: valid_list is automatically created by using datapoints.py"""
+    valid_list_desc_str = """        # NOTE: valid_list_description is automatically created by using datapoints.py"""
 
-    for key in attributs_dict_sorted:
+    for key in attributes_dict:
         valid_list_str = f"""{valid_list_str}\n\
-              - {key!r:<40}"""
+                  - {key!r:<40}"""
 
         valid_list_desc_str = f"""{valid_list_desc_str}\n\
-              - {attributs_dict_sorted[key][0]:<}"""
+                  - {attributes_dict[key][0]:<}"""
 
     valid_list_desc_str = f"""{valid_list_desc_str}\n\r"""
 
@@ -455,22 +463,53 @@ if __name__ == '__main__':
 
         with open(FILENAME_PLUGIN, 'w', encoding="utf-8") as f:
             yaml.dump(data, f)
-        print(f"Successfully updated Attribute '{attribute}' in {FILENAME_PLUGIN}!")
+        print(f"   Successfully updated Attribute '{attribute}' in {FILENAME_PLUGIN}!")
     else:
-        print(f"Attribute '{attribute}' not defined in {FILENAME_PLUGIN}!")
+        print(f"   Attribute '{attribute}' not defined in {FILENAME_PLUGIN}!")
 
 
+def check_plugin_yaml_structs():
+    # check structs for wrong attributes
+    print()
+    print(f'B) Checking {attribute} in structs defined in {FILENAME_PLUGIN} ')
+
+    # open plugin.yaml and update
+    yaml = ruamel.yaml.YAML()
+    yaml.indent(mapping=4, sequence=4, offset=4)
+    yaml.width = 200
+    yaml.allow_unicode = True
+    yaml.preserve_quotes = False
+    with open(FILENAME_PLUGIN, 'r', encoding="utf-8") as f:
+        data = yaml.load(f)
+
+    structs = data.get('item_structs')
+
+    def get_all_keys(d):
+        for key, value in d.items():
+            yield key, value
+            if isinstance(value, dict):
+                yield from get_all_keys(value)
+
+    if structs:
+        for attr, attr_val in get_all_keys(structs):
+            if attr == attribute:
+                if attr_val not in attributes_dict.keys():
+                    print(f"    - {attr_val} not a valid value for {attribute}")
+
+    print(f'   Check complete.')
+
+
+def update_user_doc():
     # Update user_doc.rst
-    DOC_FILE_NAME = 'user_doc.rst'
+    print()
+    print(f'C) Start updating Foshk-Attributes and descriptions in {DOC_FILE_NAME}!"')
+    attribute_list = [
+        "Dieses Kapitel wurde automatisch durch Ausführen des Skripts in der Datei 'datapoints.py' erstellt.\n", "\n",
+        "Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: Attribute: Beschreibung [Einheit]\n",
+        "\n"]
 
-    attribute_list = []
-    attribute_list.append("Dieses Kapitel wurde automatisch durch Ausführen des Skripts in der Datei 'datapoints.py' erstellt.\n")
-    attribute_list.append("\n")
-    attribute_list.append("Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: Attribute: Beschreibung [Einheit]\n")
-    attribute_list.append("\n")
-
-    for key in attributs_dict_sorted:
-        attribute_list.append(f"- {key}: {attributs_dict_sorted[key][0]} [{attributs_dict_sorted[key][1]}]\n")
+    for key in attributes_dict:
+        attribute_list.append(f"- {key}: {attributes_dict[key][0]} [{attributes_dict[key][1]}]\n")
         attribute_list.append("\n")
 
     with open(DOC_FILE_NAME, 'r', encoding='utf-8') as file:
@@ -491,4 +530,23 @@ if __name__ == '__main__':
         for line in new_lines:
             file.write(line)
 
-    print(f"Successfully updated Foshk-Attributes in {DOC_FILE_NAME}!")
+    print(f"   Successfully updated Foshk-Attributes in {DOC_FILE_NAME}!")
+
+
+if __name__ == '__main__':
+
+    FILENAME_PLUGIN = 'plugin.yaml'
+    DOC_FILE_NAME = 'user_doc.rst'
+    attribute = 'foshk_attribute'
+    data_points = DataPoints()
+    sensor_keys = SensorKeys()
+    attributes_dict = get_attributs_dict_sorted()
+
+    print(f'Start automated update and check of {FILENAME_PLUGIN} and User Docu.')
+    print('-------------------------------------------------------------')
+
+    update_plugin_yaml_attributes()
+
+    check_plugin_yaml_structs()
+
+    update_user_doc()

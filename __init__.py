@@ -28,23 +28,10 @@
 #########################################################################
 # ToDo Extension
 # ToDo: thunderstorm_warning
-# ToDo: weatherstation_warning
-# ToDo: storm_warning
-# ToDo: weather forecast using get_weather_forecast
 # ToDo: set CMD_WRITE_CALIBRATION
 # ToDo: set CMD_WRITE_RAINDATA
 # ToDo: set CMD_WRITE_GAIN
-# ToDo: Sonnenstunden
-# ToDo: Luftdrucktrend
-#
-# ToDo Bugfix:
-# ToDo: correct datetime of packets to timezone
-# ToDo: Decode Light in ApiParser liefert falschen Wert
-# ToDo: decode for UV / solarradiation is not correct. TCP value is correct
-# ToDo: Check determination of datetime in parse_read_ssss
-# ToDo: Harmonize datetime field to be local instead of UTC in parse_live_data TCP
-# ToDo: Harmonize field 'raingain': {'tcp': 62.0, 'api': 1.0}  in parse_live_data TCP
-# ToDo: add field api 'raintotals': {'tcp': 465.91}  in parse_live_data TCP
+# ToDo: Wert für UV / solar radiation vom POST ist genauer als der, über API; ggf. überschreiben des API Wertes
 ########################################
 
 # API: https://osswww.ecowitt.net/uploads/20220407/WN1900%20GW1000,1100%20WH2680,2650%20telenet%20v1.6.4.pdf
@@ -54,8 +41,9 @@ from lib.model.smartplugin import SmartPlugin
 from lib.utils import Utils
 from lib.shtime import Shtime
 from .webif import WebInterface
-from .datapoints import DataPoints, MasterKeys, SensorKeys, META_ATTRIBUTES, POST_ATTRIBUTES, FW_UPDATE_URL
+from .datapoints import DataPoints, MasterKeys, SensorKeys, META_ATTRIBUTES, POST_ATTRIBUTES
 
+import os
 import re
 import socket
 import struct
@@ -66,12 +54,14 @@ import math
 import requests
 import configparser
 import socketserver
+import pickle
 
 from collections import deque
 from typing import Union
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from json import JSONDecodeError
+from math import sin, cos, pi, radians, degrees, atan2
 from dataclasses import dataclass
 import urllib.parse as urlparse
 
@@ -82,7 +72,7 @@ class Foshk(SmartPlugin):
     Data Items must be defined in ./data_items.py.
     """
 
-    PLUGIN_VERSION = '1.2.0D'
+    PLUGIN_VERSION = '1.2.1'
 
     def __init__(self, sh):
         """Initializes the plugin"""
@@ -92,12 +82,11 @@ class Foshk(SmartPlugin):
 
         # define variables and attributes
         self.data_queue = queue.Queue()                                    # Queue containing all polled data
-        self.data_dict = dict()                                            # dict to hold all live data gotten from weather station gateway via tcp, api and http
+        self.data_dict = dict()                                            # dict to hold all live data gotten from weather station gateway via post, api and http
         self.gateway_connected = False                                     # is gateway connected; driver established
         self.gateway = None                                                # driver object
         self.alive = False                                                 # plugin alive
-        self.altitude = self.get_sh()._elev                                # altitude of installation used from shNG setting
-        self.language = self.get_sh().get_defaultlanguage()                # current shNG language (= 'de')
+        self.shtime = Shtime.get_instance()
 
         # get the parameters for the plugin (as defined in metadata plugin.yaml):
         gateway_address = self.get_parameter_value('Gateway_IP')
@@ -128,8 +117,15 @@ class Foshk(SmartPlugin):
                             'fw_check_crontab': fw_check_crontab,
                             'show_battery_warning': self.get_parameter_value('Battery_Warning'),
                             'show_sensor_warning': self.get_parameter_value('Sensor_Warning'),
+                            'show_storm_warning': self.get_parameter_value('Storm_Warning'),
+                            'show_weatherstation_warning': self.get_parameter_value('Weatherstation_Warning'),
+                            'show_leakage_warning': self.get_parameter_value('Leakage_Warning'),
                             'use_wh32': self.get_parameter_value('Use_of_WH32'),
                             'ignore_wh40_batt': self.get_parameter_value('Ignore_WH40_Battery'),
+                            'lat': self.get_sh()._lat,
+                            'lon': self.get_sh()._lon,
+                            'alt': self.get_sh()._elev,
+                            'lang': self.get_sh().get_defaultlanguage(),
                             }
 
         # get parameters for TCP Server for HTTP Post
@@ -156,7 +152,7 @@ class Foshk(SmartPlugin):
         try:
             self.logger.debug(f"Start interrogating.....")
             self.gateway = GatewayDriver(plugin_instance=self)
-            self.logger.debug(f"Interrogating {self.gateway.model} at {self.gateway.ip_address}:{self.gateway.port}")
+            self.logger.debug(f"Interrogating {self.gateway.gateway_model} at {self.gateway.ip_address}:{self.gateway.port}")
             self.gateway_connected = True
         except GatewayIOError as e:
             self.logger.error(f"Unable to connect to device: {e}")
@@ -204,6 +200,8 @@ class Foshk(SmartPlugin):
         if self.use_customer_server:
             self.gateway.tcp.stop_server()
             self.gateway.tcp.shutdown()
+
+        self.gateway.save_all_relevant_data()
 
     def parse_item(self, item):
         """
@@ -280,7 +278,7 @@ class Foshk(SmartPlugin):
         """Generates as paket with meta information of connected gateway and starts item update"""
 
         data = dict()
-        data[DataPoints.MODEL[0]] = self.station_model
+        data[DataPoints.MODEL[0]] = self.gateway_model
         data[DataPoints.FREQ[0]] = self.system_parameters.get('frequency')
         data[DataPoints.FIRMWARE[0]] = self.firmware_version
         if DebugLogConfig.main_class:
@@ -418,6 +416,42 @@ class Foshk(SmartPlugin):
                 # self.logger.debug(f"select_port_for_tcp_server: Port {port} can be used")
                 return port
 
+    def save_pickle(self, filename: str, data) -> None:
+        """Saves received data as pickle to given file"""
+
+        # save pickle
+        if data and len(data) > 0:
+            self.logger.debug(f"Start writing data to {filename}")
+            path = f"/plugins/{self.get_shortname()}/data"
+            filename = f"{os.getcwd()}/{path}/{filename}.pkl"
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
+            try:
+                with open(filename, "wb") as output:
+                    try:
+                        pickle.dump(data, output, pickle.HIGHEST_PROTOCOL)
+                        self.logger.debug(f"Successfully wrote data to {filename}")
+                    except:
+                        self.logger.debug(f"Unable to write data to {filename}")
+                        pass
+            except OSError as e:
+                self.logger.debug(f"Unable to write data to {filename}: {e}")
+                pass
+
+    def read_pickle(self, filename: str):
+
+        path = f"/plugins/{self.get_shortname()}/data"
+        filename = f"{os.getcwd()}/{path}/{filename}.pkl"
+
+        if os.path.exists(filename):
+            with open(filename, 'rb') as data:
+                try:
+                    data = pickle.load(data)
+                    self.logger.debug(f"Successfully read data from {filename}")
+                    return data
+                except Exception as e:
+                    self.logger.debug(f"Unable to read data from {filename}: {e}")
+                    return None
+
     #############################################################
     #  Public Methods
     #############################################################
@@ -443,8 +477,8 @@ class Foshk(SmartPlugin):
         return self.gateway.update_firmware()
 
     @property
-    def station_model(self) -> str:
-        return self.gateway.model
+    def gateway_model(self) -> str:
+        return self.gateway.gateway_model
 
     @property
     def firmware_version(self) -> str:
@@ -537,6 +571,15 @@ class InterfaceConfig:
     # create a separate field for summarized sensor warning
     show_sensor_warning: bool = False
 
+    # create a separate field for strom warning
+    show_storm_warning: bool = False
+
+    # create a separate field for weatherstation warning
+    show_weatherstation_warning: bool = False
+
+    # create a separate field for leakage warning
+    show_leakage_warning: bool = False
+
     # is WH32 in use
     use_wh32: bool = True
 
@@ -561,6 +604,14 @@ class InterfaceConfig:
     # custom params for data server upload
     custom_params: dict = None
 
+    # postion of local installation
+    lat: float = None
+    lon: float = None
+    alt: float = None
+
+    # language of installation
+    lang: str = 'de'
+
     def __post_init__(self):
         if self.fw_check_crontab is not None:
             self.show_fw_update_available = True
@@ -575,6 +626,31 @@ class DebugLogConfig:
     api: bool = True
     tcp: bool = True
     http: bool = True
+
+
+@dataclass
+class Constants:
+
+    FW_UPDATE_URL: str = 'http://download.ecowitt.net/down/filewave?v=FirwaveReadme.txt'.replace("\"", "")
+
+    STORM_WARNDIFF_1H: float = 1.75         # Druckunterschied in 1h zur Auslösung der Sturmwarnung: 1.75hPa
+    STORM_WARNDIFF_3H: float = 3.75         # Druckunterschied in 3h zur Auslösung der Sturmwarnung: 3.75hPa
+    STORM_EXPIRE: int = 60                # Auflauf der Sturmwarnung: 60 Minuten
+    TSTORM_WARNCOUNT: int = 1             # Auslösen der Gewitterwarnung nach: 1 Blitz
+    TSTORM_WARNDIST: int = 30             # Auslösen der Gewitterwarnung bei Gewitterabstand: 30km
+    TSTORM_EXPIRE: int = 15               # Auflauf der Gewitterwarnung: 15 Minuten
+    CO2_WARNLEVEL: int = 1200             # Auslösen der CO2 Warnung: ab 1200
+    SUN_MIN: float = 0
+    SUN_COEF: float = 0.8                   # Sonnencoeffizient
+
+    MAGNUS_COEFFICIENTS = dict(
+        positive=dict(a=7.5, b=17.368, c=238.88),
+        negative=dict(a=7.6, b=17.966, c=247.15),
+    )
+    KELVIN = 273.15                         # 0K = -273.15°C
+    MW = 18.016                             # Molekulargewicht des Wasserdampfes in kg/kmol
+    RS = 8314.3                             # universelle Gaskonstante in J/(kmol*K)
+    S2B = 126.7                             # 1W/m² = 126.7 lux
 
 
 # ============================================================================
@@ -610,6 +686,10 @@ class UnknownHttpCommand(Exception):
 class Gateway(object):
     """Class containing common properties and self-calculated data based on received data"""
 
+    PICKLE_FILENAME_AIRPRESSURE_3H = 'foshk_air_pressure_3h'
+    PICKLE_FILENAME_AIRPRESSURE_LAST = 'foshk_air_pressure_last'
+    PICKLE_FILENAME_SUNTIME = 'foshk_sun_time'
+
     def __init__(self, plugin_instance):
         """Initialise a Gateway object."""
 
@@ -623,11 +703,12 @@ class Gateway(object):
         self.sensor_warning = self.interface_config.show_sensor_warning
         self.battery_warning = self.interface_config.show_battery_warning
 
-        # set the language property to the global language
-        self.language = self._plugin_instance.language
-
-        # create deque to hold 10 minutes of wind speed, wind direction and windgust
-        self.wind_avg10m = deque(maxlen=(int(10*60/int(self.interface_config.api_data_cycle))))
+        # define data structures
+        self.pickle_data_validity_time = 600                                                                # seconds after which the data saved in pickle are not valid anymore
+        self.wind_avg10m = deque(maxlen=(int(10 * 60 / self.interface_config.api_data_cycle)))              # deque to hold 10 minutes of wind speed, wind direction and windgust
+        self.pressure_3h = self._init_pressure_3h()                                                         # deque to hold air pressure date
+        self.pressure_last = self._init_pressure_last()                                                     # dict to hold last air_pressure_values
+        self.sun_time = self._init_sun_time_dict()                                                          # dict to hold sun time data
 
         # all found sensors since beginning of plugin
         self.sensors_all = []
@@ -635,7 +716,7 @@ class Gateway(object):
         # sensors, that were missed with count of cycles
         self.sensors_missed = {}
 
-        # initialise last lightning count and last rain properties
+        # initialise last lightning count, last rain, etc properties
         self.last_lightning = None
         self.last_rain = None
         self.piezo_last_rain = None
@@ -643,6 +724,89 @@ class Gateway(object):
         self.rain_total_field = None
         self.piezo_rain_mapping_confirmed = False
         self.piezo_rain_total_field = None
+        self.storm_warning = None
+        self.storm_time = None
+        self.storm_warning_start_time = None
+        self.leakage_warning = None
+
+    def _init_pressure_3h(self):
+        """Try to load data from pickle. if not successful create new empty deque"""
+
+        raw_data = self._plugin_instance.read_pickle(self.PICKLE_FILENAME_AIRPRESSURE_3H)
+        if isinstance(raw_data, dict):
+            data = raw_data.get('data')
+            stop_time = raw_data.get('stop_time')
+        else:
+            data = None
+            stop_time = None
+
+        if stop_time and (int(time.time()) - stop_time) > self.pickle_data_validity_time:
+            self.logger.info("Saved pressure data from pickle are expired. Start from scratch.")
+            data = None
+
+        if data and isinstance(data, deque):
+            if data.maxlen == int(3 * 3600 / self.interface_config.api_data_cycle):
+                return data
+
+        self.logger.info("Unable to load pressure data from pickle. Start with empty deque.")
+        return deque(maxlen=(int(3 * 3600 / self.interface_config.api_data_cycle)))
+
+    def _init_pressure_last(self):
+        """Try to load data from pickle. if not successful create new dict"""
+
+        raw_data = self._plugin_instance.read_pickle(self.PICKLE_FILENAME_AIRPRESSURE_LAST)
+        if isinstance(raw_data, dict):
+            data = raw_data.get('data')
+            stop_time = raw_data.get('stop_time')
+        else:
+            data = None
+            stop_time = None
+
+        if stop_time and (int(time.time()) - stop_time) > self.pickle_data_validity_time:
+            self.logger.info("Saved pressure data from pickle are expired. Start from scratch.")
+            data = None
+
+        if data and isinstance(data, dict) and 'diff' in data and 'trend' in data:
+            return data
+
+        self.logger.info("Unable to load last pressure data from pickle. Start with empty dict.")
+        return {'diff': {}, 'trend': {}}
+
+    def _init_sun_time_dict(self):
+        """Try to load data from pickle. if not successful create new dict"""
+
+        raw_data = self._plugin_instance.read_pickle(self.PICKLE_FILENAME_SUNTIME)
+        if isinstance(raw_data, dict):
+            data = raw_data.get('data')
+            stop_time = raw_data.get('stop_time')
+        else:
+            data = None
+            stop_time = None
+
+        if stop_time and (int(time.time()) - stop_time) > self.pickle_data_validity_time:
+            self.logger.info("Saved pressure data from pickle are expired. Start from scratch.")
+            data = None
+
+        if data and isinstance(data, dict):
+            return data
+
+        self.logger.info("Unable to load sun_time data from pickle. Start with empty dict.")
+        ts = int(time.time())
+        year = self._plugin_instance.shtime.current_year(offset=0)
+        month = self._plugin_instance.shtime.current_month(offset=0)
+        week = self._plugin_instance.shtime.calendar_week(offset=0)
+        day = self._plugin_instance.shtime.current_day(offset=0)
+        hour = self._plugin_instance.shtime.now().hour
+        start_value = 0
+        sun_times = {'hour': (hour, start_value), 'day': (day, start_value), 'week': (week, start_value), 'month': (month, start_value), 'year': (year, start_value), 'last': (ts, start_value)}
+        return sun_times
+
+    def save_all_relevant_data(self):
+
+        stop_time = int(time.time())
+        self._plugin_instance.save_pickle(self.PICKLE_FILENAME_AIRPRESSURE_3H, {'data': self.pressure_3h, 'stop_time': stop_time})
+        self._plugin_instance.save_pickle(self.PICKLE_FILENAME_AIRPRESSURE_LAST, {'data': self.pressure_last, 'stop_time': stop_time})
+        self._plugin_instance.save_pickle(self.PICKLE_FILENAME_SUNTIME, {'data': self.sun_time, 'stop_time': stop_time})
 
     def add_temp_data(self, data: dict) -> None:
         """
@@ -689,10 +853,10 @@ class Gateway(object):
         if DataPoints.WINDSPEED[0] in data:
             windspeed_bft = env.ms_to_bft(data[DataPoints.WINDSPEED[0]])
             data[DataPoints.WINDSPEED_BFT[0]] = windspeed_bft
-            data[DataPoints.WINDSPEED_BFT_TEXT[0]] = env.bft_to_text(windspeed_bft, self.language)
+            data[DataPoints.WINDSPEED_BFT_TEXT[0]] = env.bft_to_text(windspeed_bft, self.interface_config.lang)
 
         if DataPoints.ABSBARO[0] in data:
-            data[DataPoints.WEATHER_TEXT[0]] = self.get_weather_now(data[DataPoints.ABSBARO[0]], self.language)
+            data[DataPoints.WEATHER_TEXT[0]] = self.get_weather_now(data[DataPoints.ABSBARO[0]], self.interface_config.lang)
                 
     def add_wind_avg(self, data: dict) -> None:
         """
@@ -712,6 +876,70 @@ class Gateway(object):
 
             if DataPoints.GUSTSPEED_AVG10M[0] not in data:
                 data[DataPoints.GUSTSPEED_AVG10M[0]] = self.get_max_wind(self.wind_avg10m, 3)
+
+    def add_pressure_trend(self, data: dict) -> None:
+        """Fill deque for pressure trend and determine pressure trends etc"""
+
+        # feed deque
+        air_pressure_rel = data.get(DataPoints.RELBARO[0])
+        if air_pressure_rel:
+            self.pressure_3h.append([int(time.time()), air_pressure_rel])
+
+        # get index of current position of deque
+        pos_current = len(self.pressure_3h)
+
+        # calculate values für 1h and 3h ago
+        for x in [1, 3]:
+            # get position of data x hour before
+            pos_xh_ago = pos_current - int(x * 3600 / self.interface_config.api_data_cycle)
+
+            # calculation for x hour
+            if pos_xh_ago > 0:
+                time_xh_ago, air_pressure_rel_xh_ago = self.pressure_3h[pos_xh_ago]
+                air_pressure_rel_diff_xh_ago = round(air_pressure_rel - air_pressure_rel_xh_ago, 1)
+                air_pressure_rel_trend_xh_ago = self.get_trend(self.pressure_3h, pos_xh_ago, pos_current)
+
+                data[f'{DataPoints.AIR_PRESSURE_REL_DIFF_xh}_{x}h'[0]] = air_pressure_rel_diff_xh_ago
+                data[f'{DataPoints.AIR_PRESSURE_REL_TREND_xh}_{x}h'[0]] = air_pressure_rel_trend_xh_ago
+
+                self.pressure_last['diff'].update({f'{x}': air_pressure_rel_diff_xh_ago})
+                self.pressure_last['trend'].update({f'{x}': air_pressure_rel_trend_xh_ago})
+
+                # add weather forecast
+                if x == 3:
+                    data[DataPoints.WEATHER_FORECAST_TEXT[0]] = self.get_weather_forecast(air_pressure_rel_diff_xh_ago, self.interface_config.lang)
+
+    def add_sun_duration(self, data) -> None:
+        """
+        Add calculated sun duration fields to dict
+
+        :param data: dict of parsed Ecowitt Gateway data
+        """
+
+        sun_time = self.calculate_sun_duration(data)
+
+        if sun_time:
+            data[DataPoints.SUN_DURATION_HOUR[0]] = sun_time[0]
+            data[DataPoints.SUN_DURATION_DAY[0]] = sun_time[1]
+            data[DataPoints.SUN_DURATION_WEEK[0]] = sun_time[2]
+            data[DataPoints.SUN_DURATION_MONTH[0]] = sun_time[3]
+            data[DataPoints.SUN_DURATION_YEAR[0]] = sun_time[4]
+
+    @staticmethod
+    def check_ws_warning(data: dict, set_flag: bool) -> None:
+        """
+        Add field for weather station warning to dict
+
+        :param data: dict of parsed Ecowitt Gateway data
+        :param set_flag: should the warning flag be set
+        """
+
+        ws_warning = data.get(DataPoints.WEATHERSTATION_WARNING[0])
+
+        if ws_warning and not set_flag:
+            del data[DataPoints.WEATHERSTATION_WARNING[0]]
+        elif not ws_warning and set_flag:
+            data[DataPoints.WEATHERSTATION_WARNING[0]] = False
 
     @staticmethod
     def add_light_data(data: dict) -> None:
@@ -926,7 +1154,7 @@ class Gateway(object):
         :return: the dew point in degrees Celsius
         """
 
-        const = MAGNUS_COEFFICIENTS['positive'] if t_air_c > 0 else MAGNUS_COEFFICIENTS['negative']
+        const = Constants.MAGNUS_COEFFICIENTS['positive'] if t_air_c > 0 else Constants.MAGNUS_COEFFICIENTS['negative']
 
         try:
             pa = rel_humidity / 100.0 * math.exp(const['b'] * t_air_c / (const['c'] + t_air_c))
@@ -946,13 +1174,13 @@ class Gateway(object):
         """
 
         try:
-            dew_point_k = KELVIN + dew_point
-            temperature_k = KELVIN + temperature
+            dew_point_k = Constants.KELVIN + dew_point
+            temperature_k = Constants.KELVIN + temperature
             frost_point_k = dew_point_k - temperature_k + 2671.02 / ((2954.61 / temperature_k) + 2.193665 * math.log(temperature_k) - 13.3448)
         except ValueError:
             frost_point_c = -9999
         else:
-            frost_point_c = round(frost_point_k - KELVIN, 1)
+            frost_point_c = round(frost_point_k - Constants.KELVIN, 1)
 
         return frost_point_c
 
@@ -966,7 +1194,7 @@ class Gateway(object):
         :return: val = absolute humidity in (g/cm3)
         """
 
-        magnus_coe = MAGNUS_COEFFICIENTS['positive'] if temperature > 0 else MAGNUS_COEFFICIENTS['negative']
+        magnus_coe = Constants.MAGNUS_COEFFICIENTS['positive'] if temperature > 0 else Constants.MAGNUS_COEFFICIENTS['negative']
 
         def svp():
             """Compute saturated water vapor pressure (Sättigungsdampfdruck) in hPa"""
@@ -976,7 +1204,7 @@ class Gateway(object):
             """Compute actual water vapor pressure (Dampfdruck) in hPa"""
             return humidity_rel / 100 * svp()
 
-        return round(10 ** 5 * MW / RS * vp() / (temperature + KELVIN), 1)
+        return round(10 ** 5 * Constants.MW / Constants.RS * vp() / (temperature + Constants.KELVIN), 1)
 
     @staticmethod
     def get_windchill_index(temperature: float, wind_speed: float, units: str = 'imperial') -> Union[float, None]:
@@ -1144,14 +1372,21 @@ class Gateway(object):
 
     @staticmethod
     def get_avg_wind(d: deque, w: int) -> float:
-        """
-        get avg from deque d , field w
-        """
+        """get avg from deque d , field w"""
 
-        s = 0
+        s = sinSum = cosSum = 0
         for i in range(len(d)):
-            s = s + d[i][w]
-        return round(s/len(d), 1)
+
+            # for winddir only - average wind dir (field 2)
+            if w == 2:  # for winddir only - average wind dir
+                sinSum += sin(radians(d[i][w]))
+                cosSum += cos(radians(d[i][w]))
+
+            # for windspeed and windgust
+            else:
+                s = s + d[i][w]
+
+        return round((degrees(atan2(sinSum, cosSum)) + 360) % 360, 1) if w == 2 else round(s / len(d), 1)
 
     @staticmethod
     def get_max_wind(d: deque, w: int) -> float:
@@ -1164,6 +1399,121 @@ class Gateway(object):
             if d[i][w] > s:
                 s = d[i][w]
         return round(s, 1)
+
+    def get_trend(self, d: deque, start_pos: int, end_pos: int) -> int:
+        """Ermittelt den Trend des Luftdrucks auf Basis der Anzahl der Werte die kleine/equal/größer des Startwertes sind
+
+        :param d: deque mit tuple (timestamp, value)
+        :param start_pos: start pos in deque for evaluation
+        :param end_pos: end pos in deque for evaluation
+        :return trend: Trend: 2-stark steigend, 1-steigend, 0-equal, -1-fallend, -2-stark fallend
+
+        bigger: Anzahl der Werte im Betrachtungszeitraum, die größer alse der Startwert sind
+        smaller: Anzahl der Werte im Betrachtungszeitraum, die smaller alse der Startwert sind
+        equal: Anzahl der Werte im Betrachtungszeitraum, die equal dem Startwert sind
+        """
+
+        bigger = smaller = 0
+        equal = 1
+        end_pos -= 1
+        is3h = True if (end_pos - start_pos) * self.interface_config.api_data_cycle > 3600 else False
+
+        # get start value
+        start_value = d[start_pos][1]
+
+        # get diff value between start and end
+        diff_value = round(d[end_pos][1] - d[start_pos][1], 1)
+
+        for i in range(start_pos, end_pos):
+            # get value to compare
+            vergleichswert = d[i][1]
+            # count all values which > first entry
+            if vergleichswert > start_value:
+                bigger += 1
+            # count all values which < first entry
+            elif vergleichswert < start_value:
+                smaller += 1
+            # count all values which = first entry
+            else:
+                equal += 1
+
+        # if most values are bigger than first entry then rising
+        if bigger > smaller and bigger > equal:
+            trend = 1
+            if (is3h and diff_value > 2) or (not is3h and diff_value > 0.7):
+                trend = 2
+        # if most values are smaller than first entry then falling
+        elif smaller > bigger and smaller > equal:
+            trend = -1
+            if (is3h and diff_value < -2) or (not is3h and diff_value < -0.7):
+                trend = -2
+        # if most values are equal to first entry then steady
+        else:
+            trend = 0
+
+        s3hstr = "3h" if is3h else "1h"
+        self.logger.debug(f" {s3hstr} diff: {diff_value} hPa trend: {trend} // ({start_pos=} to {end_pos=}: {bigger=}, {smaller=},  {equal=}) ")
+
+        return trend
+
+    def get_storm_warning(self):
+        """Create storm warning flag based on pressure differences"""
+
+        def what(_pressure_diff):
+            return "dropped" if _pressure_diff < 0 else "risen"
+
+        storm_warning_1h = storm_warning_3h = False
+        air_pressure_rel_diff_1h_ago = self.pressure_last['diff'].get('1', 0)
+        air_pressure_rel_diff_3h_ago = self.pressure_last['diff'].get('3', 0)
+        now = int(time.time())
+
+        if abs(air_pressure_rel_diff_1h_ago) > Constants.STORM_WARNDIFF_1H:
+            storm_warning_1h = True
+        if abs(air_pressure_rel_diff_3h_ago) > Constants.STORM_WARNDIFF_3H:
+            storm_warning_3h = True
+
+        if storm_warning_3h or storm_warning_1h:
+            if self.storm_warning_start_time == 0:
+                self.storm_warning_start_time = now
+            self.logger.info(f"storm warning active since air pressure difference is above warning limit.")
+            self.logger.debug(f"{storm_warning_1h=}, {storm_warning_3h=}")
+            self.logger.debug(f"Air pressure has {what(air_pressure_rel_diff_1h_ago)} by {air_pressure_rel_diff_1h_ago} within last hour and {what(air_pressure_rel_diff_3h_ago)} by {air_pressure_rel_diff_3h_ago} within last 3 hours.")
+
+        elif self.storm_warning_start_time and now >= self.storm_warning_start_time + Constants.STORM_EXPIRE * 60:
+            storm_warning_duration = int((now - self.storm_warning_start_time) / 60)
+            self.storm_warning_start_time = 0
+            self.logger.info(f"storm warning cancelled after {storm_warning_duration} minutes.")
+
+        return bool(self.storm_warning_start_time)
+
+    def get_tstorm_warning(self, data):
+        """Create storm warning flag based on lightning"""
+
+        # ToDo
+
+    def get_leakage_warning(self, data):
+        """Create leakage warning flag based on leakage sensors"""
+
+        def check_leakage():
+            outstr = ""
+            for i in [DataPoints.LEAK1[0], DataPoints.LEAK2[0], DataPoints.LEAK3[0], DataPoints.LEAK4[0]]:
+                value = data.get(i)
+                if value:
+                    outstr += i + ","
+                if len(outstr) > 0 and outstr[-1] == ",":
+                    outstr = outstr[:-1]
+            return outstr.strip()
+
+        leakage = check_leakage()
+        if leakage != "":
+            if not self.leakage_warning:
+                self.logger.warning(f"<WARNING> leakage reported for sensor(s) {leakage}!")
+                self.leakage_warning = True
+        elif self.leakage_warning:
+            self.logger.warning("<OK> leakage remedied - leakage warning for all sensors cancelled")
+            self.leakage_warning = False
+
+        return self.leakage_warning
 
     def check_battery(self, data: dict, battery_data: dict) -> None:
         """Check if batteries states are critical, create log entry and add a separate field for battery warning."""
@@ -1180,11 +1530,11 @@ class Gateway(object):
         if batterycheck != "":
             data['battery_warning'] = False
             if not self.battery_warning:
-                self.logger.warning(f"<WARNING> Post: Battery level for sensor(s) {batterycheck} is critical - please swap battery")
+                self.logger.warning(f"<WARNING> Battery level for sensor(s) {batterycheck} is critical - please swap battery")
                 self.battery_warning = True
                 data['battery_warning'] = True
         elif self.battery_warning:
-            self.logger.info("<OK> Post: Battery level for all sensors is ok again")
+            self.logger.info("<OK> Battery level for all sensors is ok again")
             self.battery_warning = False
             data['battery_warning'] = False
 
@@ -1217,6 +1567,213 @@ class Gateway(object):
             else:
                 self.sensor_warning = False
                 data['sensor_warning'] = False
+
+    def calculate_sun_duration(self, data: dict):
+        """
+        :param data: data dict having sensor information
+        """
+
+        solar_radiation = data.get(DataPoints.UV[0])
+        if not solar_radiation:
+            return
+
+        # get basic values
+        day_of_year = self._plugin_instance.shtime.day_of_year()
+        azimut_radians, elevation_radians = self._plugin_instance.get_sh().sun.pos()
+        elevation_degrees = degrees(elevation_radians)
+        timestamp = int(time.time())
+        last_timestamp, last_sun_sec_last = self.sun_time['last']
+
+        # evaluate sun shine and calc sun sec since last call
+        if elevation_degrees <= 3 or solar_radiation < Constants.SUN_MIN:
+            sun_sec = 0
+        else:
+            solar_threshold = int(
+                    (0.73 + 0.06 * cos((pi / 180) * 360 * day_of_year / 365))
+                    * 1080
+                    * pow((sin(pi / 180 * elevation_degrees)), 1.25)
+                    * Constants.SUN_COEF
+                    )
+
+            if solar_radiation > solar_threshold:
+                sun_sec = timestamp - last_timestamp
+                self.logger.debug(f"Sonnenschein mit solar_radiation: {solar_radiation} solar_threshold: {solar_threshold} SUN_COEF: {Constants.SUN_COEF}, sun seconds: {sun_sec}")
+            else:
+                sun_sec = 0
+                self.logger.debug(f"kein Sonnenschein mit solar_radiation: {solar_radiation} solar_threshold: {solar_threshold} SUN_COEF: {Constants.SUN_COEF}, sun seconds: {sun_sec}")
+
+        # update data dict
+        sun_sec_last = last_sun_sec_last + sun_sec
+        if sun_sec == 0:
+            new_dict = {'last': (timestamp, sun_sec_last)}
+            result = None
+        else:
+            year = self._plugin_instance.shtime.current_year(offset=0)
+            month = self._plugin_instance.shtime.current_month(offset=0)
+            week = self._plugin_instance.shtime.calendar_week(offset=0)
+            day = self._plugin_instance.shtime.current_day(offset=0)
+            hour = self._plugin_instance.shtime.now().hour
+
+            last_hour, last_sun_sec_hour = self.sun_time['hour']
+            last_day, last_sun_sec_day = self.sun_time['day']
+            last_week, last_sun_sec_week = self.sun_time['week']
+            last_month, last_sun_sec_month = self.sun_time['month']
+            last_year, last_sun_sec_year = self.sun_time['year']
+
+            if hour == last_hour:
+                sun_sec_hour = last_sun_sec_hour + sun_sec
+            else:
+                sun_sec_hour = sun_sec
+
+            if day == last_day:
+                sun_sec_day = last_sun_sec_day + sun_sec
+            else:
+                sun_sec_day = sun_sec
+
+            if week == last_week:
+                sun_sec_week = last_sun_sec_week + sun_sec
+            else:
+                sun_sec_week = sun_sec
+
+            if month == last_month:
+                sun_sec_month = last_sun_sec_month + sun_sec
+            else:
+                sun_sec_month = sun_sec
+
+            if year == last_year:
+                sun_sec_year = last_sun_sec_year + sun_sec
+            else:
+                sun_sec_year = sun_sec
+
+            new_dict = {'hour': (hour, sun_sec_hour), 'day': (day, sun_sec_day), 'week': (week, sun_sec_week),
+                        'month': (month, sun_sec_month), 'year': (year, sun_sec_year), 'last': (timestamp, sun_sec_last)}
+
+            result = (int(sun_sec_hour / 60), round(sun_sec_day / 3600, 1), round(sun_sec_week / 3600, 1), round(sun_sec_month / 3600, 1), round(sun_sec_year / 3600, 1))
+
+        self.sun_time.update(new_dict)
+        return result
+
+    @staticmethod
+    def get_aqi_from_pm25(pm25_value):
+        if type(pm25_value) != float:
+            return -9999
+        elif pm25_value < 12.1:
+            I_high = 50
+            I_low = 0
+            C_high = 12
+            C_low = 0
+        elif pm25_value < 35.5:
+            I_high = 100
+            I_low = 51
+            C_high = 35.4
+            C_low = 12.1
+        elif pm25_value < 55.5:
+            I_high = 150
+            I_low = 101
+            C_high = 55.4
+            C_low = 35.5
+        elif pm25_value < 150.5:
+            I_high = 200
+            I_low = 151
+            C_high = 150.4
+            C_low = 55.5
+        elif pm25_value < 250.5:
+            I_high = 300
+            I_low = 201
+            C_high = 250.4
+            C_low = 150.5
+        elif pm25_value < 350.5:
+            I_high = 400
+            I_low = 301
+            C_high = 350.4
+            C_low = 250.5
+        else:
+            I_high = 500
+            I_low = 401
+            C_high = 500.4
+            C_low = 350.5
+        return int(round((I_high - I_low) / (C_high - C_low) * (pm25_value - C_low) + I_low))
+
+    @staticmethod
+    def get_aqi_from_pm10(pm10_value):
+        if type(pm10_value) != float:
+            return -9999
+        elif pm10_value < 55:
+            I_high = 50
+            I_low = 0
+            C_high = 54
+            C_low = 0
+        elif pm10_value < 155:
+            I_high = 100
+            I_low = 51
+            C_high = 154
+            C_low = 55
+        elif pm10_value < 255:
+            I_high = 150
+            I_low = 101
+            C_high = 254
+            C_low = 155
+        elif pm10_value < 355:
+            I_high = 200
+            I_low = 151
+            C_high = 354
+            C_low = 255
+        elif pm10_value < 425:
+            I_high = 300
+            I_low = 201
+            C_high = 424
+            C_low = 355
+        elif pm10_value < 505:
+            I_high = 400
+            I_low = 301
+            C_high = 504
+            C_low = 425
+        else:
+            I_high = 500
+            I_low = 401
+            C_high = 604
+            C_low = 505
+        return int(round((I_high - I_low) / (C_high - C_low) * (pm10_value - C_low) + I_low))
+
+    @staticmethod
+    def get_aqi_level_from_aqi(aqi):  # US AQI
+        level = 0
+        try:
+            if aqi <= 50:
+                level = 1  # 0 to 50     Good                            Green
+            elif aqi <= 100:
+                level = 2  # 51 to 100   Moderate                        Yellow
+            elif aqi <= 150:
+                level = 3  # 101 to 150  Unhealthy for Sensitive Groups  Orange
+            elif aqi <= 200:
+                level = 4  # 151 to 200  Unhealthy                       Red
+            elif aqi <= 300:
+                level = 5  # 201 to 300  Very Unhealthy                  Purple
+            else:
+                level = 6  # 301 to 500  Hazardous                       Maroon
+        except ValueError:
+            pass
+        return level
+
+    @staticmethod
+    def get_co2_level(co2):  # according to https://www.breeze-technologies.de/de/blog/calculating-an-actionable-indoor-air-quality-index/ and https://sensebox.de/docs/CO2-Ampel_Lehrhandreichung.pdf
+        level = 0
+        try:
+            if co2 <= 400:
+                level = 1  # 0 to 400     Excellent                      Green
+            elif co2 <= 1000:
+                level = 2  # 400 to 1000  Fine, unbedenklich             Green
+            elif co2 <= 1500:
+                level = 3  # 1000 to 1500 Moderate, Lueften              Yellow
+            elif co2 <= 2000:
+                level = 4  # 1500 to 2000 Poor, Lueften!                 Red
+            elif co2 <= 5000:
+                level = 5  # 2000 to 5000 Very Poor, inakzeptabel        Purple
+            else:
+                level = 6  # from 5000    Severe                         Maroon
+        except ValueError:
+            pass
+        return level
 
     def update_missing_sensor_dict(self, missing_sensors: list) -> None:
         """
@@ -1260,7 +1817,7 @@ class GatewayDriver(Gateway):
             raise GatewayIOError
 
         # get a GatewayHttp object to handle any HTTP requests
-        if self.model in self.interface_config.known_models_with_get_request:
+        if self.gateway_model in self.interface_config.known_models_with_get_request:
             self.logger.info('Init connection to Ecowitt Gateway via HTTP requests')
             self.http = GatewayHttp(plugin_instance)
         else:
@@ -1356,7 +1913,7 @@ class GatewayDriver(Gateway):
         """callback function for already parsed live data from tcp upload and put it to queue."""
 
         if DebugLogConfig.gateway:
-            self.logger.debug(f"TCP: {parsed_data=}")
+            self.logger.debug(f"POST: {parsed_data=}")
         self._plugin_instance.data_queue.put(('post', self._post_process_data(parsed_data)))
         
     def _post_process_data(self, data: dict, master: bool = False) -> dict:
@@ -1383,10 +1940,14 @@ class GatewayDriver(Gateway):
             # get wind_avg
             self.add_wind_avg(data)
 
+            # calculate
+            self.add_sun_duration(data)
+
         # add calculated data
         self.add_temp_data(data)
         self.add_wind_data(data)
         self.add_light_data(data)
+        self.add_pressure_trend(data)
 
         if self.interface_config.show_sensor_warning:
             # add sensor warning data field
@@ -1396,15 +1957,26 @@ class GatewayDriver(Gateway):
             # add battery warning data field
             self.check_battery(data, self.api.sensors.get_battery_description_data())
 
+        if self.interface_config.show_storm_warning:
+            # add storm warning data field
+            data[DataPoints.STORM_WARNING[0]] = self.get_storm_warning()
+
+        if self.interface_config.show_leakage_warning:
+            # add leakage warning data field
+            data[DataPoints.LEAKAGE_WARNING[0]] = self.get_leakage_warning(data)
+
         if self.interface_config.show_fw_update_available:
             # add show_fw_update_available field
             data[DataPoints.FIRMWARE_UPDATE_AVAILABLE[0]] = self.interface_config.fw_update_available
+
+        # check data
+        self.check_ws_warning(data, self.interface_config.show_weatherstation_warning)
 
         # add the data to the empty packet
         packet.update(data)
 
         # log the packet
-        self.logger.info(f"packet={natural_sort_dict(packet)}")
+        self.logger.info(f"postprocessed packet={natural_sort_dict(packet)}")
 
         return packet
 
@@ -1425,7 +1997,7 @@ class GatewayDriver(Gateway):
         return self.api.port
 
     @property
-    def model(self):
+    def gateway_model(self):
         """Gateway device model."""
 
         return self.api.model
@@ -1534,56 +2106,42 @@ class GatewayDriver(Gateway):
             response = self.api.set_custom_params(custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled)
             return 'SUCCESS' if response[4] == 0 else 'FAIL'
 
-    def check_firmware_update(self) -> tuple:
+    def is_firmware_update_available_file(self) -> tuple:
         """Check if firmware update is available for Gateways not support http requests"""
 
-        fw_info = requests.get(FW_UPDATE_URL)
+        fw_info = requests.get(Constants.FW_UPDATE_URL)
         if DebugLogConfig.gateway:
-            self.logger.debug(f"check_firmware_update: getting firmware update info from {FW_UPDATE_URL} results in status={fw_info.status_code}")
+            self.logger.debug(f"check_firmware_update: getting firmware update info from {Constants.FW_UPDATE_URL} results in status={fw_info.status_code}")
 
         if fw_info.status_code == 200:
-            # get current firmware version
-            current_firmware = self.firmware_version
 
-            model = "unknown"
-            for i in self.interface_config.known_models:
-                if i in current_firmware.upper():
-                    model = i
-
-            # establish configparser
+            # establish configparser, read response text and extract information for given model
             fw_update_info = configparser.ConfigParser(allow_no_value=True, strict=False)
-            # read response text
             fw_update_info.read_string(fw_info.text)
+            latest_firmware = fw_update_info.get(self.gateway_model, "VER", fallback="unknown")
 
-            # extract information for given model
-            latest_firmware = fw_update_info.get(model, "VER", fallback="unknown")
+            if latest_firmware == 'unknown':
+                self.logger.debug(f"No information for {self.gateway_model} within firmware information file.")
+                return None, latest_firmware, []
 
-            if ver_str_to_num(latest_firmware) and ver_str_to_num(current_firmware) and (ver_str_to_num(latest_firmware) > ver_str_to_num(current_firmware)):
-                remote_firmware_notes = fw_update_info.get(model, "NOTES", fallback="")
-                if ';' in remote_firmware_notes:
-                    remote_firmware_notes = remote_firmware_notes.split(";")
-                else:
-                    remote_firmware_notes = [remote_firmware_notes]
+            if ver_str_to_num(latest_firmware) and ver_str_to_num(self.firmware_version) and (ver_str_to_num(latest_firmware) > ver_str_to_num(self.firmware_version)):
+                remote_firmware_notes = fw_update_info.get(self.gateway_model, "NOTES", fallback="")
+                remote_firmware_notes = remote_firmware_notes.split(";")
+
                 if DebugLogConfig.gateway:
-                    self.logger.debug(f"remote_firmware_notes={remote_firmware_notes}")
+                    self.logger.debug(f"{remote_firmware_notes=}")
+
                 return True, latest_firmware, remote_firmware_notes
+
             else:
                 return False, latest_firmware, []
-
-        # ToDO: return None, if GW is not in Datei
 
     def is_firmware_update_available(self) -> bool:
         """Whether a device firmware update is available or not.
 
         Return True if a device firmware update is available or False otherwise."""
 
-        # for Gateways supporting http requests
-        if self.http:
-            result = self.http.new_firmware_available()
-        # for all other Gateways
-        else:
-            result = self.check_firmware_update()[0]
-
+        result = self.http.is_new_firmware_available() if self.http else self.is_firmware_update_available_file()[0]
         self.interface_config.fw_update_available = result
         return result
 
@@ -1911,7 +2469,6 @@ class GatewayApi(object):
         """Update the Sensors object with current sensor ID data."""
 
         # first get the current sensor ID data
-        # TODO. This should return a value
         sensor_id_data = self.get_sensor_id()
         # now use the sensor ID data to re-initialise our sensors object
         self.sensors.set_sensor_id_data(sensor_id_data)
@@ -1996,15 +2553,14 @@ class GatewayApi(object):
 
         # send the API command to obtain live data from the device, be prepared to catch the exception raised if the device cannot be contacted
         try:
-            # get the validated API response
             response = self._send_cmd_with_retries('CMD_GW1000_LIVEDATA')
         except GatewayIOError:
             # there was a problem contacting the device, it could be it has changed IP address so attempt to rediscover
             if not self.rediscover():
-                # we could not re-discover so raise the exception
-                raise
+                # we could not re-discover so raise the exception // return dict containing weather_station warning
+                return {DataPoints.WEATHERSTATION_WARNING[0]: True}
             else:
-                # we did rediscover successfully so try again, if it fails we get another GWIOError exception which will be raised
+                # we did rediscover successfully so try again, if it fails we get another GatewayIOError exception which will be raised
                 response = self._send_cmd_with_retries('CMD_GW1000_LIVEDATA')
         # if we arrived here we have a non-None response so parse it and return the parsed data
         return self.parser.parse_livedata(response)
@@ -3139,8 +3695,10 @@ class ApiParser(object):
         # initialise a dict to hold our final data
         data_dict = dict()
         data_dict['frequency'] = FREQUENCIES[data[0]]
-        data_dict['sensor type'] = SENSOR_TYPES[data[1]]
-        data_dict['utc'] = datetime.fromtimestamp(self.decode_utc(data[2:6])).replace(tzinfo=timezone.utc)
+        data_dict['sensor_type'] = SENSOR_TYPES[data[1]]
+        utc_dt = datetime.fromtimestamp(self.decode_utc(data[2:6])).replace(tzinfo=timezone.utc)
+        data_dict['utc'] = utc_dt
+        data_dict['dt'] = utc_dt.astimezone(tz=None)
         data_dict['timezone_index'] = data[6]
         data_dict['dst_status'] = data[7] != 0
         return data_dict
@@ -3487,6 +4045,20 @@ class ApiParser(object):
         else:
             return value
 
+    def decode_uv(self, data, field=None):
+
+        self.logger.debug(f"decode_uv: {data=}, {field=}")
+
+        if len(data) == 2:
+            value = struct.unpack(">H", data)[0]
+            self.logger.debug(f"decode_uv: {data=}, {value=}")
+        else:
+            value = None
+        if field is not None:
+            return {field: value}
+        else:
+            return value
+
     @staticmethod
     def decode_press(data, field=None):
         """Decode pressure data.
@@ -3570,14 +4142,14 @@ class ApiParser(object):
         timestamp = self.decode_datetime(data, None)
 
         if timestamp and isinstance(timestamp, int):
-            value = datetime.fromtimestamp(timestamp).replace(tzinfo=timezone.utc).astimezone(tz=Shtime.tz())
+            dt = datetime.fromtimestamp(timestamp).replace(tzinfo=timezone.utc).astimezone(tz=None)
         else:
-            value = None
+            dt = None
 
         if field is not None:
-            return {field: value}
+            return {field: dt}
         else:
-            return value
+            return dt
 
     @staticmethod
     def decode_distance(data, field=None):
@@ -3659,16 +4231,25 @@ class ApiParser(object):
         else:
             return value
 
+    def decode_leak(self, data, field=None):
+        """Decode a leakage sensor data"""
+
+        value = bool(int(self.decode_humid(data)))
+        if field is not None:
+            return {field: value}
+        else:
+            return value
+
     # alias' for other decodes
     decode_speed = decode_press
     decode_rain = decode_press
     decode_rainrate = decode_press
     decode_light = decode_big_rain
-    decode_uv = decode_press
+    # decode_uv = decode_press
     decode_uvi = decode_humid
     decode_moist = decode_humid
     decode_pm25 = decode_press
-    decode_leak = decode_humid
+    # decode_leak = decode_humid
     decode_pm10 = decode_press
     decode_co2 = decode_dir
     decode_wet = decode_humid
@@ -4065,7 +4646,7 @@ class GatewayHttp(object):
         """Get model and firmware information"""
         return self.parser.parse_version(self.get_version())
 
-    def new_firmware_available(self):
+    def is_new_firmware_available(self):
         """Get information whether a new firmware is available."""
 
         return self.parser.parse_new_version(self.get_version())
@@ -4355,11 +4936,16 @@ class GatewayTcp(object):
                 self.logger.info("Gateway-TCP-Server thread has been shutdown.")
         self._server_thread = None
 
-    def parse_tcp_live_data(self, data, client_ip):
+    def parse_tcp_live_data(self, data: str, client_ip: str) -> None:
+
+        if DebugLogConfig.tcp:
+            self.logger.debug(f"raw post_data={data}")
 
         data_dict = self.parser.parse_live_data(data, client_ip)
+
         if DebugLogConfig.tcp:
-            self.logger.debug(f"raw tcp_data={data_dict}")
+            self.logger.debug(f"parsed post_data={data_dict}")
+
         self.callback(data_dict)
 
     def make_handler(self, parse_method):
@@ -4443,7 +5029,7 @@ class TcpParser(object):
             'stationtype': (None, DataPoints.FIRMWARE[0]),
             'freq': ('decode_freq', DataPoints.FREQ[0]),
             'model': (None, DataPoints.MODEL[0]),
-            'dateutc': (str_to_datetimeutc, DataPoints.TIME[0]),
+            'dateutc': (utcdatetimestr_to_datetime, DataPoints.TIME[0]),
             'runtime': (None, DataPoints.RUNTIME[0]),
             'interval': (None, DataPoints.INTERVAL[0]),
             # Indoor
@@ -4606,7 +5192,7 @@ class TcpParser(object):
                 else:
                     data_dict[field] = raw_data_dict[key]
 
-        self.logger.info(f"Post. convert_data {data_dict=}")
+        self.logger.info(f"POST: convert_data {data_dict=}")
 
         return data_dict
 
@@ -5065,7 +5651,7 @@ def in_to_mm(f: float, n: int = 2) -> float:
 
 def solar_rad_to_brightness(f: float, n: int = 0) -> float:
     """Convert solar radiation in W/m² to Lux using 1W/m² = 126.7 lux"""
-    return round(float(f) * S2B, n)
+    return round(float(f) * Constants.S2B, n)
 
 
 def to_int(value) -> int:
@@ -5100,10 +5686,10 @@ def is_port_in_use(port: int) -> bool:
         return s.connect_ex(('127.0.0.1', port)) == 0
 
 
-def str_to_datetimeutc(datetimestr: str) -> Union[datetime, None]:
+def utcdatetimestr_to_datetime(utc_datetime_str: str) -> Union[datetime, None]:
     """Decodes string in datetime format to datetime object"""
     try:
-        dt = datetime.strptime(datetimestr, "%Y-%m-%d+%H:%M:%S").replace(tzinfo=timezone.utc)
+        dt = datetime.strptime(utc_datetime_str, "%Y-%m-%d+%H:%M:%S").replace(tzinfo=timezone.utc).astimezone(tz=None)
     except ValueError:
         return None
     else:
@@ -5116,22 +5702,4 @@ def datetime_to_string(dt: datetime) -> str:
 
 
 def utc_to_local(utc_dt: datetime) -> datetime:
-    return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=Shtime.tz())
-
-
-MAGNUS_COEFFICIENTS = dict(
-    positive=dict(a=7.5, b=17.368, c=238.88),
-    negative=dict(a=7.6, b=17.966, c=247.15),
-)
-
-
-KELVIN = 273.15  # 0K = -273.15°C
-
-
-MW = 18.016  # kg/kmol (Molekulargewicht des Wasserdampfes)
-
-
-RS = 8314.3  # J/(kmol*K) (universelle Gaskonstante)
-
-
-S2B = 126.7  # 1W/m² = 126.7 lux
+    return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)

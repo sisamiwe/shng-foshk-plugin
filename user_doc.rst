@@ -23,11 +23,21 @@ Informationen über Plugin Parameter sind unter :doc:`/plugins_doc/config/foshk`
 Foshk Item-Attribute
 --------------------
 
-Dieses Kapitel wurde automatisch durch Ausführen des Skripts in der Datei 'datapoints.py erstellt.
+Dieses Kapitel wurde automatisch durch Ausführen des Skripts in der Datei 'datapoints.py' erstellt.
 
 Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: Attribute: Beschreibung [Einheit]
 
-- absbarometer: Absoluter Luftdruck [hpa]
+- air_pressure_abs: Absoluter Luftdruck [hpa]
+
+- air_pressure_rel: Relativer Luftdruck [hpa]
+
+- air_pressure_rel_diff_1h: Unterschied im Luftdruck innerhalb der letzten Stunde *Berechnung im Plugin [hPa]
+
+- air_pressure_rel_diff_3h: Unterschied im Luftdruck innerhalb der letzten 3 Stunden *Berechnung im Plugin [hPa]
+
+- air_pressure_rel_trend_1h: Trend des Luftdrucks innerhalb der letzten Stunde *Berechnung im Plugin [-]
+
+- air_pressure_rel_trend_3h: Trend des Luftdrucks innerhalb der letzten 3 Stunden *Berechnung im Plugin [-]
 
 - battery_warning: Batteriewarnung [True/False]
 
@@ -108,6 +118,8 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 - leak3: Leckage [True/False]
 
 - leak4: Leckage [True/False]
+
+- leakage_warning: Leckagewarning [True/False]
 
 - light: Helligkeit [lux]
 
@@ -221,8 +233,6 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - reboot: Reboot [None]
 
-- relbarometer: Relativer Luftdruck [hpa]
-
 - reset: Reset [None]
 
 - runtime: Laufzeit des Gateways [s]
@@ -297,6 +307,16 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - storm_warning: Sturmwarnung [True/False]
 
+- sun_duration_day: Sonnenstunden am aktuellen Tag *Berechnung im Plugin [h]
+
+- sun_duration_hour: Sonnenminuten in der aktuellen Stunde *Berechnung im Plugin [min]
+
+- sun_duration_month: Sonnenstunden im aktuellen Monat *Berechnung im Plugin [h]
+
+- sun_duration_week: Sonnenstunden in der aktuellen Woche *Berechnung im Plugin [h]
+
+- sun_duration_year: Sonnenstunden im aktuellen Jahr *Berechnung im Plugin [h]
+
 - temp01: Temperatur [°C]
 
 - temp02: Temperatur [°C]
@@ -334,6 +354,8 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 - thunderstorm_warning: Gewitterwarnung [True/False]
 
 - uvi: UV-Index [0-15]
+
+- weather_forecast_txt: Beschreibung des Wetterausblicks als Text *Berechnung im Plugin [-]
 
 - weather_txt: Beschreibung des aktuellen Wetters als Text *Berechnung im Plugin [-]
 
