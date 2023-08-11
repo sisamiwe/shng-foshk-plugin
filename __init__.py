@@ -86,6 +86,7 @@ class Foshk(SmartPlugin):
         self.gateway_connected = False                                     # is gateway connected; driver established
         self.gateway = None                                                # driver object
         self.alive = False                                                 # plugin alive
+        self.pickle_filepath = f"{os.getcwd()}/var/plugin_data/{self.get_shortname()}"
         self.shtime = Shtime.get_instance()
 
         # get the parameters for the plugin (as defined in metadata plugin.yaml):
@@ -422,16 +423,15 @@ class Foshk(SmartPlugin):
         # save pickle
         if data and len(data) > 0:
             self.logger.debug(f"Start writing data to {filename}")
-            path = f"/plugins/{self.get_shortname()}/data"
-            filename = f"{os.getcwd()}/{path}/{filename}.pkl"
+            filename = f"{self.pickle_filepath}/{filename}.pkl"
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             try:
                 with open(filename, "wb") as output:
                     try:
                         pickle.dump(data, output, pickle.HIGHEST_PROTOCOL)
                         self.logger.debug(f"Successfully wrote data to {filename}")
-                    except:
-                        self.logger.debug(f"Unable to write data to {filename}")
+                    except Exception as e:
+                        self.logger.debug(f"Unable to write data to {filename}: {e}")
                         pass
             except OSError as e:
                 self.logger.debug(f"Unable to write data to {filename}: {e}")
@@ -439,9 +439,7 @@ class Foshk(SmartPlugin):
 
     def read_pickle(self, filename: str):
 
-        path = f"/plugins/{self.get_shortname()}/data"
-        filename = f"{os.getcwd()}/{path}/{filename}.pkl"
-
+        filename = f"{self.pickle_filepath}/{filename}.pkl"
         if os.path.exists(filename):
             with open(filename, 'rb') as data:
                 try:
@@ -451,6 +449,9 @@ class Foshk(SmartPlugin):
                 except Exception as e:
                     self.logger.debug(f"Unable to read data from {filename}: {e}")
                     return None
+
+        self.logger.debug(f"Unable to read data from {filename}: 'File/Path not existing'")
+        return None
 
     #############################################################
     #  Public Methods
@@ -700,8 +701,6 @@ class Gateway(object):
 
         # get interface config
         self.interface_config = self._plugin_instance.interface_config
-        self.sensor_warning = self.interface_config.show_sensor_warning
-        self.battery_warning = self.interface_config.show_battery_warning
 
         # define data structures
         self.pickle_data_validity_time = 600                                                                # seconds after which the data saved in pickle are not valid anymore
@@ -717,6 +716,8 @@ class Gateway(object):
         self.sensors_missed = {}
 
         # initialise last lightning count, last rain, etc properties
+        self.sensor_warning = None
+        self.battery_warning = None
         self.last_lightning = None
         self.last_rain = None
         self.piezo_last_rain = None
