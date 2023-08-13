@@ -102,13 +102,13 @@ class Foshk(SmartPlugin):
         if api_update_cycle == 0:
             api_update_cycle = None
         api_update_crontab = self.get_parameter_value('Gateway_Poll_Cycle_Crontab')
-        if api_update_crontab == '':
+        if not api_update_crontab:
             api_update_crontab = None
         if not (api_update_cycle or api_update_crontab):
             self.logger.warning(f"{self.get_fullname()}: no update cycle or crontab set. The data will not be polled automatically")
 
         fw_check_crontab = self.get_parameter_value('FW_Update_Check_Crontab')
-        if fw_check_crontab == '':
+        if not fw_check_crontab:
             fw_check_crontab = None
 
         interface_config = {'ip_address': gateway_address,

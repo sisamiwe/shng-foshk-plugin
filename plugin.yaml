@@ -45,15 +45,15 @@ parameters:
             en: Cycle in which the data will be pulled via API
 
     Gateway_Poll_Cycle_Crontab:
-        type: str
-        default: ''
+        type: list(str)
+        default: []
         description:
             de: Crontab, für den Datenabruf per API (Minutes Hours Day_of_Month Month Day_of_Week)
             en: Crontab, for data polling (Minutes Hours Day_of_Month Month Day_of_Week)
 
     FW_Update_Check_Crontab:
-        type: str
-        default: 0 1 * * *
+        type: list(str)
+        default: [init, 0 1 * * *]
         description:
             de: Crontab für die Abfrage, ob neue Firmware verfügbar ist.
             en: Crontab to check for newer firmware
