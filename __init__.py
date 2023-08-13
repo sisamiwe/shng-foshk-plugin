@@ -41,7 +41,7 @@ from lib.model.smartplugin import SmartPlugin
 from lib.utils import Utils
 from lib.shtime import Shtime
 from .webif import WebInterface
-from .datapoints import DataPoints, MasterKeys, SensorKeys, META_ATTRIBUTES, POST_ATTRIBUTES
+from .datapoints import DataPoints, MasterKeys, SensorKeys
 
 import os
 import re
@@ -72,7 +72,7 @@ class Foshk(SmartPlugin):
     Data Items must be defined in ./data_items.py.
     """
 
-    PLUGIN_VERSION = '1.2.1'
+    PLUGIN_VERSION = '1.2.2'
 
     def __init__(self, sh):
         """Initializes the plugin"""
@@ -91,7 +91,7 @@ class Foshk(SmartPlugin):
 
         # get the parameters for the plugin (as defined in metadata plugin.yaml):
         gateway_address = self.get_parameter_value('Gateway_IP')
-        if gateway_address == '127.0.0.1':
+        if gateway_address in ['127.0.0.1', '0.0.0.0']:
             gateway_address = None
 
         gateway_port = self.get_parameter_value('Gateway_Port')
@@ -116,11 +116,6 @@ class Foshk(SmartPlugin):
                             'api_data_cycle': api_update_cycle,
                             'api_data_crontab': api_update_crontab,
                             'fw_check_crontab': fw_check_crontab,
-                            'show_battery_warning': self.get_parameter_value('Battery_Warning'),
-                            'show_sensor_warning': self.get_parameter_value('Sensor_Warning'),
-                            'show_storm_warning': self.get_parameter_value('Storm_Warning'),
-                            'show_weatherstation_warning': self.get_parameter_value('Weatherstation_Warning'),
-                            'show_leakage_warning': self.get_parameter_value('Leakage_Warning'),
                             'use_wh32': self.get_parameter_value('Use_of_WH32'),
                             'ignore_wh40_batt': self.get_parameter_value('Ignore_WH40_Battery'),
                             'lat': self.get_sh()._lat,
@@ -222,19 +217,22 @@ class Foshk(SmartPlugin):
         if self.has_iattr(item.conf, 'foshk_attribute'):
             foshk_attribute = (self.get_iattr_value(item.conf, 'foshk_attribute')).lower()
 
-            if foshk_attribute in META_ATTRIBUTES:
-                source = 'api'
+            # ignore item for showing fw_update_available, if FW-Update Check is not enabled.
+            if foshk_attribute == DataPoints.FIRMWARE_UPDATE_AVAILABLE[0] and not self.interface_config.fw_check_crontab:
+                self.logger.warning(f" Item {item.path()} is configured to show {DataPoints.FIRMWARE_UPDATE_AVAILABLE[0]} but FW-Update Check not enabled. Item ignored")
+                return
 
-            elif foshk_attribute in POST_ATTRIBUTES:
-                source = 'post'
-
-            elif self.has_iattr(item.conf, 'foshk_datasource'):
+            # define data_source
+            if self.has_iattr(item.conf, 'foshk_datasource'):
                 foshk_datasource = (self.get_iattr_value(item.conf, 'foshk_datasource')).lower()
                 if foshk_datasource == 'post' and not self.use_customer_server:
                     self.logger.warning(f" Item {item.path()} should use datasource {foshk_datasource} as per item.yaml, but 'ECOWITT'-protocol not enabled. Item ignored")
-                    source = None
-                else:
-                    source = foshk_datasource
+                    return
+                elif foshk_datasource == 'http' and not self.gateway.http:
+                    self.logger.warning(f" Item {item.path()} should use datasource {foshk_datasource} as per item.yaml, but gateway does not support http requests. Item ignored")
+                    return
+
+                source = foshk_datasource
 
             else:
                 source = 'api'
@@ -315,14 +313,16 @@ class Foshk(SmartPlugin):
         for foshk_attribute in data:
             item_list = self.get_item_list(filter_key='match', filter_value=f'{source}.{foshk_attribute}')
 
-            self.logger.debug(f"Working {foshk_attribute=}")
+            if DebugLogConfig.main_class:
+                self.logger.debug(f"Working {foshk_attribute=}")
 
             if not item_list:
                 if DebugLogConfig.main_class:
                     self.logger.debug(f"No item found for foshk_attribute={foshk_attribute!r} at datasource={source!r} has been found.")
                 continue
 
-            self.logger.debug(f"Got corresponding items: {item_list=}")
+            if DebugLogConfig.main_class:
+                self.logger.debug(f"Got corresponding items: {item_list=}")
 
             for item in item_list:
                 value = data[foshk_attribute]
@@ -567,19 +567,19 @@ class InterfaceConfig:
     log_unknown_fields: bool = False
 
     # create a separate field for summarized battery warning
-    show_battery_warning: bool = False
+    show_battery_warning: bool = True
 
     # create a separate field for summarized sensor warning
-    show_sensor_warning: bool = False
+    show_sensor_warning: bool = True
 
     # create a separate field for strom warning
-    show_storm_warning: bool = False
+    show_storm_warning: bool = True
 
     # create a separate field for weatherstation warning
-    show_weatherstation_warning: bool = False
+    show_weatherstation_warning: bool = True
 
     # create a separate field for leakage warning
-    show_leakage_warning: bool = False
+    show_leakage_warning: bool = True
 
     # is WH32 in use
     use_wh32: bool = True
@@ -1801,10 +1801,6 @@ class GatewayDriver(Gateway):
 
         # get interface config
         self.interface_config = self._plugin_instance.interface_config
-        self.api_data_cycle = self.interface_config.api_data_cycle
-        self.fw_check_crontab = self.interface_config.fw_check_crontab
-        self.show_fw_update_available = self.interface_config.show_fw_update_available
-        ignore_wh40_batt = self.interface_config.ignore_wh40_batt
 
         # now initialize my superclasses
         super().__init__(plugin_instance)
@@ -1838,7 +1834,7 @@ class GatewayDriver(Gateway):
         # do we have a legacy WH40 and how are we handling its battery state data
         if b'\x03' in self.api.sensors.get_connected_addresses() and self.api.sensors.legacy_wh40:
             # we have a connected legacy WH40
-            if ignore_wh40_batt:
+            if self.interface_config.ignore_wh40_batt:
                 _msg = 'Legacy WH40 detected, WH40 battery state data will be ignored'
             else:
                 _msg = 'Legacy WH40 detected, WH40 battery state data will be reported'
@@ -4545,10 +4541,10 @@ class GatewayHttp(object):
     def get_device_info(self):
         """Get device settings from the device.
 
-        Returns a dict or None if no valid data was returned by the device."""
+        Returns a parsed dict or None if no valid data was returned by the device."""
 
         try:
-            return self.request('get_device_info')
+            return self.parser.parse_device_info(self.get_device_info())
         except requests.exceptions.Timeout:
             return None
 
@@ -4652,8 +4648,8 @@ class GatewayHttp(object):
 
         return self.parser.parse_new_version(self.get_version())
 
-    def get_livedata(self):
-        """Get live data"""
+    def get_livedata(self) -> dict:
+        """Get live data and return parsed data as dict"""
         return self.parser.parse_livedata(self.get_livedata_info())
 
 
@@ -4882,6 +4878,45 @@ class HttpParser(object):
         """Decode an integer battery state."""
 
         return batt
+
+    @staticmethod
+    def parse_device_info(data):
+        """Parse a get_device_info API response.
+
+        Response consists of:
+            "sensorType":	"1",
+            "rf_freq":	"1",
+            "tz_auto":	"0",
+            "tz_name":	"Europe/Berlin",
+            "tz_index":	"39",
+            "dst_stat":	"1",
+            "date":	"2023-08-12T18:56",
+            "upgrade":	"0",
+            "apAuto":	"1",
+            "newVersion":	"1",
+            "curr_msg":	"New version:V3.0.5\r\n1.Supports IOT device WFC01.\r\n2.Fixed an issue with incorrect rainfall.\r\n3.Support smart scene funtion.\r\n4.Fixed some known bug.",
+            "apName":	"GW2000A-WIFI8BF3",
+            "GW1100APpwd":	"",
+            "time":	"20"
+        """
+
+        FREQUENCIES = ['433 MHz', '868 MHz', '915 MHz', '920 MHz']
+        SENSOR_TYPES = ['WH24', 'WH65']
+
+        data_dict = dict()
+        data_dict['frequency'] = FREQUENCIES[int(data['rf_freq'])]
+        data_dict['sensor_type'] = SENSOR_TYPES[int(data['sensorType'])]
+        data_dict['dt'] = datetime.strptime(data['date'], '%Y-%m-%dT%H:%M')
+        data_dict['timezone_index'] = data['tz_index']
+        data_dict['dst_status'] = bool(int(data['dst_stat']))
+        data_dict['upgrade'] = bool(int(data['upgrade']))
+        data_dict['ap_auto'] = bool(int(data['apAuto']))
+        data_dict['new_fw_version'] = bool(int(data['newVersion']))
+        data_dict['new_fw_version_dec'] = data.get('curr_msg')
+        data_dict['gw_name'] = data['apName']
+        data_dict['gw_pwd'] = data['GW1100APpwd']
+        data_dict['time'] = int(data['time'])
+        return data_dict
 
 
 class GatewayTcp(object):

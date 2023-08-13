@@ -11,7 +11,7 @@ plugin:
     keywords: froggit ecowitt weather station
 #    support: https://knx-user-forum.de/forum/supportforen/smarthome-py
 
-    version: 1.2.1                  # Plugin version (must match the version specified in __init__.py)
+    version: 1.2.2                  # Plugin version (must match the version specified in __init__.py)
     sh_minversion: 1.9.4            # minimum shNG version to use this plugin
 #    sh_maxversion:                 # maximum shNG version to use this plugin (leave empty if latest)
 #    py_minversion:                 # minimum Python version to use for this plugin
@@ -57,41 +57,6 @@ parameters:
         description:
             de: Crontab für die Abfrage, ob neue Firmware verfügbar ist.
             en: Crontab to check for newer firmware
-
-    Battery_Warning:
-        type: bool
-        default: true
-        description:
-            de: Erzeugt ein separates Datenfeld für eine Batteriewarnung.
-            en: Creates a separate Data field for battery warning
-
-    Sensor_Warning:
-        type: bool
-        default: true
-        description:
-            de: Erzeugt ein separates Datenfeld für eine Sensorwarnung.
-            en: Creates a separate Data field for sensor warning
-
-    Weatherstation_Warning:
-        type: bool
-        default: true
-        description:
-            de: Erzeugt ein separates Datenfeld für eine Warnung der Wetterstation.
-            en: Creates a separate Data field for warning of weather station
-
-    Storm_Warning:
-        type: bool
-        default: true
-        description:
-            de: Erzeugt ein separates Datenfeld für eine Sturmwarnung.
-            en: Creates a separate Data field for storm warning
-
-    Leakage_Warning:
-        type: bool
-        default: true
-        description:
-            de: Erzeugt ein separates Datenfeld für eine Leckagewarnung.
-            en: Creates a separate Data field for leakage warning
 
     Use_of_WH32:
         type: bool
@@ -228,7 +193,6 @@ item_attributes:
             - rain_year
             - reboot
             - reset
-            - runtime
             - sensor_warning
             - soilmoist01
             - soilmoist02
@@ -524,7 +488,6 @@ item_attributes:
             - kumulierte Regenmenge des aktuellen Jahres
             - Reboot
             - Reset
-            - Laufzeit des Gateways
             - Sensorwarnung
             - Bodenfeuchtigkeit
             - Bodenfeuchtigkeit
@@ -735,11 +698,6 @@ item_structs:
             type: foo
             visu_acl: ro
             foshk_attribute: datetime
-
-        runtime:
-            type: num
-            visu_acl: ro
-            foshk_attribute: runtime
 
         frequency:
             type: str

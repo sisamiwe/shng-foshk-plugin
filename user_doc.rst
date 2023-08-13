@@ -235,8 +235,6 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - reset: Reset [None]
 
-- runtime: Laufzeit des Gateways [s]
-
 - sensor_warning: Sensorwarnung [True/False]
 
 - soilmoist01: Bodenfeuchtigkeit [%]

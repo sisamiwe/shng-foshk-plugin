@@ -273,7 +273,7 @@ class DataPoints:
     FIRMWARE: tuple = ('firmware', 'Firmware Version', None)
     FREQ: tuple = ('frequency', 'Frequenz des Transmitter', None)
     MODEL: tuple = ('model', 'Gateway Modell', None)
-    RUNTIME: tuple = ('runtime', 'Laufzeit des Gateways', 's')
+    RUNTIME: tuple = ('runtime', None, 's')  # Laufzeit des Gateways
     INTERVAL: tuple = ('interval', 'Interval des Datenflusses', 's')
     INDEWPPOINT: tuple = (f'in{MasterKeys.DEWPT}', 'Taupunkt Innen', '°C')
     INABSHUM: tuple = (f'in{MasterKeys.ABSHUM}', 'Absolute Luftfeuchtigkeit Innen', '')
@@ -383,22 +383,6 @@ class SensorKeys:
     WN30_6: tuple = (f'{WN30[0]}6', f'{WN30[1]}6', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 6')
     WN30_7: tuple = (f'{WN30[0]}7', f'{WN30[1]}7', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 7')
     WN30_8: tuple = (f'{WN30[0]}8', f'{WN30[1]}8', 'Thermometer mit wasserdichtem Sensor WN30 Kanal 8')
-
-
-META_ATTRIBUTES = [DataPoints.MODEL,
-                   DataPoints.FREQ,
-                   DataPoints.SENSOR_WARNING,
-                   DataPoints.BATTERY_WARNING,
-                   DataPoints.STORM_WARNING,
-                   DataPoints.THUNDERSTORM_WARNING,
-                   DataPoints.WEATHERSTATION_WARNING,
-                   DataPoints.FIRMWARE,
-                   DataPoints.FIRMWARE_UPDATE_AVAILABLE,
-                   # DataPoints.FIRMWARE_UPDATE_TEXT,
-                   ]
-
-
-POST_ATTRIBUTES = [DataPoints.RUNTIME]
 
 
 # methods for automated update of files
