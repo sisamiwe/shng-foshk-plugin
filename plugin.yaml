@@ -799,13 +799,17 @@ item_structs:
     weather:
         my_database: no
         my_database_maxage: 92
-        struct: _weather
+        struct: ._weather
 
     ws90:
         my_database: no
         my_database_maxage: 92
 
-        struct: ._outdoor ._wind ._rain ._p_rain_gain
+        struct:
+            - ._outdoor
+            - ._wind
+            - ._rain
+            - ._p_rain_gain
 
         ws90_batt:
             type: num
