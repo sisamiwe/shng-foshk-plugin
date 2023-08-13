@@ -430,7 +430,7 @@ item_attributes:
             - Leckage
             - Leckage
             - Leckage
-            - Leckagewarning
+            - Leckagewarnung
             - Helligkeit
             - kumulierte Anzahl der Blitze des Tages
             - Zeitpunkt des Blitzes
@@ -690,6 +690,9 @@ item_attributes:
 
 item_structs:
     gateway:
+        my_database: no
+        my_database_maxage: 92
+
         gateway_model:
             type: str
             visu_acl: ro
@@ -705,45 +708,50 @@ item_structs:
             visu_acl: ro
             foshk_attribute: frequency
 
-        firmware:
+        firmware_version:
             type: str
             visu_acl: ro
             foshk_attribute: firmware
 
-            update_available:
-                type: bool
-                visu_acl: ro
-                foshk_attribute: firmware_update_available
-
-#            update_text:
-#                type: list
-#                visu_acl: ro
-#                foshk_attribute: firmware_update_text
+        firmware_update_available:
+            type: bool
+            visu_acl: ro
+            foshk_attribute: firmware_update_available
 
         weatherstation_warning:
             type: bool
             visu_acl: ro
             foshk_attribute: weatherstation_warning
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
 
         sensor_warning:
             type: bool
             visu_acl: ro
             foshk_attribute: sensor_warning
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
 
         battery_warning:
             type: bool
             visu_acl: ro
             foshk_attribute: battery_warning
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
 
         storm_warning:
             type: bool
             visu_acl: ro
             foshk_attribute: storm_warning
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
 
         thunderstorm_warning:
             type: bool
             visu_acl: ro
             foshk_attribute: thunderstorm_warning
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
 
         reboot:
             type: bool
@@ -755,116 +763,290 @@ item_structs:
             visu_acl: rw
             foshk_attribute: reset
 
+    indoor:
+        my_database: no
+        my_database_maxage: 92
+        struct: ._indoor
+
+    outdoor:
+        my_database: no
+        my_database_maxage: 92
+        struct: ._outdoor
+
+    pressure:
+        my_database: no
+        my_database_maxage: 92
+        struct: ._pressure
+
+    wind:
+        my_database: no
+        my_database_maxage: 92
+        struct: ._wind
+
     rain:
-        type: num
-        foshk_attribute: rain
-
-        rate:
-            name: Regenrate
-            type: num
-            foshk_attribute: rain_rate
-        event:
-            name: Regenmenge des aktuellen Regens
-            type: num
-            foshk_attribute: rain_event
-        hour:
-            name: Regenmenge der aktuellen Stunde
-            type: num
-            foshk_attribute: rain_hour
-        day:
-            name: Regenmenge des aktuellen Tages
-            type: num
-            foshk_attribute: rain_day
-        week:
-            name: Regenmenge der aktuellen Woche
-            type: num
-            foshk_attribute: rain_week
-        month:
-            name: Regenmenge des aktuellen Monats
-            type: num
-            foshk_attribute: rain_month
-        year:
-            name: Regenmenge des aktuellen Jahres
-            type: num
-            foshk_attribute: rain_year
-        total:
-            name: Gesamt-Regenmenge
-            type: num
-            foshk_attribute: rain_totals
-        reset:
-            day:
-                name: Reset des Tages-Regenzählers
-                type: num
-                foshk_attribute: rain_reset_day
-            week:
-                name: Reset des Wochen-Regenzählers
-                type: str
-                foshk_attribute: rain_reset_week
-            year:
-                name: Reset des Jahres-Regenzählers
-                type: num
-                foshk_attribute: rain_reset_year
-
-    rain_db:
-        type: num
-        foshk_attribute: rain
-
-        rate:
-            name: Regenrate
-            type: num
-            foshk_attribute: rain_rate
-            database: yes
-        event:
-            name: Regenmenge des aktuellen Regens
-            type: num
-            foshk_attribute: rain_event
-        hour:
-            name: Regenmenge der aktuellen Stunde
-            type: num
-            foshk_attribute: rain_hour
-        day:
-            name: Regenmenge des aktuellen Tages
-            type: num
-            foshk_attribute: rain_day
-        week:
-            name: Regenmenge der aktuellen Woche
-            type: num
-            foshk_attribute: rain_week
-        month:
-            name: Regenmenge des aktuellen Monats
-            type: num
-            foshk_attribute: rain_month
-        year:
-            name: Regenmenge des aktuellen Jahres
-            type: num
-            foshk_attribute: rain_year
-            database: yes
-        total:
-            name: Gesamt-Regenmenge
-            type: num
-            foshk_attribute: rain_totals
-            database: yes
-        reset:
-            day:
-                name: Reset des Tages-Regenzählers
-                type: num
-                foshk_attribute: rain_reset_day
-            week:
-                name: Reset des Wochen-Regenzählers
-                type: str
-                foshk_attribute: rain_reset_week
-            year:
-                name: Reset des Jahres-Regenzählers
-                type: num
-                foshk_attribute: rain_reset_year
+        my_database: no
+        my_database_maxage: 92
+        struct: ._rain
 
     p_rain:
+        my_database: no
+        my_database_maxage: 92
+        struct: ._p_rain
+
+    p_rain_gain:
+        struct: ._p_rain_gain
+
+    weather:
+        my_database: no
+        my_database_maxage: 92
+        struct: _weather
+
+    ws90:
+        my_database: no
+        my_database_maxage: 92
+
+        struct: ._outdoor ._wind ._rain ._p_rain_gain
+
+        ws90_batt:
+            type: num
+            foshk_attribute: ws90_batt
+        ws90_sig:
+            type: num
+            foshk_attribute: ws90_sig
+
+    _indoor:
+        my_database: ..:.
+        my_database_maxage: ..:.
+
+        intemp:
+            name: Innentemperatur
+            type: num
+            foshk_attribute: intemp
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        inhumid:
+            name: relative Luftfeuchte innen
+            type: num
+            foshk_attribute: inhumid
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        inabshum:
+            name: absolute Luftfeuchte innen
+            type: num
+            foshk_attribute: inabshum
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        indewpt:
+            name: Taupunkt Innen
+            type: num
+            foshk_attribute: indewpt
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+
+    _outdoor:
+        my_database: ..:.
+        my_database_maxage: ..:.
+
+        outtemp:
+            name: Außentemperatur
+            type: num
+            foshk_attribute: outtemp
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        outhumid:
+            name: relative Luftfeuchte außen
+            type: num
+            foshk_attribute: outhumid
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        outdewpt:
+            name: Taupunkt außen
+            type: num
+            foshk_attribute: outdewpt
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        outfrostpt:
+            name: Frostpunkt außen
+            type: num
+            foshk_attribute: outfrostpt
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        light:
+            name: Helligkeit
+            type: num
+            foshk_attribute: light
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        solarradiation:
+            name: Sonnenstrahlung
+            type: num
+            foshk_attribute: solarradiation
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        uvi:
+            name: UV Index
+            type: num
+            foshk_attribute: uvi
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        feels_like:
+            name: gefühlte Temperatur
+            type: num
+            foshk_attribute: feelslike
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        heat_index:
+            name: Hitzeindex
+            type: num
+            foshk_attribute: heatindex
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        cloud_ceiling:
+            name: Wolkenhöhe
+            type: num
+            foshk_attribute: cloud_ceiling
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+
+    _pressure:
+        my_database: ..:.
+        my_database_maxage: ..:.
+
+        pressure_rel:
+            name: absoluter Luftdruck
+            type: num
+            foshk_attribute: air_pressure_abs
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        pressure_abs:
+            name: relativer Luftdruck
+            type: num
+            foshk_attribute: air_pressure_rel
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+
+    _wind:
+        my_database: ..:.
+        my_database_maxage: ..:.
+
+        winddir:
+            name: Windrichtung in °
+            type: num
+            foshk_attribute: winddir
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        winddir_text:
+            name: Windrichtung
+            type: str
+            foshk_attribute: winddir_txt
+        winddir_avg10m:
+            name: Windrichtung Mittel der letzten 10min
+            type: num
+            foshk_attribute: winddir_avg10m
+        windspeed:
+            name: Windgeschwindigkeit
+            type: num
+            foshk_attribute: windspeed
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        windspeed_bft:
+            name: Windgeschwindigkeit auf Beaufort Skala
+            type: num
+            foshk_attribute: windspeed_bft
+        windspeed_bft_txt:
+            name: Beschreibung der Windgeschwindigkeit auf Beaufort Skala
+            type: str
+            foshk_attribute: windspeed_bft_txt
+        windspeed_avg10m:
+            name: Windgeschwindigkeit Mittel der letzten 10min
+            type: num
+            foshk_attribute: windspeed_avg10m
+        windgust:
+            name: Böengeschwindkigkeit
+            type: num
+            foshk_attribute: gustspeed
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        windgust_max10m:
+            name: max Böengeschwindkigkeit der letzten 10min
+            type: num
+            foshk_attribute: gustspeed_avg10m
+        winddaymax:
+            name: max. Windgeschwindikeit des Tages
+            type: num
+            foshk_attribute: winddaymax
+
+    _rain:
+        my_database: ..:.
+        my_database_maxage: ..:.
+
+        type: num
+        foshk_attribute: rain
+
+        rate:
+            name: Regenrate
+            type: num
+            foshk_attribute: rain_rate
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        event:
+            name: Regenmenge des aktuellen Regens
+            type: num
+            foshk_attribute: rain_event
+        hour:
+            name: Regenmenge der aktuellen Stunde
+            type: num
+            foshk_attribute: rain_hour
+        day:
+            name: Regenmenge des aktuellen Tages
+            type: num
+            foshk_attribute: rain_day
+        week:
+            name: Regenmenge der aktuellen Woche
+            type: num
+            foshk_attribute: rain_week
+        month:
+            name: Regenmenge des aktuellen Monats
+            type: num
+            foshk_attribute: rain_month
+        year:
+            name: Regenmenge des aktuellen Jahres
+            type: num
+            foshk_attribute: rain_year
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        total:
+            name: Gesamt-Regenmenge
+            type: num
+            foshk_attribute: rain_totals
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        reset:
+            day:
+                name: Reset des Tages-Regenzählers
+                type: num
+                foshk_attribute: rain_reset_day
+            week:
+                name: Reset des Wochen-Regenzählers
+                type: str
+                foshk_attribute: rain_reset_week
+            year:
+                name: Reset des Jahres-Regenzählers
+                type: num
+                foshk_attribute: rain_reset_year
+
+    _p_rain:
+        my_database: ..:.
+        my_database_maxage: ..:.
+
         type: num
         foshk_attribute: p_rain
 
         rate:
             type: num
             foshk_attribute: p_rain_rate
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
         event:
             type: num
             foshk_attribute: p_rain_event
@@ -883,9 +1065,8 @@ item_structs:
         year:
             type: num
             foshk_attribute: p_rain_year
-#        total:
-#            type: num
-#            foshk_attribute: p_rain_totals
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
         reset:
             day:
                 type: num
@@ -897,7 +1078,7 @@ item_structs:
                 type: num
                 foshk_attribute: rain_reset_year
 
-    p_rain_gain:
+    _p_rain_gain:
         p_rain_gain0:
             type: num
             foshk_attribute: p_rain_gain0
@@ -929,343 +1110,22 @@ item_structs:
             type: num
             foshk_attribute: p_rain_gain9
 
-    wind:
-        winddir:
-            name: Windrichtung in °
-            type: num
-            foshk_attribute: winddir
-        winddir_text:
-            name: Windrichtung
-            type: str
-            foshk_attribute: winddir_txt
-        winddir_avg10m:
-            name: Windrichtung Mittel der letzten 10min
-            type: num
-            foshk_attribute: winddir_avg10m
-        windspeed:
-            name: Windgeschwindigkeit
-            type: num
-            foshk_attribute: windspeed
-        windspeed_bft:
-            name: Windgeschwindigkeit auf Beaufort Skala
-            type: num
-            foshk_attribute: windspeed_bft
-        windspeed_bft_txt:
-            name: Beschreibung der Windgeschwindigkeit auf Beaufort Skala
-            type: str
-            foshk_attribute: windspeed_bft_txt
-        windspeed_avg10m:
-            name: Windgeschwindigkeit Mittel der letzten 10min
-            type: num
-            foshk_attribute: windspeed_avg10m
-        windgust:
-            name: Böengeschwindkigkeit
-            type: num
-            foshk_attribute: gustspeed
-        windgust_max10m:
-            name: max Böengeschwindkigkeit der letzten 10min
-            type: num
-            foshk_attribute: gustspeed_avg10m
-        winddaymax:
-            name: max. Windgeschwindikeit des Tages
-            type: num
-            foshk_attribute: winddaymax
+    _weather:
+        my_database: ..:.
+        my_database_maxage: ..:.
 
-    wind_db:
-        winddir:
-            name: Windrichtung in °
-            type: num
-            foshk_attribute: winddir
-            database: yes
-        winddir_text:
-            name: Windrichtung
-            type: str
-            foshk_attribute: winddir_txt
-        winddir_avg10m:
-            name: Windrichtung Mittel der letzten 10min
-            type: num
-            foshk_attribute: winddir_avg10m
-        windspeed:
-            name: Windgeschwindigkeit
-            type: num
-            foshk_attribute: windspeed
-            database: yes
-        windspeed_bft:
-            name: Windgeschwindigkeit auf Beaufort Skala
-            type: num
-            foshk_attribute: windspeed_bft
-        windspeed_bft_txt:
-            name: Beschreibung der Windgeschwindigkeit auf Beaufort Skala
-            type: str
-            foshk_attribute: windspeed_bft_txt
-        windspeed_avg10m:
-            name: Windgeschwindigkeit Mittel der letzten 10min
-            type: num
-            foshk_attribute: windspeed_avg10m
-        windgust:
-            name: Böengeschwindkigkeit
-            type: num
-            foshk_attribute: gustspeed
-            database: yes
-        windgust_max10m:
-            name: max Böengeschwindkigkeit der letzten 10min
-            type: num
-            foshk_attribute: gustspeed_avg10m
-        winddaymax:
-            name: max. Windgeschwindikeit des Tages
-            type: num
-            foshk_attribute: winddaymax
-
-    indoor:
-        intemp:
-            name: Innentemperatur
-            type: num
-            foshk_attribute: intemp
-        inhumid:
-            name: relative Luftfeuchte innen
-            type: num
-            foshk_attribute: inhumid
-        inabshum:
-            name: absolute Luftfeuchte innen
-            type: num
-            foshk_attribute: inabshum
-        indewpt:
-            name: Taupunkt Innen
-            type: num
-            foshk_attribute: indewpt
-
-
-    indoor_db:
-        intemp:
-            name: Innentemperatur
-            type: num
-            foshk_attribute: intemp
-            database: yes
-        inhumid:
-            name: relative Luftfeuchte innen
-            type: num
-            foshk_attribute: inhumid
-            database: yes
-        inabshum:
-            name: absolute Luftfeuchte innen
-            type: num
-            foshk_attribute: inabshum
-        indewpt:
-            name: Taupunkt Innen
-            type: num
-            foshk_attribute: indewpt
-            database: yes
-
-    outdoor:
-        outtemp:
-            name: Außentemperatur
-            type: num
-            foshk_attribute: outtemp
-        outhumid:
-            name: relative Luftfeuchte außen
-            type: num
-            foshk_attribute: outhumid
-        outdewpt:
-            name: Taupunkt außen
-            type: num
-            foshk_attribute: outdewpt
-        outfrostpt:
-            name: Frostpunkt außen
-            type: num
-            foshk_attribute: outfrostpt
-        light:
-            name: Helligkeit
-            type: num
-            foshk_attribute: light
-        solarradiation:
-            name: Sonnenstrahlung
-            type: num
-            foshk_attribute: solarradiation
-        uvi:
-            name: UV Index
-            type: num
-            foshk_attribute: uvi
-        feels_like:
-            name: gefühlte Temperatur
-            type: num
-            foshk_attribute: feelslike
-        heat_index:
-            name: Hitzeindex
-            type: num
-            foshk_attribute: heatindex
-        cloud_ceiling:
-            name: Wolkenhöhe
-            type: num
-            foshk_attribute: cloud_ceiling
-
-    outdoor_db:
-        outtemp:
-            name: Außentemperatur
-            type: num
-            foshk_attribute: outtemp
-            database: yes
-        outhumid:
-            name: relative Luftfeuchte außen
-            type: num
-            foshk_attribute: outhumid
-            database: yes
-        outdewpt:
-            name: Taupunkt außen
-            type: num
-            foshk_attribute: outdewpt
-            database: yes
-        outfrostpt:
-            name: Frostpunkt außen
-            type: num
-            foshk_attribute: outfrostpt
-        light:
-            name: Helligkeit
-            type: num
-            foshk_attribute: light
-            database: yes
-        solarradiation:
-            name: Sonnenstrahlung
-            type: num
-            foshk_attribute: solarradiation
-            database: yes
-        uvi:
-            name: UV Index
-            type: num
-            foshk_attribute: uvi
-            database: yes
-        feels_like:
-            name: gefühlte Temperatur
-            type: num
-            foshk_attribute: feelslike
-            database: yes
-        heat_index:
-            name: Hitzeindex
-            type: num
-            foshk_attribute: heatindex
-            database: yes
-        cloud_ceiling:
-            name: Wolkenhöhe
-            type: num
-            foshk_attribute: cloud_ceiling
-            database: yes
-
-    pressure:
-        pressure_rel:
-            name: absoluter Luftdruck
-            type: num
-            foshk_attribute: air_pressure_abs
-        pressure_abs:
-            name: relativer Luftdruck
-            type: num
-            foshk_attribute: air_pressure_rel
-
-
-    pressure_db:
-        pressure_rel:
-            name: absoluter Luftdruck
-            type: num
-            foshk_attribute: air_pressure_abs
-            database: yes
-        pressure_abs:
-            name: relativer Luftdruck
-            type: num
-            foshk_attribute: air_pressure_rel
-            database: yes
-
-    weather:
         weather_text:
             type: str
             foshk_attribute: weather_txt
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
 
         weather_forecast_text:
             type: str
             foshk_attribute: weather_forecast_txt
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
 
-    ws90:
-        outtemp:
-            type: num
-            foshk_attribute: outtemp
-        outhumid:
-            type: num
-            foshk_attribute: outhumid
-        light:
-            type: num
-            foshk_attribute: light
-        solarradiation:
-            type: num
-            foshk_attribute: solarradiation
-        uvi:
-            type: num
-            foshk_attribute: uvi
-        winddaymax:
-            type: num
-            foshk_attribute: winddaymax
-        datetime:
-            type: foo
-            foshk_attribute: datetime
-        p_rainrate:
-            type: num
-            foshk_attribute: p_rain_rate
-        p_rainday:
-            type: num
-            foshk_attribute: p_rain_day
-        p_rainweek:
-            type: num
-            foshk_attribute: p_rain_week
-        p_rainmonth:
-            type: num
-            foshk_attribute: p_rain_month
-        p_rainyear:
-            type: num
-            foshk_attribute: p_rain_year
-        p_rainevent:
-            type: num
-            foshk_attribute: p_rain_event
-        p_rain_gain0:
-            type: num
-            foshk_attribute: p_rain_gain0
-        p_rain_gain1:
-            type: num
-            foshk_attribute: p_rain_gain1
-        p_rain_gain2:
-            type: num
-            foshk_attribute: p_rain_gain2
-        p_rain_gain3:
-            type: num
-            foshk_attribute: p_rain_gain3
-        p_rain_gain4:
-            type: num
-            foshk_attribute: p_rain_gain4
-        p_rain_gain5:
-            type: num
-            foshk_attribute: p_rain_gain5
-        p_rain_gain6:
-            type: num
-            foshk_attribute: p_rain_gain6
-        p_rain_gain7:
-            type: num
-            foshk_attribute: p_rain_gain7
-        p_rain_gain8:
-            type: num
-            foshk_attribute: p_rain_gain8
-        p_rain_gain9:
-            type: num
-            foshk_attribute: p_rain_gain9
-        day_reset:
-            type: num
-            foshk_attribute: rain_reset_day
-        week_reset:
-            type: str
-            foshk_attribute: rain_reset_week
-        annual_reset:
-            type: num
-            foshk_attribute: rain_reset_year
-        ws90_batt:
-            type: num
-            foshk_attribute: ws90_batt
-        ws90_sig:
-            type: num
-            foshk_attribute: ws90_sig
 
 item_attribute_prefixes: NONE
 

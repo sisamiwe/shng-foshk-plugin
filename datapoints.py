@@ -288,7 +288,7 @@ class DataPoints:
     STORM_WARNING: tuple = ('storm_warning', 'Sturmwarnung', 'True/False')
     THUNDERSTORM_WARNING: tuple = ('thunderstorm_warning', 'Gewitterwarnung', 'True/False')
     WEATHERSTATION_WARNING: tuple = ('weatherstation_warning', 'Warnung der Wetterstation', 'True/False')
-    LEAKAGE_WARNING: tuple = ('leakage_warning', 'Leckagewarning', 'True/False')
+    LEAKAGE_WARNING: tuple = ('leakage_warning', 'Leckagewarnung', 'True/False')
     FIRMWARE_UPDATE_AVAILABLE: tuple = (MasterKeys.FW_UPD_AVAIL, 'Firmwareupdate verfügbar', 'True/False')
     # FIRMWARE_UPDATE_TEXT: tuple = ('firmware_update_text', 'Beschreibung der Änderungen in der Firmware', '-')
     CLOUD_CEILING: tuple = ('cloud_ceiling', 'Wolkenhöhe *Berechnung im Plugin', 'm')
