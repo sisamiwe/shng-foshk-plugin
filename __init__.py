@@ -72,7 +72,7 @@ class Foshk(SmartPlugin):
     Data Items must be defined in ./data_items.py.
     """
 
-    PLUGIN_VERSION = '1.2.2'
+    PLUGIN_VERSION = '1.2.3'
 
     def __init__(self, sh):
         """Initializes the plugin"""
@@ -746,11 +746,10 @@ class Gateway(object):
             data = None
 
         if data and isinstance(data, deque):
-            if data.maxlen == int(3 * 3600 / self.interface_config.api_data_cycle):
-                return data
+            return data
 
         self.logger.info("Unable to load pressure data from pickle. Start with empty deque.")
-        return deque(maxlen=(int(3 * 3600 / self.interface_config.api_data_cycle)))
+        return deque(maxlen=(int(3 * 3600 / self.interface_config.api_data_cycle + 5)))
 
     def _init_pressure_last(self):
         """Try to load data from pickle. if not successful create new dict"""
@@ -881,6 +880,8 @@ class Gateway(object):
     def add_pressure_trend(self, data: dict) -> None:
         """Fill deque for pressure trend and determine pressure trends etc"""
 
+        VALUES = {-2: 'stark fallend', -1: 'fallend', 0: 'gleichbleibend', 1: 'steigend', 2: 'stark steigend'}
+
         # feed deque
         air_pressure_rel = data.get(DataPoints.RELBARO[0])
         if air_pressure_rel:
@@ -895,16 +896,18 @@ class Gateway(object):
             pos_xh_ago = pos_current - int(x * 3600 / self.interface_config.api_data_cycle)
 
             # calculation for x hour
-            if pos_xh_ago > 0:
+            if pos_xh_ago >= 0:
+                self.logger.debug(f"calculate {x}h ago with {pos_xh_ago=}")
                 time_xh_ago, air_pressure_rel_xh_ago = self.pressure_3h[pos_xh_ago]
                 air_pressure_rel_diff_xh_ago = round(air_pressure_rel - air_pressure_rel_xh_ago, 1)
                 air_pressure_rel_trend_xh_ago = self.get_trend(self.pressure_3h, pos_xh_ago, pos_current)
+                air_pressure_rel_trend_xh_ago_str = VALUES[air_pressure_rel_trend_xh_ago]
 
-                data[f'{DataPoints.AIR_PRESSURE_REL_DIFF_xh}_{x}h'[0]] = air_pressure_rel_diff_xh_ago
-                data[f'{DataPoints.AIR_PRESSURE_REL_TREND_xh}_{x}h'[0]] = air_pressure_rel_trend_xh_ago
+                data[f'{DataPoints.AIR_PRESSURE_REL_DIFF_xh[0]}_{x}h'] = air_pressure_rel_diff_xh_ago
+                data[f'{DataPoints.AIR_PRESSURE_REL_TREND_xh[0]}_{x}h'] = air_pressure_rel_trend_xh_ago_str
 
                 self.pressure_last['diff'].update({f'{x}': air_pressure_rel_diff_xh_ago})
-                self.pressure_last['trend'].update({f'{x}': air_pressure_rel_trend_xh_ago})
+                self.pressure_last['trend'].update({f'{x}': air_pressure_rel_trend_xh_ago_str})
 
                 # add weather forecast
                 if x == 3:
@@ -1934,17 +1937,19 @@ class GatewayDriver(Gateway):
             # get the lightning strike count for this period from total
             self.calculate_lightning_count(data)
             
-            # get wind_avg
+            # add wind_avg
             self.add_wind_avg(data)
 
-            # calculate
+            # add sun duration
             self.add_sun_duration(data)
+
+            # add pressure trend
+            self.add_pressure_trend(data)
 
         # add calculated data
         self.add_temp_data(data)
         self.add_wind_data(data)
         self.add_light_data(data)
-        self.add_pressure_trend(data)
 
         if self.interface_config.show_sensor_warning:
             # add sensor warning data field
@@ -5060,7 +5065,7 @@ class TcpParser(object):
 
         tcp_live_data_struct = {
             # Generic
-            'client_ip': (None, DataPoints.CLIENT_IP[0]),
+            'client_ip': (None, None),
             'PASSKEY': (None, None),
             'stationtype': (None, DataPoints.FIRMWARE[0]),
             'freq': ('decode_freq', DataPoints.FREQ[0]),

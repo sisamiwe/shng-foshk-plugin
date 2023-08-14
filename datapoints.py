@@ -268,7 +268,7 @@ class DataPoints:
     RAIN_RST_TIME: tuple = ((RAIN_RST_DAY[0],                                                                                           # see first entries of dataclass
                              RAIN_RST_WEEK[0],                                                                                          # see first entries of dataclass
                              RAIN_RST_YEAR[0]), None, None)                                                                             # 0x88 // 3 //
-    CLIENT_IP: tuple = ('client_ip', 'Client IP', None)
+    CLIENT_IP: tuple = ('client_ip', None, None)
     PASSKEY: tuple = (None, 'Passkey', None)
     FIRMWARE: tuple = ('firmware', 'Firmware Version', None)
     FREQ: tuple = ('frequency', 'Frequenz des Transmitter', None)

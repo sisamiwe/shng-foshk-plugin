@@ -41,8 +41,6 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - battery_warning: Batteriewarnung [True/False]
 
-- client_ip: Client IP [None]
-
 - cloud_ceiling: Wolkenhöhe *Berechnung im Plugin [m]
 
 - co2: Aktueller CO2 Meßwert des CO2 Sensors [Vol%]
@@ -119,7 +117,7 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - leak4: Leckage [True/False]
 
-- leakage_warning: Leckagewarning [True/False]
+- leakage_warning: Leckagewarnung [True/False]
 
 - light: Helligkeit [lux]
 

@@ -11,7 +11,7 @@ plugin:
     keywords: froggit ecowitt weather station
 #    support: https://knx-user-forum.de/forum/supportforen/smarthome-py
 
-    version: 1.2.2                  # Plugin version (must match the version specified in __init__.py)
+    version: 1.2.3                  # Plugin version (must match the version specified in __init__.py)
     sh_minversion: 1.9.5.4          # minimum shNG version to use this plugin
 #    sh_maxversion:                 # maximum shNG version to use this plugin (leave empty if latest)
 #    py_minversion:                 # minimum Python version to use for this plugin
@@ -96,7 +96,6 @@ item_attributes:
             - air_pressure_rel_trend_1h
             - air_pressure_rel_trend_3h
             - battery_warning
-            - client_ip
             - cloud_ceiling
             - co2
             - co2_24h_avg
@@ -391,7 +390,6 @@ item_attributes:
             - Trend des Luftdrucks innerhalb der letzten Stunde *Berechnung im Plugin
             - Trend des Luftdrucks innerhalb der letzten 3 Stunden *Berechnung im Plugin
             - Batteriewarnung
-            - Client IP
             - Wolkenhöhe *Berechnung im Plugin
             - Aktueller CO2 Meßwert des CO2 Sensors
             - Mittlerer CO2 Messwert der letzten 24h des CO2 Sensors
