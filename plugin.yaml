@@ -99,6 +99,8 @@ item_attributes:
             - cloud_ceiling
             - co2
             - co2_24h_avg
+            - comfort
+            - condensation
             - datetime
             - dewpt
             - feelslike
@@ -249,6 +251,7 @@ item_attributes:
             - temp15
             - temp16
             - temp17
+            - thermophysiologisch
             - thunderstorm_warning
             - uvi
             - weather_forecast_txt
@@ -393,6 +396,8 @@ item_attributes:
             - Wolkenhöhe *Berechnung im Plugin
             - Aktueller CO2 Meßwert des CO2 Sensors
             - Mittlerer CO2 Messwert der letzten 24h des CO2 Sensors
+            - Komfort basierend auf dem Taupunkt
+            - Kondensationbildung
             - Datetime
             - Taupunkt
             - Gefühlte Temperatur
@@ -543,6 +548,7 @@ item_attributes:
             - Temperatur
             - Temperatur
             - Temperatur am CO2 Sensor
+            - thermophysiologische Beanspruchung
             - Gewitterwarnung
             - UV-Index
             - Beschreibung des Wetterausblicks als Text *Berechnung im Plugin
@@ -867,12 +873,6 @@ item_structs:
             foshk_attribute: outdewpt
             database: ..:my_database
             database_maxage: ..:my_database_maxage
-        outfrostpt:
-            name: Frostpunkt außen
-            type: num
-            foshk_attribute: outfrostpt
-            database: ..:my_database
-            database_maxage: ..:my_database_maxage
         light:
             name: Helligkeit
             type: num
@@ -901,6 +901,12 @@ item_structs:
             name: Hitzeindex
             type: num
             foshk_attribute: heatindex
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+        wind_chill:
+            name: Windchill
+            type: num
+            foshk_attribute: windchill
             database: ..:my_database
             database_maxage: ..:my_database_maxage
         cloud_ceiling:
@@ -1125,6 +1131,18 @@ item_structs:
         weather_forecast_text:
             type: str
             foshk_attribute: weather_forecast_txt
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+
+        schwuele:
+            type: str
+            foshk_attribute: schwueleempfinden
+            database: ..:my_database
+            database_maxage: ..:my_database_maxage
+
+        thermophysiologische_beanspruchung:
+            type: str
+            foshk_attribute: thermophysiologisch
             database: ..:my_database
             database_maxage: ..:my_database_maxage
 

@@ -47,6 +47,10 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - co2_24h_avg: Mittlerer CO2 Messwert der letzten 24h des CO2 Sensors [Vol%]
 
+- comfort: Komfort basierend auf dem Taupunkt [-]
+
+- condensation: Kondensationbildung [-]
+
 - datetime: Datetime [None]
 
 - dewpt: Taupunkt [°C]
@@ -346,6 +350,8 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 - temp16: Temperatur [°C]
 
 - temp17: Temperatur am CO2 Sensor [°C]
+
+- thermophysiologisch: thermophysiologische Beanspruchung [-]
 
 - thunderstorm_warning: Gewitterwarnung [True/False]
 

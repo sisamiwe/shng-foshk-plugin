@@ -313,6 +313,9 @@ class DataPoints:
     SUN_DURATION_WEEK: tuple = (f"{MasterKeys.SUN_DURATION}_week", 'Sonnenstunden in der aktuellen Woche *Berechnung im Plugin', 'h')
     SUN_DURATION_MONTH: tuple = (f"{MasterKeys.SUN_DURATION}_month", 'Sonnenstunden im aktuellen Monat *Berechnung im Plugin', 'h')
     SUN_DURATION_YEAR: tuple = (f"{MasterKeys.SUN_DURATION}_year", 'Sonnenstunden im aktuellen Jahr *Berechnung im Plugin', 'h')
+    COMFORT: tuple = ('comfort', 'Komfort basierend auf dem Taupunkt', '-')
+    THERMOPHYSIOLOGICAL_STRAIN: tuple = ('thermophysiologisch', 'thermophysiologische Beanspruchung', '-')
+    CONDENSATION: tuple = ('condensation', 'Kondensationbildung', '-')
 
 
 @dataclass

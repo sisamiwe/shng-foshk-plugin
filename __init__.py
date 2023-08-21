@@ -42,6 +42,7 @@ from lib.utils import Utils
 from lib.shtime import Shtime
 from .webif import WebInterface
 from .datapoints import DataPoints, MasterKeys, SensorKeys
+from .meteocalcs import *
 
 import os
 import re
@@ -61,7 +62,6 @@ from typing import Union
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from json import JSONDecodeError
-from math import sin, cos, pi, radians, degrees, atan2
 from dataclasses import dataclass
 import urllib.parse as urlparse
 
@@ -642,16 +642,7 @@ class Constants:
     TSTORM_EXPIRE: int = 15               # Auflauf der Gewitterwarnung: 15 Minuten
     CO2_WARNLEVEL: int = 1200             # Auslösen der CO2 Warnung: ab 1200
     SUN_MIN: float = 0
-    SUN_COEF: float = 0.8                   # Sonnencoeffizient
-
-    MAGNUS_COEFFICIENTS = dict(
-        positive=dict(a=7.5, b=17.368, c=238.88),
-        negative=dict(a=7.6, b=17.966, c=247.15),
-    )
-    KELVIN = 273.15                         # 0K = -273.15°C
-    MW = 18.016                             # Molekulargewicht des Wasserdampfes in kg/kmol
-    RS = 8314.3                             # universelle Gaskonstante in J/(kmol*K)
-    S2B = 126.7                             # 1W/m² = 126.7 lux
+    SUN_COEF: float = 0.8                   # Sonnenkoeffizient
 
 
 # ============================================================================
@@ -808,7 +799,8 @@ class Gateway(object):
         self._plugin_instance.save_pickle(self.PICKLE_FILENAME_AIRPRESSURE_LAST, {'data': self.pressure_last, 'stop_time': stop_time})
         self._plugin_instance.save_pickle(self.PICKLE_FILENAME_SUNTIME, {'data': self.sun_time, 'stop_time': stop_time})
 
-    def add_temp_data(self, data: dict) -> None:
+    @staticmethod
+    def add_temp_data(data: dict) -> None:
         """
         Add calculated data to dict
 
@@ -818,27 +810,28 @@ class Gateway(object):
         if DataPoints.OUTTEMP[0] in data:
 
             if DataPoints.WINDSPEED[0] in data:
-                data[DataPoints.FEELS_LIKE[0]] = self.get_windchill_index(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]], units='metric')
-                data[DataPoints.HEATINDEX[0]] = self.get_heat_index(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]], units='metric')
-
-                if data.keys() >= {DataPoints.OUTHUMI[0]}:
-                    data[DataPoints.FEELS_LIKE[0]] = self.calculate_feels_like(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]])
+                data[DataPoints.WINDCHILL[0]] = get_windchill(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]], units='metric')
 
             if DataPoints.OUTHUMI[0] in data:
-                dewpt_c = self.get_dew_point_c(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]])
-                data[DataPoints.OUTDEWPT[0]] = dewpt_c
-                data[DataPoints.OUTFROSTPT[0]] = self.get_frost_point_c(data[DataPoints.OUTTEMP[0]], dewpt_c)
-                data[DataPoints.CLOUD_CEILING[0]] = self.get_cloud_ceiling(data[DataPoints.OUTTEMP[0]], dewpt_c)
-                data[DataPoints.OUTABSHUM[0]] = self.get_abs_hum_c(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]])
+                data[DataPoints.OUTDEWPT[0]] = get_dew_point(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]])
+                data[DataPoints.CLOUD_CEILING[0]] = get_cloud_ceiling(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]])
+                data[DataPoints.OUTABSHUM[0]] = get_abs_hum(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]])
+                data[DataPoints.HEATINDEX[0]] = get_heat_index(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]], units='metric')
+                data[DataPoints.COMFORT[0]] = get_comfort_from_dewpoint(data[DataPoints.OUTDEWPT[0]])
+                data[DataPoints.CONDENSATION[0]] = condensation(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]])[1]
+
+            if DataPoints.WINDSPEED[0] in data and DataPoints.OUTHUMI[0] in data:
+                data[DataPoints.FEELS_LIKE[0]] = get_feels_like_temperature(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]], data[DataPoints.WINDSPEED[0]], units='metric')
+                data[DataPoints.THERMOPHYSIOLOGICAL_STRAIN[0]] = get_thermophysiological_strain(data[DataPoints.FEELS_LIKE[0]])[1]
 
         if DataPoints.INTEMP[0] in data and DataPoints.INHUMI[0] in data:
-            data[DataPoints.INDEWPPOINT[0]] = self.get_dew_point_c(data[DataPoints.INTEMP[0]], data[DataPoints.INHUMI[0]])
-            data[DataPoints.INABSHUM[0]] = self.get_abs_hum_c(data[DataPoints.INTEMP[0]], data[DataPoints.INHUMI[0]])
+            data[DataPoints.INDEWPPOINT[0]] = get_dew_point(data[DataPoints.INTEMP[0]], data[DataPoints.INHUMI[0]])
+            data[DataPoints.INABSHUM[0]] = get_abs_hum(data[DataPoints.INTEMP[0]], data[DataPoints.INHUMI[0]])
 
         for i in range(1, 9):
             if f'{MasterKeys.TEMP}{i}' in data and f'{MasterKeys.HUMID}{i}' in data:
-                data[f'{MasterKeys.DEWPT}{i}'] = self.get_dew_point_c(data[f'{MasterKeys.TEMP}{i}'], data[f'{MasterKeys.HUMID}{i}'])
-                data[f'{MasterKeys.ABSHUM}{i}'] = self.get_abs_hum_c(data[f'{MasterKeys.TEMP}{i}'], data[f'{MasterKeys.HUMID}{i}'])
+                data[f'{MasterKeys.DEWPT}{i}'] = get_dew_point(data[f'{MasterKeys.TEMP}{i}'], data[f'{MasterKeys.HUMID}{i}'])
+                data[f'{MasterKeys.ABSHUM}{i}'] = get_abs_hum(data[f'{MasterKeys.TEMP}{i}'], data[f'{MasterKeys.HUMID}{i}'])
 
     def add_wind_data(self, data: dict) -> None:
         """
@@ -856,7 +849,7 @@ class Gateway(object):
             data[DataPoints.WINDSPEED_BFT_TEXT[0]] = env.bft_to_text(windspeed_bft, self.interface_config.lang)
 
         if DataPoints.ABSBARO[0] in data:
-            data[DataPoints.WEATHER_TEXT[0]] = self.get_weather_now(data[DataPoints.ABSBARO[0]], self.interface_config.lang)
+            data[DataPoints.WEATHER_TEXT[0]] = get_weather_now(data[DataPoints.ABSBARO[0]], self.interface_config.lang)
                 
     def add_wind_avg(self, data: dict) -> None:
         """
@@ -911,7 +904,7 @@ class Gateway(object):
 
                 # add weather forecast
                 if x == 3:
-                    data[DataPoints.WEATHER_FORECAST_TEXT[0]] = self.get_weather_forecast(air_pressure_rel_diff_xh_ago, self.interface_config.lang)
+                    data[DataPoints.WEATHER_FORECAST_TEXT[0]] = get_weather_forecast(air_pressure_rel_diff_xh_ago, self.interface_config.lang)
 
     def add_sun_duration(self, data) -> None:
         """
@@ -1067,29 +1060,6 @@ class Gateway(object):
             # save the new total as the old total for next time
             self.last_lightning = new_total
 
-    def calculate_feels_like(self, temperature_c: float, windspeed_kmh: float) -> float:
-        """
-        Computes the feels-like temperature
-
-        :param temperature_c: ambient temperature in Celsius
-        :param windspeed_kmh: wind speed in km/h
-        :return: feels like temperature in Celsius
-        """
-
-        # convert to Fahrenheit and mph
-        temperature_f = env.c_to_f(temperature_c)
-        windspeed_mph = env.kmh_to_mph(windspeed_kmh)
-
-        # Try Wind Chill first
-        feels_like = self.get_windchill_index(temperature_f, windspeed_mph, units='imperial')
-
-        # Replace it with the Heat Index, if necessary
-        if feels_like == temperature_f and temperature_f >= 80:
-            feels_like = self.get_heat_index(temperature_f, windspeed_mph, units='imperial')
-
-        # convert back to Celsius and return
-        return f_to_c(feels_like)
-
     def delta_rain(self, rain: float, last_rain: float, descriptor: str = 'rain') -> Union[None, float]:
         """Calculate rainfall from successive cumulative values.
 
@@ -1149,232 +1119,6 @@ class Gateway(object):
         return count - last_count
 
     @staticmethod
-    def get_dew_point_c(t_air_c: float, rel_humidity: float) -> float:
-        """
-        Compute the dew point in degrees Celsius
-
-        :param t_air_c: current ambient temperature in degrees Celsius
-        :param rel_humidity: relative humidity in %
-        :return: the dew point in degrees Celsius
-        """
-
-        const = Constants.MAGNUS_COEFFICIENTS['positive'] if t_air_c > 0 else Constants.MAGNUS_COEFFICIENTS['negative']
-
-        try:
-            pa = rel_humidity / 100.0 * math.exp(const['b'] * t_air_c / (const['c'] + t_air_c))
-            dew_point_c = round(const['c'] * math.log(pa) / (const['b'] - math.log(pa)), 1)
-        except ValueError:
-            dew_point_c = -9999
-        return dew_point_c
-
-    @staticmethod
-    def get_frost_point_c(temperature: float, dew_point: float) -> float:
-        """
-        Compute the frost point in degrees Celsius
-
-        :param temperature: current ambient temperature in degrees Celsius
-        :param dew_point: current dew point in degrees Celsius
-        :return: the frost point in degrees Celsius
-        """
-
-        try:
-            dew_point_k = Constants.KELVIN + dew_point
-            temperature_k = Constants.KELVIN + temperature
-            frost_point_k = dew_point_k - temperature_k + 2671.02 / ((2954.61 / temperature_k) + 2.193665 * math.log(temperature_k) - 13.3448)
-        except ValueError:
-            frost_point_c = -9999
-        else:
-            frost_point_c = round(frost_point_k - Constants.KELVIN, 1)
-
-        return frost_point_c
-
-    @staticmethod
-    def get_abs_hum_c(temperature: float, humidity_rel: float) -> float:
-        """
-        Return the absolute humidity in (g/cm3) from the relative humidity in % and temperature (Celsius)
-    
-        :param temperature: temperature in Celsius
-        :param humidity_rel: relative humidity in %
-        :return: val = absolute humidity in (g/cm3)
-        """
-
-        magnus_coe = Constants.MAGNUS_COEFFICIENTS['positive'] if temperature > 0 else Constants.MAGNUS_COEFFICIENTS['negative']
-
-        def svp():
-            """Compute saturated water vapor pressure (Sättigungsdampfdruck) in hPa"""
-            return magnus_coe['a'] * math.exp((magnus_coe['b'] * temperature) / (magnus_coe['c'] + temperature))
-
-        def vp():
-            """Compute actual water vapor pressure (Dampfdruck) in hPa"""
-            return humidity_rel / 100 * svp()
-
-        return round(10 ** 5 * Constants.MW / Constants.RS * vp() / (temperature + Constants.KELVIN), 1)
-
-    @staticmethod
-    def get_windchill_index(temperature: float, wind_speed: float, units: str = 'imperial') -> Union[float, None]:
-        """
-        Compute the wind chill index
-
-        :param temperature: current ambient temperature in °Fahrenheit / °Celsius
-        :param wind_speed: wind speed in miles/hour or km/h
-        :return: the wind chill index
-        :param units: unit system used for temperature
-        """
-
-        if units not in ['imperial', 'metric']:
-            return
-
-        if units == 'metric':
-            T = env.c_to_f(temperature)
-            V = env.kmh_to_mph(wind_speed)
-        else:
-            T = temperature
-            V = wind_speed
-
-        if T <= 50 and V >= 3:
-            WCI = math.fsum([
-                13.12,
-                0.6215 * T,
-                -11.37 * math.pow(V, 0.16),
-                0.3965 * T * math.pow(V, 0.16),
-            ])
-        else:
-            WCI = T
-
-        if units == 'metric':
-            return round(env.f_to_c(WCI), 1)
-
-        return round(WCI, 1)
-
-    @staticmethod
-    def get_heat_index(temperature: float, rel_hum: float, units: str = 'imperial') -> Union[float, None]:
-        """
-        Compute the heat index using metric temperature in °Fahrenheit / °Celsius
-
-        :param temperature: current ambient temperature in °Fahrenheit / °Celsius
-        :param rel_hum: rel humidity
-        :param units: unit system used for temperature
-
-        :return: the heat index
-        """
-
-        if units not in ['imperial', 'metric']:
-            return
-
-        if units == 'metric':
-            temperature = env.c_to_f(temperature)
-
-        T = temperature
-        RH = rel_hum
-        c1 = -42.379
-        c2 = 2.04901523
-        c3 = 10.14333127
-        c4 = -0.22475541
-        c5 = -6.83783e-3
-        c6 = -5.481717e-2
-        c7 = 1.22874e-3
-        c8 = 8.5282e-4
-        c9 = -1.99e-6
-
-        # calculate heat index using °Fahrenheit for temperature
-        HI = 0.5 * (T + 61.0 + (T - 68.0) * 1.2 + RH * 0.094)
-
-        if HI >= 80:
-            HI = math.fsum([
-                c1,
-                c2 * T,
-                c3 * RH,
-                c4 * T * RH,
-                c5 * T**2,
-                c6 * RH**2,
-                c7 * T**2 * RH,
-                c8 * T * RH**2,
-                c9 * T**2 * RH**2,
-                ])
-            if RH < 13 and 80 <= T <= 112:
-                HI = HI - ((13 - RH) / 4) * math.sqrt((17 - math.fabs(T - 95.0)) / 17)
-                if RH > 85 and 80 <= T <= 87:
-                    HI = HI + ((RH-85)/10) * ((87-T)/5)
-
-        if units == 'metric':
-            return round(env.f_to_c(HI), 1)
-
-        return round(HI, 1)
-
-    @staticmethod
-    def get_weather_now(pressure: float, lang: str = 'de') -> str:
-        """
-        Computes text for current weather condition
-
-        :param pressure: current air pressure in hpa
-        :param lang: acronym of language
-        :return: wind direction text
-        """
-
-        _weather_now_de = ["stürmisch, Regen", "regnerisch", "wechselhaft", "sonnig", "trocken, Gewitter"]
-        _weather_now_en = ["stormy, rainy", "rainy", "unstable", "sunny", "dry, thunderstorm"]
-        _weather_now = _weather_now_de if lang == "de" else _weather_now_en
-
-        if pressure <= 980:
-            entry = 0                # stürmisch, Regen
-        elif pressure <= 1000:
-            entry = 1                # regnerisch
-        elif pressure <= 1020:
-            entry = 2                # wechselhaft
-        elif pressure <= 1040:
-            entry = 3                # sonnig
-        else:
-            entry = 4                # trocken, Gewitter
-
-        return _weather_now[entry]
-
-    @staticmethod
-    def get_weather_forecast(pressure_differance: float, lang: str = 'de') -> str:
-        """
-        Computes weather forecast based on changes for relative air pressure
-
-        :param pressure_differance: pressure difference between now and 3 hours ago
-        :param lang: acronym of language
-        :return: the wind chill index
-        """
-
-        _weather_forecast_de = ["Sturm mit Hagel", "Regen/Unwetter", "regnerisch", "baldiger Regen", "gleichbleibend", "lange schön", "schön & labil", "Sturmwarnung"]
-        _weather_forecast_en = ["storm with hail", "rain/storm", "rainy", "soon rain", "constant", "nice for a long time", "nice & unstable", "storm warning"]
-        _weather_forecast = _weather_forecast_de if lang == "de" else _weather_forecast_en
-
-        if pressure_differance <= -8:
-            wproglvl = 0               # Sturm mit Hagel
-        elif pressure_differance <= -5:
-            wproglvl = 1               # Regen/Unwetter
-        elif pressure_differance <= -3:
-            wproglvl = 2               # regnerisch
-        elif pressure_differance <= -0.5:
-            wproglvl = 3               # baldiger Regen
-        elif pressure_differance <= 0.5:
-            wproglvl = 4               # gleichbleibend
-        elif pressure_differance <= 3:
-            wproglvl = 5               # lange schön
-        elif pressure_differance <= 5:
-            wproglvl = 6               # schön & labil
-        else:
-            wproglvl = 7               # Sturmwarnung
-
-        return _weather_forecast[wproglvl]
-
-    @staticmethod
-    def get_cloud_ceiling(temperature: float, dewpt: float) -> float:
-        """
-        Computes cloud ceiling (Wolkenuntergrenze/Konvektionskondensationsniveau) usind °Celsius
-        Faustformel für die Berechnung der Höhe der Wolkenuntergrenze von Quellwolken: Höhe in Meter = 122 x Spread (Taupunktdifferenz)
-
-        :param temperature: outside temperatur in celsius
-        :param dewpt: outside dew point in celsius
-        :return: cloud ceiling in meter
-        """
-
-        return int(round((temperature - dewpt) * 122, 1))
-
-    @staticmethod
     def get_avg_wind(d: deque, w: int) -> float:
         """get avg from deque d , field w"""
 
@@ -1383,14 +1127,14 @@ class Gateway(object):
 
             # for winddir only - average wind dir (field 2)
             if w == 2:  # for winddir only - average wind dir
-                sinSum += sin(radians(d[i][w]))
-                cosSum += cos(radians(d[i][w]))
+                sinSum += math.sin(math.radians(d[i][w]))
+                cosSum += math.cos(math.radians(d[i][w]))
 
             # for windspeed and windgust
             else:
                 s = s + d[i][w]
 
-        return round((degrees(atan2(sinSum, cosSum)) + 360) % 360, 1) if w == 2 else round(s / len(d), 1)
+        return round((math.degrees(math.atan2(sinSum, cosSum)) + 360) % 360, 1) if w == 2 else round(s / len(d), 1)
 
     @staticmethod
     def get_max_wind(d: deque, w: int) -> float:
@@ -1584,7 +1328,7 @@ class Gateway(object):
         # get basic values
         day_of_year = self._plugin_instance.shtime.day_of_year()
         azimut_radians, elevation_radians = self._plugin_instance.get_sh().sun.pos()
-        elevation_degrees = degrees(elevation_radians)
+        elevation_degrees = math.degrees(elevation_radians)
         timestamp = int(time.time())
         last_timestamp, last_sun_sec_last = self.sun_time['last']
 
@@ -1593,9 +1337,9 @@ class Gateway(object):
             sun_sec = 0
         else:
             solar_threshold = int(
-                    (0.73 + 0.06 * cos((pi / 180) * 360 * day_of_year / 365))
+                    (0.73 + 0.06 * math.cos((math.pi / 180) * 360 * day_of_year / 365))
                     * 1080
-                    * pow((sin(pi / 180 * elevation_degrees)), 1.25)
+                    * pow((math.sin(math.pi / 180 * elevation_degrees)), 1.25)
                     * Constants.SUN_COEF
                     )
 
@@ -1656,128 +1400,6 @@ class Gateway(object):
 
         self.sun_time.update(new_dict)
         return result
-
-    @staticmethod
-    def get_aqi_from_pm25(pm25_value):
-        if type(pm25_value) != float:
-            return -9999
-        elif pm25_value < 12.1:
-            I_high = 50
-            I_low = 0
-            C_high = 12
-            C_low = 0
-        elif pm25_value < 35.5:
-            I_high = 100
-            I_low = 51
-            C_high = 35.4
-            C_low = 12.1
-        elif pm25_value < 55.5:
-            I_high = 150
-            I_low = 101
-            C_high = 55.4
-            C_low = 35.5
-        elif pm25_value < 150.5:
-            I_high = 200
-            I_low = 151
-            C_high = 150.4
-            C_low = 55.5
-        elif pm25_value < 250.5:
-            I_high = 300
-            I_low = 201
-            C_high = 250.4
-            C_low = 150.5
-        elif pm25_value < 350.5:
-            I_high = 400
-            I_low = 301
-            C_high = 350.4
-            C_low = 250.5
-        else:
-            I_high = 500
-            I_low = 401
-            C_high = 500.4
-            C_low = 350.5
-        return int(round((I_high - I_low) / (C_high - C_low) * (pm25_value - C_low) + I_low))
-
-    @staticmethod
-    def get_aqi_from_pm10(pm10_value):
-        if type(pm10_value) != float:
-            return -9999
-        elif pm10_value < 55:
-            I_high = 50
-            I_low = 0
-            C_high = 54
-            C_low = 0
-        elif pm10_value < 155:
-            I_high = 100
-            I_low = 51
-            C_high = 154
-            C_low = 55
-        elif pm10_value < 255:
-            I_high = 150
-            I_low = 101
-            C_high = 254
-            C_low = 155
-        elif pm10_value < 355:
-            I_high = 200
-            I_low = 151
-            C_high = 354
-            C_low = 255
-        elif pm10_value < 425:
-            I_high = 300
-            I_low = 201
-            C_high = 424
-            C_low = 355
-        elif pm10_value < 505:
-            I_high = 400
-            I_low = 301
-            C_high = 504
-            C_low = 425
-        else:
-            I_high = 500
-            I_low = 401
-            C_high = 604
-            C_low = 505
-        return int(round((I_high - I_low) / (C_high - C_low) * (pm10_value - C_low) + I_low))
-
-    @staticmethod
-    def get_aqi_level_from_aqi(aqi):  # US AQI
-        level = 0
-        try:
-            if aqi <= 50:
-                level = 1  # 0 to 50     Good                            Green
-            elif aqi <= 100:
-                level = 2  # 51 to 100   Moderate                        Yellow
-            elif aqi <= 150:
-                level = 3  # 101 to 150  Unhealthy for Sensitive Groups  Orange
-            elif aqi <= 200:
-                level = 4  # 151 to 200  Unhealthy                       Red
-            elif aqi <= 300:
-                level = 5  # 201 to 300  Very Unhealthy                  Purple
-            else:
-                level = 6  # 301 to 500  Hazardous                       Maroon
-        except ValueError:
-            pass
-        return level
-
-    @staticmethod
-    def get_co2_level(co2):  # according to https://www.breeze-technologies.de/de/blog/calculating-an-actionable-indoor-air-quality-index/ and https://sensebox.de/docs/CO2-Ampel_Lehrhandreichung.pdf
-        level = 0
-        try:
-            if co2 <= 400:
-                level = 1  # 0 to 400     Excellent                      Green
-            elif co2 <= 1000:
-                level = 2  # 400 to 1000  Fine, unbedenklich             Green
-            elif co2 <= 1500:
-                level = 3  # 1000 to 1500 Moderate, Lueften              Yellow
-            elif co2 <= 2000:
-                level = 4  # 1500 to 2000 Poor, Lueften!                 Red
-            elif co2 <= 5000:
-                level = 5  # 2000 to 5000 Very Poor, inakzeptabel        Purple
-            else:
-                level = 6  # from 5000    Severe                         Maroon
-        except ValueError:
-            pass
-        return level
 
     def update_missing_sensor_dict(self, missing_sensors: list) -> None:
         """
@@ -5659,40 +5281,6 @@ def ver_str_to_num(s: str) -> Union[None, int]:
         return int(s[vpos:].replace(".", ""))
     except ValueError:
         return
-
-
-def f_to_c(temp_f, n: int = 1) -> float:
-    """Convert fahrenheit to degree celsius"""
-
-    return round(env.f_to_c(temp_f), n)
-
-
-def mph_to_ms(mph: float, n: int = 1) -> float:
-    """Convert mph to m/s"""
-
-    return round(env.kmh_to_ms(env.mph_to_kmh(mph)), n)
-
-
-def in_to_hpa(f: float, n: int = 2) -> float:
-    """Convert inHg to hPa"""
-
-    return round(float(f)/0.02953, n)
-
-
-def hpa_to_in(f: float, n: int = 1) -> float:
-    """Convert hPa to inHg"""
-    return round(float(f)/33.87, n)
-
-
-def in_to_mm(f: float, n: int = 2) -> float:
-    """Convert in to mm"""
-
-    return round(float(f)*25.4, n)
-
-
-def solar_rad_to_brightness(f: float, n: int = 0) -> float:
-    """Convert solar radiation in W/m² to Lux using 1W/m² = 126.7 lux"""
-    return round(float(f) * Constants.S2B, n)
 
 
 def to_int(value) -> int:
