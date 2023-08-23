@@ -880,31 +880,31 @@ class Gateway(object):
         if air_pressure_rel:
             self.pressure_3h.append([int(time.time()), air_pressure_rel])
 
-        # get index of current position of deque
-        pos_current = len(self.pressure_3h)
+            # get index of current position of deque
+            pos_current = len(self.pressure_3h)
 
-        # calculate values für 1h and 3h ago
-        for x in [1, 3]:
-            # get position of data x hour before
-            pos_xh_ago = pos_current - int(x * 3600 / self.interface_config.api_data_cycle)
+            # calculate values für 1h and 3h ago
+            for x in [1, 3]:
+                # get position of data x hour before
+                pos_xh_ago = pos_current - int(x * 3600 / self.interface_config.api_data_cycle)
 
-            # calculation for x hour
-            if pos_xh_ago >= 0:
-                self.logger.debug(f"calculate {x}h ago with {pos_xh_ago=}")
-                time_xh_ago, air_pressure_rel_xh_ago = self.pressure_3h[pos_xh_ago]
-                air_pressure_rel_diff_xh_ago = round(air_pressure_rel - air_pressure_rel_xh_ago, 1)
-                air_pressure_rel_trend_xh_ago = self.get_trend(self.pressure_3h, pos_xh_ago, pos_current)
-                air_pressure_rel_trend_xh_ago_str = VALUES[air_pressure_rel_trend_xh_ago]
+                # calculation for x hour
+                if pos_xh_ago >= 0:
+                    self.logger.debug(f"calculate {x}h ago with {pos_xh_ago=}")
+                    time_xh_ago, air_pressure_rel_xh_ago = self.pressure_3h[pos_xh_ago]
+                    air_pressure_rel_diff_xh_ago = round(air_pressure_rel - air_pressure_rel_xh_ago, 1)
+                    air_pressure_rel_trend_xh_ago = self.get_trend(self.pressure_3h, pos_xh_ago, pos_current)
+                    air_pressure_rel_trend_xh_ago_str = VALUES[air_pressure_rel_trend_xh_ago]
 
-                data[f'{DataPoints.AIR_PRESSURE_REL_DIFF_xh[0]}_{x}h'] = air_pressure_rel_diff_xh_ago
-                data[f'{DataPoints.AIR_PRESSURE_REL_TREND_xh[0]}_{x}h'] = air_pressure_rel_trend_xh_ago_str
+                    data[f'{DataPoints.AIR_PRESSURE_REL_DIFF_xh[0]}_{x}h'] = air_pressure_rel_diff_xh_ago
+                    data[f'{DataPoints.AIR_PRESSURE_REL_TREND_xh[0]}_{x}h'] = air_pressure_rel_trend_xh_ago_str
 
-                self.pressure_last['diff'].update({f'{x}': air_pressure_rel_diff_xh_ago})
-                self.pressure_last['trend'].update({f'{x}': air_pressure_rel_trend_xh_ago_str})
+                    self.pressure_last['diff'].update({f'{x}': air_pressure_rel_diff_xh_ago})
+                    self.pressure_last['trend'].update({f'{x}': air_pressure_rel_trend_xh_ago_str})
 
-                # add weather forecast
-                if x == 3:
-                    data[DataPoints.WEATHER_FORECAST_TEXT[0]] = get_weather_forecast(air_pressure_rel_diff_xh_ago, self.interface_config.lang)
+                    # add weather forecast
+                    if x == 3:
+                        data[DataPoints.WEATHER_FORECAST_TEXT[0]] = get_weather_forecast(air_pressure_rel_diff_xh_ago, self.interface_config.lang)
 
     def add_sun_duration(self, data) -> None:
         """
