@@ -72,7 +72,7 @@ class Foshk(SmartPlugin):
     Data Items must be defined in ./data_items.py.
     """
 
-    PLUGIN_VERSION = '1.2.3'
+    PLUGIN_VERSION = '1.2.4'
 
     def __init__(self, sh):
         """Initializes the plugin"""
@@ -877,7 +877,7 @@ class Gateway(object):
 
         # feed deque
         air_pressure_rel = data.get(DataPoints.RELBARO[0])
-        if air_pressure_rel:
+        if air_pressure_rel is not None:
             self.pressure_3h.append([int(time.time()), air_pressure_rel])
 
             # get index of current position of deque
