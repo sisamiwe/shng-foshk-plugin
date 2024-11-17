@@ -52,6 +52,8 @@ class MasterKeys:
     PIEZO = 'p_'
     PM10 = 'pm10'
     PM25 = 'pm25'
+    PM1 = 'pm1'
+    PM4 = 'pm4'
     PM25_AVG = f'{PM25}_24h_avg'
     RAD_COMP = 'rad_comp'
     RAIN = 'rain'
@@ -73,7 +75,7 @@ class MasterKeys:
     SIGNAL_EXTENTION = '_sig'
     SOILMOISTURE = 'soilmoist'
     SOILTEMP = 'soiltemp'
-    SOLAR = 'solarradiation'
+    SOLARRADIATION = 'solarradiation'
     TEMP = 'temp'
     TIME = 'datetime'
     TIMESTAMP = 'ts'
@@ -86,6 +88,7 @@ class MasterKeys:
     WH40 = 'wh40'
     WH41 = 'wh41'
     WH45 = 'wh45'
+    WH46 = 'wh46'
     WH51 = 'wh51'
     WH55 = 'wh55'
     WH57 = 'wh57'
@@ -100,9 +103,11 @@ class MasterKeys:
     WN35 = 'wn35'
     WS68 = 'wh68'
     WS80 = 'ws80'
+    WS85 = 'ws85'
     WS90 = 'ws90'
     FW_UPD_AVAIL = 'firmware_update_available'
     SUN_DURATION = 'sun_duration'
+    HEAP = 'heap_free'
 
 
 @dataclass
@@ -116,6 +121,10 @@ class DataPoints:
     SENSOR_CO2_PM255_24: tuple = (f'{MasterKeys.PM25}5_24h_avg', 'durchschnittlicher PM2.5 Wert der letzten 24h des CO2 Sensors', '')
     SENSOR_CO2_CO2: tuple = (MasterKeys.CO2, 'Aktueller CO2 Meßwert des CO2 Sensors', 'Vol%')
     SENSOR_CO2_CO2_24: tuple = (f'{MasterKeys.CO2}_24h_avg', 'Mittlerer CO2 Messwert der letzten 24h des CO2 Sensors', 'Vol%')
+    SENSOR_CO2_PM1: tuple = (MasterKeys.PM1, 'PM1 Wert des CO2 Sensors', '')
+    SENSOR_CO2_PM1_24: tuple = (f'{MasterKeys.PM1}_24h_avg', 'durchschnittlicher PM1 Wert der letzten 24h des CO2 Sensors', '')
+    SENSOR_CO2_PM4: tuple = (MasterKeys.PM4, 'PM4 Wert des CO2 Sensors', '')
+    SENSOR_CO2_PM4_24: tuple = (f'{MasterKeys.PM4}_24h_avg', 'durchschnittlicher PM4 Wert der letzten 24h des CO2 Sensors', '')
     PIEZO_RAIN:   tuple = (f'{MasterKeys.PIEZO}{MasterKeys.RAIN_GAIN}', None, None)
     PIEZO_RAIN_0: tuple = (f'{PIEZO_RAIN[0]}0', 'Kalibrierfaktor 0 für Piezo Regensensor', '-')
     PIEZO_RAIN_1: tuple = (f'{PIEZO_RAIN[0]}1', 'Kalibrierfaktor 1 für Piezo Regensensor', '-')
@@ -153,6 +162,7 @@ class DataPoints:
     RAINYEAR: tuple = (MasterKeys.RAIN_YEAR, 'kumulierte Regenmenge des aktuellen Jahres', 'mm')                                        # 0x13 // 4 //
     RAINTOTALS: tuple = (MasterKeys.RAIN_TOTALS, 'kumulierte Regenmenge seit Inbetriebnahme bzw. Reset', 'mm')                          # 0x14 // 4 //
     LIGHT: tuple = (MasterKeys.LIGHT, 'Helligkeit', 'lux')                                                                              # 0x15 // 4 //
+    SOLARRADIATION: tuple = (MasterKeys.SOLARRADIATION, 'Sonneneinstrahlung', 'W/m²')                                                   # 0x15 // 4 //
     UV: tuple = (MasterKeys.UV, 'UV Strahlung', 'uW/m2')                                                                                # 0x16 // 2 //
     UVI: tuple = (MasterKeys.UVI, 'UV-Index', '0-15')                                                                                   # 0x17 // 1 //
     TIME: tuple = (MasterKeys.TIME, 'Datetime', None)                                                                                   # 0x18 // 6 //
@@ -228,8 +238,21 @@ class DataPoints:
     LEAK4: tuple = (f'{MasterKeys.LEAK}4', 'Leckage', 'True/False')                                                                     # 0x5B // 1 //
     LIGHTNING_DIST: tuple = (MasterKeys.LIGHTNING_DIST, 'Blitzentfernung', '1~40KM')                                                    # 0x60 // 1 //
     LIGHTNING_TIME: tuple = (MasterKeys.LIGHTNING_TIME, 'Zeitpunkt des Blitzes', '-')                                                   # 0x61 // 4 //
-    LIGHTNING_COUNT: tuple = (MasterKeys.LIGHTNING_COUNT, 'kumulierte Anzahl der Blitze des Tages', '-')                               # 0x62 // 4 //
-    SENSOR_CO2: tuple = ((SENSOR_CO2_TEMP[0],                                                                                           # see first entries of dataclass
+    LIGHTNING_COUNT: tuple = (MasterKeys.LIGHTNING_COUNT, 'kumulierte Anzahl der Blitze des Tages', '-')                                # 0x62 // 4 //
+    SENSOR_WH46: tuple = ((SENSOR_CO2_TEMP[0],                                                                                          # see first entries of dataclass
+                          SENSOR_CO2_HUM[0],                                                                                            # see first entries of dataclass
+                          SENSOR_CO2_PM10[0],                                                                                           # see first entries of dataclass
+                          SENSOR_CO2_PM10_24[0],                                                                                        # see first entries of dataclass
+                          SENSOR_CO2_PM255[0],                                                                                          # see first entries of dataclass
+                          SENSOR_CO2_PM255_24[0],                                                                                       # see first entries of dataclass
+                          SENSOR_CO2_CO2[0],                                                                                            # see first entries of dataclass
+                          SENSOR_CO2_CO2_24[0],                                                                                         # see first entries of dataclass
+                          SENSOR_CO2_PM1[0],                                                                                            # see first entries of dataclass
+                          SENSOR_CO2_PM1_24[0],                                                                                         # see first entries of dataclass
+                          SENSOR_CO2_PM4[0],                                                                                            # see first entries of dataclass
+                          SENSOR_CO2_PM4_24[0]), None, None)                                                                            # 0x6B // 24 // CO2
+    HEAP: tuple = (MasterKeys.HEAP, 'verfügbarer Speicher', '-')                                                                        # 0x6C // 4 //
+    SENSOR_WH45: tuple = ((SENSOR_CO2_TEMP[0],                                                                                          # see first entries of dataclass
                           SENSOR_CO2_HUM[0],                                                                                            # see first entries of dataclass
                           SENSOR_CO2_PM10[0],                                                                                           # see first entries of dataclass
                           SENSOR_CO2_PM10_24[0],                                                                                        # see first entries of dataclass
@@ -313,9 +336,6 @@ class DataPoints:
     SUN_DURATION_WEEK: tuple = (f"{MasterKeys.SUN_DURATION}_week", 'Sonnenstunden in der aktuellen Woche *Berechnung im Plugin', 'h')
     SUN_DURATION_MONTH: tuple = (f"{MasterKeys.SUN_DURATION}_month", 'Sonnenstunden im aktuellen Monat *Berechnung im Plugin', 'h')
     SUN_DURATION_YEAR: tuple = (f"{MasterKeys.SUN_DURATION}_year", 'Sonnenstunden im aktuellen Jahr *Berechnung im Plugin', 'h')
-    COMFORT: tuple = ('comfort', 'Komfort basierend auf dem Taupunkt', '-')
-    THERMOPHYSIOLOGICAL_STRAIN: tuple = ('thermophysiologisch', 'thermophysiologische Beanspruchung', '-')
-    CONDENSATION: tuple = ('condensation', 'Kondensationbildung', '-')
 
 
 @dataclass
@@ -329,7 +349,9 @@ class SensorKeys:
     WH32: tuple = (MasterKeys.WH32, MasterKeys.WH32.upper(), 'Temperatur- und Feuchtigkeitssensor WH32')
     WH24: tuple = (MasterKeys.WH24, MasterKeys.WH24.upper(), 'Temperatur- und Feuchtigkeitssensor Außen WH24')
     WH57: tuple = (MasterKeys.WH57, MasterKeys.WH57.upper(), 'Blitzsensor WH57')
-    WH45: tuple = (MasterKeys.WH45, MasterKeys.WH45.upper(), 'Partikel- und CO2 Sensor WH45')
+    WH45: tuple = (MasterKeys.WH45, MasterKeys.WH45.upper(), '5in1 Partikel- und CO2 Sensor WH45')
+    WH46: tuple = (MasterKeys.WH46, MasterKeys.WH46.upper(), '7in1 Partikel- und CO2 Sensor WH46')
+    WS85: tuple = (MasterKeys.WS85, MasterKeys.WS85.upper(), 'Wetterstation 3in1 WS85')
     WS90: tuple = (MasterKeys.WS90, MasterKeys.WS90.upper(), 'Wetterstation 7in1 WS90')
     WH31: tuple = (f'{MasterKeys.WH31}{MasterKeys.SEPARATOR}{MasterKeys.CHANNEL}', f'{MasterKeys.WH31.upper()} {MasterKeys.CHANNEL}', None)
     WH31_1: tuple = (f'{WH31[0]}1', f'{WH31[1]}1', 'Thermo-Hygrometer Kanal 1')

@@ -1,29 +1,3 @@
-#!/usr/bin/env python3
-# vim: set encoding=utf-8 tabstop=4 softtabstop=4 shiftwidth=4 expandtab
-#########################################################################
-#  Copyright 2022-      Michael Wenzel              wenzel_michael@web.de
-#########################################################################
-#  This file is part of SmartHomeNG.
-#  https://www.smarthomeNG.de
-#  https://knx-user-forum.de/forum/supportforen/smarthome-py
-#
-#  Plugin to connect to Foshk / Ecowitt Weather Gateway.
-#
-#  SmartHomeNG is free software: you can redistribute it and/or modify
-#  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation, either version 3 of the License, or
-#  (at your option) any later version.
-#
-#  SmartHomeNG is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with SmartHomeNG. If not, see <http://www.gnu.org/licenses/>.
-#
-#########################################################################
-
 import math
 from typing import Union
 import lib.env as env
@@ -50,9 +24,9 @@ ENTHALPY_OF_VAPORIZATION_WATER_100C = 2257e3    # enthalpy of vaporization of li
 EARTH_RADIUS = 6371000                          # Earth radius in meters
 
 
-def get_dew_point(temperature: float, humidity_rel: float, units: str = 'imperial') -> Union[float, None]:
+def get_dew_point(temperature: float, humidity_rel: float) -> float:
     """
-    Calculate dew point temperature
+    Calculate dew point temperature in °C
 
     The dew point is the temperature at which dew forms and is a measure of atmospheric moisture. It is the temperature to which air must be cooled
     at constant pressure and water content to reach saturation.
@@ -68,69 +42,28 @@ def get_dew_point(temperature: float, humidity_rel: float, units: str = 'imperia
 
     :param temperature: current ambient temperature in °C
     :param humidity_rel: relative humidity in %
-    :param units: imperial or metric unit
     :return:  dew point temperature in °C
     """
 
-    if units not in ['imperial', 'metric']:
-        return
-
-    if units == 'imperial':
-        temperature = f_to_c(temperature)
-
     magnus_coe = MAGNUS_COEFFICIENTS['positive'] if temperature > 0 else MAGNUS_COEFFICIENTS['negative']
+
     alpha = ((magnus_coe['b'] * temperature) / (magnus_coe['c'] + temperature)) + math.log(humidity_rel / 100.0)
-    dew_point_c = round((magnus_coe['c'] * alpha) / (magnus_coe['b'] - alpha), 1)
-
-    return dew_point_c if units == 'metric' else c_to_f(dew_point_c)
+    return round((magnus_coe['c'] * alpha) / (magnus_coe['b'] - alpha), 1)
 
 
-def get_frost_point(temperature: float, dew_point: float, units: str = 'imperial') -> Union[float, None]:
-    """
-    Compute the frost point
-
-    :param temperature: current ambient temperature in degrees Celsius
-    :param dew_point: current dew point in degrees Celsius
-    :param units: imperial or metric unit
-    :return: the frost point in degrees Celsius
-    """
-
-    if units not in ['imperial', 'metric']:
-        return
-
-    if units == 'imperial':
-        temperature = f_to_c(temperature)
-        dew_point = f_to_c(dew_point)
-
-    try:
-        dew_point_k = ZERO_CELSIUS_IN_KELVIN + dew_point
-        temperature_k = ZERO_CELSIUS_IN_KELVIN + temperature
-        frost_point_k = dew_point_k - temperature_k + 2671.02 / ((2954.61 / temperature_k) + 2.193665 * math.log(temperature_k) - 13.3448)
-    except ValueError:
-        frost_point_c = -9999
-    else:
-        frost_point_c = round(frost_point_k - ZERO_CELSIUS_IN_KELVIN, 1)
-
-    return frost_point_c if units == 'metric' else c_to_f(frost_point_c)
-
-
-def get_abs_hum(temperature: float, humidity_rel: float, units: str = 'metric') -> Union[float, None]:
+def get_abs_hum(temperature: float, humidity_rel: float) -> float:
     """
     Return the absolute humidity in g/cm3 from the relative humidity in % and temperature (Celsius)
 
     :param temperature: temperature in °C
     :param humidity_rel: relative humidity in %
-    :param units: imperial or metric unit
     :return: absolute humidity in g/cm3
     """
-
-    if units != 'metric':
-        return
 
     return round(10 ** 5 * M_WASSERDAMPF / R * water_vapor_pressure(temperature, humidity_rel) / (temperature + ZERO_CELSIUS_IN_KELVIN), 1)
 
 
-def get_windchill_index(temperature: float, wind_speed: float, units: str = 'imperial') -> Union[float, None]:
+def get_windchill(temperature: float, wind_speed: float, units: str = 'imperial') -> Union[float, None]:
     """
     Compute the wind chill
 
@@ -171,7 +104,10 @@ def get_windchill_index(temperature: float, wind_speed: float, units: str = 'imp
     else:
         WCI = T
 
-    return round(env.f_to_c(WCI), 1) if units == 'metric' else round(WCI, 1)
+    if units == 'metric':
+        return round(env.f_to_c(WCI), 1)
+
+    return round(WCI, 1)
 
 
 def get_heat_index(temperature: float, humidity_rel: float, units: str = 'imperial') -> Union[float, None]:
@@ -266,7 +202,7 @@ def get_feels_like_temperature(temperature: float, humidity_rel: float, wind_spe
 
     if T <= 50 and V > 3:
         # Wind Chill for low temp cases (and wind)
-        FEELS_LIKE = get_windchill_index(T, V, units='imperial')
+        FEELS_LIKE = get_windchill(T, V, units='imperial')
     elif T >= 80:
         # Heat Index for High temp cases
         FEELS_LIKE = get_heat_index(T, humidity_rel, units='imperial')
@@ -498,6 +434,36 @@ def water_vapor_pressure(temperature: float, humidity_rel: float):
     return humidity_rel / 100 * saturated_water_vapor_pressure(temperature)
 
 
+def f_to_c(temp_f, dec: int = 1) -> float:
+    """Convert fahrenheit to degree celsius"""
+
+    return round(env.f_to_c(temp_f), dec)
+
+
+def mph_to_ms(mph: float, dec: int = 1) -> float:
+    """Convert mph to m/s"""
+
+    return round(env.kmh_to_ms(env.mph_to_kmh(mph)), dec)
+
+
+def in_to_hpa(f: float, dec: int = 2) -> float:
+    """Convert inHg to hPa"""
+
+    return round(float(f) / 0.02953, dec)
+
+
+def hpa_to_in(f: float, dec: int = 1) -> float:
+    """Convert hPa to inHg"""
+
+    return round(float(f) / 33.87, dec)
+
+
+def in_to_mm(f: float, dec: int = 2) -> float:
+    """Convert in to mm"""
+
+    return round(float(f) * 25.4, dec)
+
+
 def get_distance(lat1, lon1, lat2, lon2) -> float:
     """
     Calculate distance between two geographical points
@@ -519,7 +485,7 @@ def solar_rad_to_brightness(solar_radiation: float, dec: int = 0) -> float:
     return round(float(solar_radiation) * S2B, dec)
 
 
-def get_condensation(temperature: float, humidity_rel: float) -> tuple:
+def condensation(temperature: float, humidity_rel: float) -> tuple:
 
     dew_point = get_dew_point(temperature, humidity_rel)
 
@@ -573,39 +539,3 @@ def get_thermophysiological_strain(feels_like_temp: float) -> tuple:
         return 'heiß', 'starke Wärmebelastung'
     if feels_like_temp > 38:
         return 'sehr heiß', 'extreme Wärmebelastung'
-
-
-def f_to_c(temp_f, dec: int = 1) -> float:
-    """Convert fahrenheit to degree celsius"""
-
-    return round(env.f_to_c(temp_f), dec)
-
-
-def c_to_f(temp_c, dec: int = 1) -> float:
-    """Convert celsius to degree fahrenheit"""
-
-    return round(env.c_to_f(temp_c), dec)
-
-
-def mph_to_ms(mph: float, dec: int = 1) -> float:
-    """Convert mph to m/s"""
-
-    return round(env.kmh_to_ms(env.mph_to_kmh(mph)), dec)
-
-
-def in_to_hpa(f: float, dec: int = 2) -> float:
-    """Convert inHg to hPa"""
-
-    return round(float(f) / 0.02953, dec)
-
-
-def hpa_to_in(f: float, dec: int = 1) -> float:
-    """Convert hPa to inHg"""
-
-    return round(float(f) / 33.87, dec)
-
-
-def in_to_mm(f: float, dec: int = 2) -> float:
-    """Convert in to mm"""
-
-    return round(float(f) * 25.4, dec)

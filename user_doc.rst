@@ -3,16 +3,47 @@ foshk
 
 Anforderungen
 -------------
-Benötigt wird eine Wetterstation von `Fine Offset Electronics <https://www.foshk.com >`_ mit entsprechender API
-oder ein passendes Gateway das die Daten der Wetterstation lokal zur Verfügung stellt.
-Die Datenbasis muss *Ecowitt kompatibel* erfolgen.
 
-Getestet wurden GW1000 und WH2650 sowie Froggit DP2000 mit DP1100 7-in-1 Sensor (entspricht GW2000 mit WS90)
+Benötigt wird eine ein Gateway von `Fine Offset Electronics <https://www.foshk.com >`_ das 
+eine kompatible API zur Verfügung stellt um Daten auszulesen.
 
-Die API ist hier beschrieben: `Data Exchange TCP Protocol for GW1000,1100,1900,2000,2680,2650 <https://osswww.ecowitt.net/uploads/20220407/WN1900%20GW1000,1100%20WH2680,2650%20telenet%20v1.6.4.pdf>`_
-
-Das Plugin bietet die Möglichkeit, die Wetterdaten direkt über die API zu lesen oder die Daten aus dem ECOWITT Protokoll der "Customized Settings" zu beziehen.
+Das Plugin bietet die Möglichkeit, die Wetterdaten direkt über die API zu lesen oder die Daten 
+aus dem ECOWITT Protokoll der "Customized Settings" zu beziehen.
 Die Einrichtung erfolgt automatisch gemäß den Einstellungen im Plugin.
+
+Hardware
+--------
+
+Wetterstation = Gateway + Sensor(en)
+
+Kompatible Geräte werden von FOSK über Ecowitt vertrieben oder werden von anderen Firmen unter eigenem Namen vertrieben.
+In Deutschland beispielsweise von der Firma Froggit.
+
+Die Sensoren senden in festgelegten Zeitabständen per Funk ihre Messwerte. Diese werden dann von einem Gateway 
+(oder einer Konsole mit Display) empfangen.
+Die Frequenzen von Sensoren und Gateway müssen natürlich zusammenpassen. Es gibt verschiedene Varianten am Markt
+mit 433MHz, 868MHz (Europa und Großbritannien), 915MHz oder 920MHz.
+
+Jeder Sensor muß in der Wetterstation einem Kanal zugeordnet werden. Für manche Sensoren gibt es mehrere Kanäle. 
+Diese werden dann bereits beim Sensor fest eingestellt. Beispielsweise gibt es den Temperatur- und Luftfeuchtigkeitssensor WN31. 
+Dort können bis zu 8 Kanäle eingestellt werden. Beim Einschalten des Sensors wird auf dem Display eine ID angezeigt.
+Die Zuordnung eines Sensors in der Wetterstation wird anhand des eingestellten Kanals und der ID des Sensors vorgenommen.
+So können mehrere Sensoren ihre Daten für den gleichen Kanal senden aber in der Wetterstation auf Basis ihrer ID verwendet oder 
+ausgeschlossen werden.
+Sind also für eine Sensorart alle Kanäle in der Wetterstation belegt, so muß eine weitere Wetterstation installiert werden um weitere
+Sensoren auswerten zu können. Diese Auswertung funktioniert mit dem vorliegenden Plugin derzeit nicht weil es nicht für 
+Multi-Instanz-Fähigkeit getestet wurde.
+
+Mit dem vorliegenden Plugin wurden GW1000 und WH2650 sowie Froggit DP2000 mit DP1100 7-in-1 Sensor (entspricht GW2000 mit WS90) getestet.
+Es sollte aber auch das GW1100 funktionieren und nachfolgende Geräte auf gleichem API.
+Für neue Installationen sollte das GW2000 angeschafft werden da nur dieses die neueste Sensor und Aktor Hardware unterstützen wird.
+
+
+Nicht kompatible Geräte
+-----------------------
+
+Froggit WH6000 Pro oder WH5500 sind **nicht** kompatibel mit dem Ecowitt Protokoll und können nicht verwendet werden.
+
 
 Konfiguration
 -------------
@@ -47,10 +78,6 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - co2_24h_avg: Mittlerer CO2 Messwert der letzten 24h des CO2 Sensors [Vol%]
 
-- comfort: Komfort basierend auf dem Taupunkt [-]
-
-- condensation: Kondensationbildung [-]
-
 - datetime: Datetime [None]
 
 - dewpt: Taupunkt [°C]
@@ -66,6 +93,8 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 - gustspeed: Böengeschwindigkeit [m/s]
 
 - gustspeed_avg10m: Durchschnittliche Windböen der letzten 10min *Berechnung im Plugin [m/s]
+
+- heap_free: verfügbarer Speicher [-]
 
 - heatindex: Heat Index [-]
 
@@ -181,9 +210,13 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - p_rain_year: kumulierte Regenmenge des aktuellen Jahres [mm]
 
+- pm1: PM1 Wert des CO2 Sensors []
+
 - pm10: PM10 Wert des CO2 Sensors []
 
 - pm10_24h_avg: durchschnittlicher PM10 Wert der letzten 24h des CO2 Sensors []
+
+- pm1_24h_avg: durchschnittlicher PM1 Wert der letzten 24h des CO2 Sensors []
 
 - pm251: PM2.5 Partikelmenge Kanal 1 [μg/m3]
 
@@ -204,6 +237,10 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 - pm25_24h_avg3: PM2.5 Partikelmenge 24h Mittel Kanal 3 [μg/m3]
 
 - pm25_24h_avg4: PM2.5 Partikelmenge 24h Mittel Kanal 4 [μg/m3]
+
+- pm4: PM4 Wert des CO2 Sensors []
+
+- pm4_24h_avg: durchschnittlicher PM4 Wert der letzten 24h des CO2 Sensors []
 
 - rad_comp: Anwendung der Strahlungskompensation [on/off]
 
@@ -351,8 +388,6 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - temp17: Temperatur am CO2 Sensor [°C]
 
-- thermophysiologisch: thermophysiologische Beanspruchung [-]
-
 - thunderstorm_warning: Gewitterwarnung [True/False]
 
 - uvi: UV-Index [0-15]
@@ -427,9 +462,13 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - wh41_ch4_sig: Signalstärke für Partikelsensor PM2.5 WH41 Kanal 4 [1-6]
 
-- wh45_batt: Batteriestatus für Partikel- und CO2 Sensor WH45 [-]
+- wh45_batt: Batteriestatus für 5in1 Partikel- und CO2 Sensor WH45 [-]
 
-- wh45_sig: Signalstärke für Partikel- und CO2 Sensor WH45 [1-6]
+- wh45_sig: Signalstärke für 5in1 Partikel- und CO2 Sensor WH45 [1-6]
+
+- wh46_batt: Batteriestatus für 7in1 Partikel- und CO2 Sensor WH46 [-]
+
+- wh46_sig: Signalstärke für 7in1 Partikel- und CO2 Sensor WH46 [1-6]
 
 - wh51_ch1_batt: Batteriestatus für Bodenfeuchtesensor Kanal 1 [-]
 
@@ -613,6 +652,10 @@ Nachfolgend eine Auflistung der möglichen Attribute für das Plugin im Format: 
 
 - ws80_sig: Signalstärke für Wetterstation WS80 [1-6]
 
+- ws85_batt: Batteriestatus für Wetterstation 3in1 WS85 [-]
+
+- ws85_sig: Signalstärke für Wetterstation 3in1 WS85 [1-6]
+
 - ws90_batt: Batteriestatus für Wetterstation 7in1 WS90 [-]
 
 - ws90_sig: Signalstärke für Wetterstation 7in1 WS90 [1-6]
@@ -650,3 +693,42 @@ FOSHK Maintenance
 
 Das Webinterface zeigt detaillierte Informationen über die im Plugin verfügbaren Daten an.
 Dies dient der Maintenance bzw. Fehlersuche.
+
+
+Hintergrundinformationen
+------------------------
+
+Die API um über Port 4600 aus einer Wetterstation die Messwerte auszulesen ist hier beschrieben: 
+`Data Exchange TCP Protocol for GW1000,1100,1900,2000,2680,2650 <https://osswww.ecowitt.net/uploads/20220407/WN1900%20GW1000,1100%20WH2680,2650%20telenet%20v1.6.4.pdf>`_
+
+Im englischsprachigem WXforum werden im Thread 'Fine Offset (FOSHK) Weather Stations i.e. consoles, sensors and clones
+<https://www.wxforum.net/index.php?topic=40730.0>'_ die verschiedenen Wetterstationen und Sensoren von unterschiedlichen Lieferanten
+mit gleicher Hardware verglichen.
+
+Solarradiation, UV, UVi, Helligkeit: Was liefert der Sensor wirklich?
+
+Diskussion im `Wetterstationsforum <https://wetterstationsforum.info/viewtopic.php?t=120>`_ 
+
+Ambient Weather schreibt dazu: 
+
+Warum ist der Umrechnungsfaktor von Lux zu W/m² = 126,7?
+Das Maximum der Leuchtkraftfunktion liegt bei 555 nm (grün). 
+Das Sehsystem des Auges reagiert empfindlicher auf Licht dieser Wellenlänge als jedes andere. 
+Für monochromatisches Licht dieser Wellenlänge ist die Bestrahlungsstärke, die benötigt wird, 
+um 1 Lux zu erzeugen, mit 1,464 mW/m2 minimal.
+
+Das heißt, man erhält 683,002 Lux pro W/m² (oder Lumen pro Watt) bei dieser Wellenlänge.  
+Andere Wellenlängen des sichtbaren Lichts erzeugen weniger Lumen pro Watt.
+
+Die Sonnenstrahlung hat eine kürzere Wellenlänge und ein anderes Farbspektrum, daher hat sie einen anderen Faktor von Lux zu W/²m:
+
+Helles Sonnenlicht beträgt ca. 136.000 Lux = 1075 W/m² = 126,7
+
+Der Faktor ändert sich geringfügig je nach Tageszeit, Bedingungen wie Bewölkung, Feuchtigkeit in der Luft usw., 
+und die meisten Quellen sind sich einig, dass der 126,7 ein vernünftiger Faktor ist.
+
+Die Umwandlung im grünen Spektrum des sichtbaren Lichtspektrums bei 555 nm beträgt 1 W/m² = 683 Lux und wird vom menschlichen Auge verwendet.
+
+Quelle: `Ambient Weather Forum <https://ambientweather.com/faqs/question/view/id/1452/>`_ liefert dazu ein wenig Informationen zum Umrechnungsfaktor.
+
+
