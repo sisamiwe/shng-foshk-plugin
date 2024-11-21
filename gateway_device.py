@@ -160,8 +160,7 @@ class GatewayDevice(object):
         self._plugin_instance.save_pickle(self.PICKLE_FILENAME_AIRPRESSURE_LAST, {'data': self.pressure_last, 'stop_time': stop_time})
         self._plugin_instance.save_pickle(self.PICKLE_FILENAME_SUNTIME, {'data': self.sun_time, 'stop_time': stop_time})
 
-    @staticmethod
-    def add_temp_data(data: dict) -> None:
+    def add_temp_data(self, data: dict) -> None:
         """
         Add calculated data to dict
 
@@ -175,17 +174,17 @@ class GatewayDevice(object):
                 data[DataPoints.HEATINDEX[0]] = get_heat_index(data[DataPoints.OUTTEMP[0]], data[DataPoints.WINDSPEED[0]], units='metric')
 
                 if data.keys() >= {DataPoints.OUTHUMI[0]}:
-                    data[DataPoints.FEELS_LIKE[0]] = get_feels_like_temperature(data[DataPoints.OUTTEMP[0]], DataPoints.OUTHUMI[0], data[DataPoints.WINDSPEED[0]], units='metric')
+                    data[DataPoints.FEELS_LIKE[0]] = get_feels_like_temperature(temperature=data[DataPoints.OUTTEMP[0]], humidity_rel=DataPoints.OUTHUMI[0], wind_speed=data[DataPoints.WINDSPEED[0]], units='metric')
             if DataPoints.OUTHUMI[0] in data:
-                dewpt_c = get_dew_point(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]], units='metric')
+                dewpt_c = get_dew_point(temperature=data[DataPoints.OUTTEMP[0]], humidity_rel=data[DataPoints.OUTHUMI[0]], units='metric')
                 data[DataPoints.OUTDEWPT[0]] = dewpt_c
-                data[DataPoints.OUTFROSTPT[0]] = get_frost_point(data[DataPoints.OUTTEMP[0]], dewpt_c, units='metric')
-                data[DataPoints.CLOUD_CEILING[0]] = get_cloud_ceiling(data[DataPoints.OUTTEMP[0]], dewpt_c)
-                data[DataPoints.OUTABSHUM[0]] = get_abs_hum(data[DataPoints.OUTTEMP[0]], data[DataPoints.OUTHUMI[0]], units='metric')
+                data[DataPoints.OUTFROSTPT[0]] = get_frost_point(temperature=data[DataPoints.OUTTEMP[0]], dew_point=dewpt_c, units='metric')
+                data[DataPoints.CLOUD_CEILING[0]] = get_cloud_ceiling(temperature=data[DataPoints.OUTTEMP[0]], dew_point=dewpt_c, units='metric')
+                data[DataPoints.OUTABSHUM[0]] = get_abs_hum(temperature=data[DataPoints.OUTTEMP[0]], humidity_rel=data[DataPoints.OUTHUMI[0]], units='metric')
 
         if DataPoints.INTEMP[0] in data and DataPoints.INHUMI[0] in data:
-            data[DataPoints.INDEWPPOINT[0]] = get_dew_point(data[DataPoints.INTEMP[0]], data[DataPoints.INHUMI[0]], units='metric')
-            data[DataPoints.INABSHUM[0]] = get_abs_hum(data[DataPoints.INTEMP[0]], data[DataPoints.INHUMI[0]], units='metric')
+            data[DataPoints.INDEWPPOINT[0]] = get_dew_point(temperature=data[DataPoints.INTEMP[0]], humidity_rel=data[DataPoints.INHUMI[0]], units='metric')
+            data[DataPoints.INABSHUM[0]] = get_abs_hum(temperature=data[DataPoints.INTEMP[0]], humidity_rel=data[DataPoints.INHUMI[0]], units='metric')
 
         for i in range(1, 9):
             if f'{MasterKeys.TEMP}{i}' in data and f'{MasterKeys.HUMID}{i}' in data:

@@ -339,17 +339,31 @@ def get_weather_forecast(pressure_differance: float, lang: str = 'de') -> str:
     return _weather_forecast[wproglvl]
 
 
-def get_cloud_ceiling(temperature: float, humidity_rel: float) -> float:
+def get_cloud_ceiling(temperature: float, humidity_rel: float = None, dew_point: float = None, units: str = 'imperial') -> Union[float, None]:
     """
     Computes cloud ceiling (Wolkenuntergrenze/Konvektionskondensationsniveau)
     Faustformel für die Berechnung der Höhe der Wolkenuntergrenze von Quellwolken: Höhe in Meter = 122 x Spread (Taupunktdifferenz)
 
     :param temperature: outside temperatur in °C
     :param humidity_rel: rel humidity
+    :param dew_point: dew point
+    :param units: imperial or metric unit
     :return: cloud ceiling in meter
     """
 
-    return int(round((temperature - get_dew_point(temperature, humidity_rel)) * 122, 1))
+    if units not in ['imperial', 'metric']:
+        return
+
+    if units == 'imperial':
+        T = env.f_to_c(temperature)
+    else:
+        T = temperature
+
+    if humidity_rel:
+        return int(round((T - get_dew_point(T, humidity_rel, units='metric')) * 122, 1))
+
+    if dew_point:
+        return int(round((T - dew_point) * 122, 1))
 
 
 def get_aqi_from_pm25(pm25_value):
