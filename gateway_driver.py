@@ -68,7 +68,8 @@ class GatewayDriver(GatewayDevice):
             self.http = None
 
         # get a GatewayTCP object to handle data from server upload
-        if self.gw_config.post_server_ip and self.gw_config.post_server_port:
+        if bool(self.gw_config.post_server_cycle):
+            self.logger.debug(f"Receiving ECOWITT data has been enabled. Data upload with an interval of {self.gw_config.post_server_cycle}s will be set.")
             try:
                 self.logger.info('Init connection to Ecowitt Gateway via HTTP Post')
                 self.tcp = GatewayTcp(plugin_instance, self.get_current_tcp_data)
@@ -79,6 +80,19 @@ class GatewayDriver(GatewayDevice):
             if DebugLogConfig.gateway:
                 self.logger.debug('Interface via HTTP Post not activated')
             self.tcp = None
+
+    def run(self):
+        """Run method for Gateway driver"""
+        if self.tcp:
+            self.set_custom_params(custom_host=self.gw_config.post_server_ip, custom_port=self.gw_config.post_server_port, custom_interval=self.gw_config.post_server_cycle)
+            self.set_usr_path()
+            self.tcp.run_server()
+
+    def stop(self):
+        """Stop method for Gateway driver"""
+        if self.tcp:
+            self.tcp.stop_server()
+
 
     #############################################################
     #  Data Collections and Update Methods
@@ -397,10 +411,14 @@ class GatewayDriver(GatewayDevice):
         response = self.api.set_firmware_update()
         return 'SUCCESS' if response[4] == 0 else 'FAIL'
 
-    def set_usr_path(self, custom_ecowitt_path, custom_wu_path) -> str:
-        """Check od usr_path need to be set and set if required."""
+    def set_usr_path(self, custom_ecowitt_path: str = "/data/report/", custom_wu_path: str = "/weatherstation/updateweatherstation.php?"):
+        """Check od usr_path need to be set and set if required.
 
-        current_usr_path = self.gw_config.usr_path
+        :param custom_ecowitt_path: path for ecowitt data upload
+        :param custom_wu_path: path for wu data upload
+        """
+
+        current_usr_path = self.api.get_usr_path()
         _ecowitt_path = current_usr_path['ecowitt_path']
         _wu_path = current_usr_path['wu_path']
 
@@ -411,28 +429,51 @@ class GatewayDriver(GatewayDevice):
             if DebugLogConfig.gateway:
                 self.logger.debug(f"Need to set customized path: Ecowitt: current='{_ecowitt_path}' vs. new='{custom_ecowitt_path}' and WU: current='{_wu_path}' vs. new='{custom_wu_path}'")
             response = self.api.set_usr_path(custom_ecowitt_path, custom_wu_path)
-            return 'SUCCESS' if response[4] == 0 else 'FAIL'
+            result = 'SUCCESS' if response[4] == 0 else 'FAIL'
         else:
             if DebugLogConfig.gateway:
                 self.logger.debug(f"Customized Path settings already correct; No need to write it")
-            return 'NO NEED'
+            result = 'NO NEED'
 
-    def set_custom_params(self, custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled) -> str:
-        """Check od custom_params need to be set and set if required."""
+        if result in ['SUCCESS', 'NO NEED']:
+            self.logger.debug(f"set_usr_path: {result}")
+        else:
+            self.logger.error(f"Error during setting set_usr_path: {result=}")
 
-        current_custom_params = self.gw_config.custom_params
+        return result
+
+    def set_custom_params(self, custom_server_id: str = '', custom_password: str = '', custom_host: str = None, custom_port: int = None, custom_interval: int = None, custom_type: bool = False, custom_enabled: bool = True) -> str:
+        """
+        Set customer parameter for Ecowitt data to receive
+
+        :param custom_server_id: custom_server_id
+        :param custom_password: custom_password
+        :param custom_host: Ip address of customer host
+        :param custom_port: port of customer host
+        :param custom_interval: cycle of data upload
+        :param custom_type: type of custom data upload
+        :param custom_enabled: enable / disable custom upload
+        """
+
+        self.gw_config.custom_params = self.api.get_custom_params()
         new_custom_params = {'id': custom_server_id, 'password': custom_password, 'server': custom_host, 'port': custom_port, 'interval': custom_interval, 'protocol type': ['Ecowitt', 'WU'][int(custom_type)], 'active': bool(int(custom_enabled))}
 
-        if new_custom_params.items() <= current_custom_params.items():
+        if new_custom_params.items() <= self.gw_config.custom_params.items():
             if DebugLogConfig.gateway:
                 self.logger.debug(f"Customized Server settings already correct; No need to do it again")
-            return 'NO NEED'
+            result = 'NO NEED'
         else:
             if DebugLogConfig.gateway:
-                self.logger.debug(f"Request to set customized server: current setting={current_custom_params}")
+                self.logger.debug(f"Request to set customized server: current setting={self.gw_config.custom_params}")
                 self.logger.debug(f"Request to set customized server:     new setting={new_custom_params}")
             response = self.api.set_custom_params(custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled)
-            return 'SUCCESS' if response[4] == 0 else 'FAIL'
+            result = 'SUCCESS' if response[4] == 0 else 'FAIL'
+
+        if result in ['SUCCESS', 'NO NEED']:
+            self.logger.debug(f"set_custom_params: {result}")
+        else:
+            self.logger.error(f"Error during setting custom params: {result=}")
+        return result
 
     def is_firmware_update_available_file(self) -> tuple:
         """Check if firmware update is available for Gateways not support http requests"""

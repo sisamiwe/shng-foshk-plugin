@@ -52,7 +52,7 @@ from .utility import *
 class Foshk(SmartPlugin):
     """Main class of the Plugin. Does all plugin specific stuff and provides the update functions for the items."""
 
-    PLUGIN_VERSION = '1.3.1'
+    PLUGIN_VERSION = '1.3.2'
 
     def __init__(self, sh):
         """Initializes the plugin"""
@@ -63,7 +63,6 @@ class Foshk(SmartPlugin):
         # define variables and attributes
         self.data_queue = queue.Queue()                                    # Queue containing all polled data
         self.data_dict = dict()                                            # dict to hold all live data gotten from weather station gateway via post, api and http
-        self.gateway_connected = False                                     # is gateway connected; driver established
         self.gateway = None                                                # driver object
         self.alive = False                                                 # plugin alive
         self.pickle_filepath = f"{os.getcwd()}/var/plugin_data/{self.get_shortname()}"
@@ -99,6 +98,8 @@ class Foshk(SmartPlugin):
         if not fw_check_crontab:
             fw_check_crontab = None
 
+        _ecowitt_data_cycle = self.get_parameter_value('Ecowitt_Data_Cycle')
+
         gateway_config = {'ip_address': gateway_address,
                           'port': gateway_port,
                           'api_data_cycle': api_update_cycle,
@@ -111,24 +112,8 @@ class Foshk(SmartPlugin):
                           'lon': self.get_sh()._lon,
                           'alt': self.get_sh()._elev,
                           'lang': self.get_sh().get_defaultlanguage(),
+                          'post_server_cycle': max(_ecowitt_data_cycle, 16),
                           }
-
-        # get parameters for TCP Server for HTTP Post
-        _ecowitt_data_cycle = self.get_parameter_value('Ecowitt_Data_Cycle')
-        self.use_customer_server = bool(_ecowitt_data_cycle)
-        if self.use_customer_server:
-            post_server_ip = Utils.get_local_ipv4_address()
-            post_server_port = self._select_port_for_tcp_server(8080)
-            post_server_cycle = max(_ecowitt_data_cycle, 16)
-            self.logger.debug(f"Receiving ECOWITT data has been enabled. Data upload to {post_server_ip}:{post_server_port} with an interval of {post_server_cycle}s will be set.")
-
-            gateway_config.update({'post_server_ip': post_server_ip,
-                                   'post_server_port': post_server_port,
-                                   'post_server_cycle': post_server_cycle})
-
-            if not post_server_ip or not post_server_port:
-                self.logger.error(f"Receiving ECOWITT data has been enabled, but not able to define server ip or port with setting {post_server_ip}:{post_server_port}")
-                self._init_complete = False
 
         # init Config Classes
         self.gw_config = GatewayConfig(**gateway_config)
@@ -138,9 +123,9 @@ class Foshk(SmartPlugin):
             self.logger.debug(f"Start interrogating.....")
             self.gateway = GatewayDriver(plugin_instance=self)
             self.logger.debug(f"Interrogating {self.gateway.gateway_model} at {self.gateway.ip_address}:{self.gateway.port}")
-            self.gateway_connected = True
         except GatewayIOError:
             self.logger.error(f"Unable to connect to device: {self.gw_config.ip_address}")
+            self.gateway = None
             self._init_complete = False
 
         # get webinterface
@@ -152,27 +137,19 @@ class Foshk(SmartPlugin):
 
         self.logger.debug("Run method called")
 
-        # set class property to selected IP
-        self.gw_config.ip_address = self.gateway.ip_address
-        self.gw_config.port = self.gateway.port
-
         # add scheduler
         self.scheduler_add('poll_api', self.gateway.get_current_api_data, cycle=self.gw_config.api_data_cycle, cron=self.gw_config.api_data_crontab)
         if self.gw_config.fw_check_crontab is not None:
             self.scheduler_add('check_fw_update', self.is_firmware_update_available, cron=self.gw_config.fw_check_crontab)
 
-        # if customer server is used, set parameters accordingly
-        if self.use_customer_server:
-            self._set_custom_params()
-            self._set_usr_path()
-            self.gateway.tcp.startup()
-            
-        self.alive = True
+        self.gateway.run()
         self._update_gateway_meta_data()
 
         # let the plugin change the state of pause_item
         if self._pause_item:
             self._pause_item(False, self.get_fullname())
+
+        self.alive = True
 
         self.logger.debug('Start consuming queue')
         self._work_data_queue()
@@ -181,14 +158,8 @@ class Foshk(SmartPlugin):
         """Stop method for the plugin"""
 
         self.alive = False
-        self.gateway_connected = False
+        self.gateway.stop()
         self.scheduler_remove_all()
-
-        # if customer server is used, set parameters accordingly
-        if self.use_customer_server:
-            self.gateway.tcp.stop_server()
-            self.gateway.tcp.shutdown()
-
         self.gateway.save_all_relevant_data()
 
     def parse_item(self, item):
@@ -359,71 +330,6 @@ class Foshk(SmartPlugin):
     #############################################################
     #  Config Methods
     #############################################################
-
-    def _set_usr_path(self, custom_ecowitt_path: str = "/data/report/", custom_wu_path: str = "/weatherstation/updateweatherstation.php?"):
-        """
-        Set user path for Ecowitt data to receive
-
-        :param custom_ecowitt_path: path for ecowitt data upload
-        :param custom_wu_path: path for wu data upload
-        """
-
-        self.gw_config.usr_path = self.gateway.api.get_usr_path()
-
-        result = self.gateway.set_usr_path(custom_ecowitt_path, custom_wu_path)
-        if result in ['SUCCESS', 'NO NEED']:
-            self.logger.debug(f"set_usr_path: {result}")
-        else:
-            self.logger.error(f"Error during setting set_usr_path: {result=}")
-
-        return result
-
-    def _set_custom_params(self, custom_server_id: str = '', custom_password: str = '', custom_host: str = None, custom_port: int = None, custom_interval: int = None, custom_type: bool = False, custom_enabled: bool = True):
-        """
-        Set customer parameter for Ecowitt data to receive
-
-        :param custom_server_id: custom_server_id
-        :param custom_password: custom_password
-        :param custom_host: Ip address of customer host
-        :param custom_port: port of customer host
-        :param custom_interval: cycle of data upload
-        :param custom_type: type of custom data upload
-        :param custom_enabled: enable / disable custom upload
-        """
-
-        self.gw_config.custom_params = self.gateway.api.get_custom_params()
-
-        if not custom_host:
-            custom_host = self.gw_config.post_server_ip
-        if not custom_port:
-            custom_port = self.gw_config.post_server_port
-        if not custom_interval:
-            custom_interval = self.gw_config.post_server_cycle
-
-        result = self.gateway.set_custom_params(custom_server_id, custom_password, custom_host, custom_port, custom_interval, custom_type, custom_enabled)
-        if result in ['SUCCESS', 'NO NEED']:
-            self.logger.debug(f"set_custom_params: {result}")
-        else:
-            self.logger.error(f"Error during setting custom params: {result=}")
-
-        return result
-
-    def _select_port_for_tcp_server(self, port: int) -> int:
-        """
-        Check if default port for tcp server is free and can be used
-
-        :param port: port number to be used
-        :return: selected port
-        """
-
-        for attempt in range(20):
-            port = port + attempt
-            # self.logger.debug(f"try port={port}")
-            if is_port_in_use(port):
-                self.logger.debug(f"select_port_for_tcp_server: Port {port} is already in use. Trying next one...")
-            else:
-                # self.logger.debug(f"select_port_for_tcp_server: Port {port} can be used")
-                return port
 
     def save_pickle(self, filename: str, data) -> None:
         """Saves received data as pickle to given file"""

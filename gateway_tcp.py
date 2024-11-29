@@ -24,12 +24,8 @@
 #
 #########################################################################
 
-import socketserver
-import threading
-from http.server import BaseHTTPRequestHandler
-import urllib.parse as urlparse
-
 from lib.utils import Utils
+from lib.network import Tcp_server
 
 from .config import *
 from .utility import *
@@ -53,113 +49,86 @@ class GatewayTcp(object):
         # get interface config
         self.gw_config = self._plugin_instance.gw_config
 
-        # define server thread
-        self._server_thread = None
+        # set server ip and port
+        ip = self._plugin_instance.get_local_ipv4_address()
+        port = self._select_port_for_tcp_server(8080)
+        self.gw_config.post_server_ip = ip
+        self.gw_config.post_server_port = port
 
         # log the relevant settings/parameters we are using
         if DebugLogConfig.tcp:
             self.logger.debug("Starting GatewayTcp")
 
-        # get tcp server object
-        self.tcp_server = GatewayTcp.TCPServer(self.make_handler(self.parse_tcp_live_data), plugin_instance)
+        # Initialize the TCP server
+        try:
+            self.server = Tcp_server(port=port, host=ip, name='foshk', mode=3, terminator=b"\r\n\r\n")
+            self.server.set_callbacks(data_received=self.handle_received_data, incoming_connection=self.handle_connection)
+        except Exception as e:
+            self.logger.warning(f"Server for receiving webhook data could not be set up. Exception {e} occurred.")
+            self.server = None
+            pass
         
     def run_server(self):
-        self.tcp_server.run()
+        self.server.start()
 
     def stop_server(self):
-        self.tcp_server.stop()
-        self.tcp_server = None
+        self.server.close()
 
-    def startup(self):
-        """Start a thread that collects data from the Ecowitt Gateway TCP."""
+    def handle_connection(self, server, client):
+        """
+        Handle incoming connection. Just used for debugging
 
-        try:
-            self._server_thread = threading.Thread(target=self.run_server)
-            self._server_thread.setDaemon(True)
-            _name = 'plugins.' + self._plugin_instance.get_fullname() + '.Gateway-TCP-Server'
-            self._server_thread.setName(_name)
-            self._server_thread.start()
-        except threading.ThreadError:
-            self.logger.error("Unable to launch GatewayApiClient thread")
-            self._server_thread = None
+        :param server: Tcp_server object serving the connection
+        :type server: lib.network.Tcp_server
+        :param client: Client object for connection
+        :type client: lib.network.Client
+        """
+        self.logger.debug(f'Incoming HTTP connection from {client.name}')
 
-    def shutdown(self):
-        """Shut down the thread that collects data from the Ecowitt Gateway TCP."""
+    def handle_received_data(self, server, client, data):
+        """
+        Forward received data to parser callback
 
-        if self._server_thread:
-            self._server_thread.join(10)
-            if self._server_thread.is_alive():
-                self.logger.error("Unable to shut down Gateway-TCP-Server thread")
-            else:
-                self.logger.info("Gateway-TCP-Server thread has been shutdown.")
-        self._server_thread = None
+        :param server: Tcp_server object serving the connection
+        :type server: lib.network.Tcp_server
+        :param client: Client object for connection
+        :type client: lib.network.Client
+        :param data: received data
+        :type data: string
+        """
 
-    def parse_tcp_live_data(self, data: str, client_ip: str) -> None:
+        self.logger.debug(f'Received packet from {client.ip}:{client.port} via HTTP with content {data=}.')
+
+        # Split the request into headers and body
+        headers, body = data.split('\r\n\r\n', 1)
 
         if DebugLogConfig.tcp:
-            self.logger.debug(f"raw post_data={data}")
+            self.logger.debug(f"raw post_data={body}")
 
-        data_dict = self.parser.parse_live_data(data, client_ip)
+        # parse body
+        data_dict = self.parser.parse_live_data(body, client.ip)
 
         if DebugLogConfig.tcp:
             self.logger.debug(f"parsed post_data={data_dict}")
 
         self.callback(data_dict)
 
-    def make_handler(self, parse_method):
+    def _select_port_for_tcp_server(self, port: int) -> int:
+        """
+        Check if default port for tcp server is free and can be used
 
-        class RequestHandler(BaseHTTPRequestHandler):
-            def reply(self):
-                ok_answer = "OK\n"
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(ok_answer)))
-                self.end_headers()
-                self.wfile.write(ok_answer.encode())
+        :param port: port number to be used
+        :return: selected port
+        """
 
-            def do_POST(self):
-                length = int(self.headers["Content-Length"])
-                post_data = self.rfile.read(length).decode()
-                self.reply()
-                parse_method(post_data,  self.client_address[0])
-
-            def do_PUT(self):
-                pass
-
-            def do_GET(self):
-                data = urlparse.urlparse(self.path).query
-                self.reply()
-
-        return RequestHandler
-
-    class TCPServer(socketserver.TCPServer):
-
-        daemon_threads = True
-        allow_reuse_address = True
-
-        def __init__(self, handler, plugin_instance):
-            # init instance
-            self._plugin_instance = plugin_instance
-            self.logger = self._plugin_instance.logger
-
-            # get gateway config
-            self.gw_config = self._plugin_instance.gw_config
-            address = self.gw_config.post_server_ip
-            port = self.gw_config.post_server_port
-
-            # init TCP Server
-            self.logger.info(f"Init FoshkPlugin TCP Server at {address}:{port}")
-            socketserver.TCPServer.__init__(self, (address, int(port)), handler)
-
-        def run(self):
-            if DebugLogConfig.tcp:
-                self.logger.debug("Start FoshkPlugin TCP Server")
-            self.serve_forever()
-
-        def stop(self):
-            if DebugLogConfig.tcp:
-                self.logger.debug("Stop FoshkPlugin TCP Server")
-            self.shutdown()
-            self.server_close()
+        for attempt in range(20):
+            port = port + attempt
+            # self.logger.debug(f"try port={port}")
+            if is_port_in_use(port):
+                self.logger.debug(f"select_port_for_tcp_server: Port {port} is already in use. Trying next one...")
+            else:
+                # self.logger.debug(f"select_port_for_tcp_server: Port {port} can be used")
+                return port
 
 
 class TcpParser(object):
